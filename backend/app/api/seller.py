@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_seller
 from app.db import get_api_session
-from app.models import Customer, Order, OrderItem, Payout, Product, Seller, SellerBot
+from app.models import Customer, Mailing, Order, OrderItem, Payout, Product, Seller, SellerBot
 
 router = APIRouter(prefix="/seller")
 
@@ -224,6 +224,75 @@ async def fulfill_order(
             pass  # останется pending — ретрай подберёт
 
     return {"status": order.status}
+
+
+class MailingIn(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    button_text: str | None = Field(default=None, max_length=64)
+    button_url: str | None = Field(default=None, max_length=512)
+    scheduled_at: str | None = None  # ISO-8601; null = отправить сразу
+
+
+class MailingOut(BaseModel):
+    id: int
+    text: str
+    status: str
+    sent_count: int
+    failed_count: int
+    scheduled_at: object | None
+
+    model_config = {"from_attributes": True}
+
+
+@router.post("/mailings", response_model=MailingOut)
+async def create_mailing(
+    payload: MailingIn,
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> MailingOut:
+    from datetime import datetime
+
+    bot = (
+        await session.execute(
+            select(SellerBot).where(
+                SellerBot.seller_id == seller.id, SellerBot.is_active.is_(True)
+            )
+        )
+    ).scalars().first()
+    if bot is None:
+        raise HTTPException(status_code=400, detail="connect a bot first")
+    if bool(payload.button_text) != bool(payload.button_url):
+        raise HTTPException(status_code=400, detail="button needs both text and url")
+
+    scheduled_at = None
+    if payload.scheduled_at:
+        try:
+            scheduled_at = datetime.fromisoformat(payload.scheduled_at)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="bad scheduled_at")
+
+    mailing = Mailing(
+        seller_id=seller.id,
+        bot_id=bot.id,
+        text=payload.text,
+        button_text=payload.button_text,
+        button_url=payload.button_url,
+        scheduled_at=scheduled_at,
+    )
+    session.add(mailing)
+    await session.commit()
+    return MailingOut.model_validate(mailing)
+
+
+@router.get("/mailings", response_model=list[MailingOut])
+async def list_mailings(
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> list[MailingOut]:
+    result = await session.execute(
+        select(Mailing).where(Mailing.seller_id == seller.id).order_by(Mailing.id.desc()).limit(50)
+    )
+    return [MailingOut.model_validate(m) for m in result.scalars().all()]
 
 
 @router.get("/orders", response_model=list[SellerOrderOut])

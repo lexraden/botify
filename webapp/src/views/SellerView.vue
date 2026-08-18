@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { deleteProduct, fetchMe, fetchProducts, fetchSellerOrders, fulfillOrder } from '../api'
+import { createMailing, deleteProduct, fetchMailings, fetchMe, fetchProducts, fetchSellerOrders, fulfillOrder } from '../api'
 
 const router = useRouter()
 const me = ref(null)
@@ -18,12 +18,33 @@ const STATUS = {
   cancelled: '✖️ Отменён',
 }
 
+const mailings = ref([])
+const mailingForm = ref({ text: '', button_text: '', button_url: '', sending: false })
+
 async function reload() {
-  ;[me.value, products.value, orders.value] = await Promise.all([
+  ;[me.value, products.value, orders.value, mailings.value] = await Promise.all([
     fetchMe(),
     fetchProducts(),
     fetchSellerOrders(),
+    fetchMailings(),
   ])
+}
+
+async function submitMailing() {
+  const f = mailingForm.value
+  if (f.sending || !f.text) return
+  f.sending = true
+  try {
+    await createMailing({
+      text: f.text,
+      button_text: f.button_text || null,
+      button_url: f.button_url || null,
+    })
+    mailingForm.value = { text: '', button_text: '', button_url: '', sending: false }
+    await reload()
+  } finally {
+    f.sending = false
+  }
 }
 
 onMounted(async () => {
@@ -82,6 +103,7 @@ async function submitFulfill() {
       <nav>
         <button :class="{ active: tab === 'products' }" @click="tab = 'products'">Товары</button>
         <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">Заказы</button>
+        <button :class="{ active: tab === 'mailings' }" @click="tab = 'mailings'">Рассылки</button>
       </nav>
 
       <template v-if="tab === 'products'">
@@ -99,7 +121,7 @@ async function submitFulfill() {
         <p v-if="!products.length" class="empty">Товаров пока нет.</p>
       </template>
 
-      <template v-else>
+      <template v-else-if="tab === 'orders'">
         <div v-for="o in orders" :key="o.id" class="row order">
           <div class="info">
             <b>Заказ #{{ o.id }} · {{ Number(o.total).toFixed(2) }} {{ o.currency }}</b>
@@ -125,6 +147,29 @@ async function submitFulfill() {
           </div>
         </div>
         <p v-if="!orders.length" class="empty">Заказов пока нет.</p>
+      </template>
+
+      <template v-else>
+        <div class="mailing-form">
+          <textarea v-model="mailingForm.text" rows="4" placeholder="Текст рассылки по твоей базе покупателей" />
+          <input v-model="mailingForm.button_text" placeholder="Текст кнопки (опционально)" />
+          <input v-model="mailingForm.button_url" placeholder="Ссылка кнопки" />
+          <button
+            class="send-mailing"
+            :disabled="mailingForm.sending || !mailingForm.text || (!!mailingForm.button_text !== !!mailingForm.button_url)"
+            @click="submitMailing"
+          >{{ mailingForm.sending ? '…' : '📣 Отправить всем' }}</button>
+        </div>
+        <div v-for="m in mailings" :key="m.id" class="row">
+          <div class="info">
+            <b>{{ m.text.slice(0, 60) }}{{ m.text.length > 60 ? '…' : '' }}</b>
+            <span>
+              {{ { pending: '⏳ В очереди', sending: '📤 Отправляется', done: '✅ Отправлена' }[m.status] || m.status }}
+              <template v-if="m.status === 'done'"> · доставлено {{ m.sent_count }}<template v-if="m.failed_count">, ошибок {{ m.failed_count }}</template></template>
+            </span>
+          </div>
+        </div>
+        <p v-if="!mailings.length" class="empty">Рассылок пока не было.</p>
       </template>
     </template>
     <p v-else class="empty">Загрузка…</p>
@@ -194,6 +239,31 @@ nav {
 }
 .empty { text-align: center; opacity: 0.6; margin-top: 24px; }
 .error { text-align: center; color: #e74c3c; margin-top: 40px; }
+.mailing-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  textarea, input {
+    border: 1px solid var(--tg-theme-secondary-bg-color, #ddd);
+    border-radius: 10px;
+    padding: 10px;
+    background: var(--tg-theme-bg-color, #fff);
+    color: inherit;
+    font: inherit;
+    resize: none;
+  }
+  .send-mailing {
+    border: 0;
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--tg-theme-button-color, #2481cc);
+    color: var(--tg-theme-button-text-color, #fff);
+    font-weight: 700;
+    cursor: pointer;
+    &:disabled { opacity: 0.5; }
+  }
+}
 .fulfill-btn {
   margin-top: 6px;
   border: 0;

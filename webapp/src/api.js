@@ -26,3 +26,5 @@ export const deleteProduct = (id) => api.delete(`/seller/products/${id}`).then((
 export const fetchSellerOrders = () => api.get('/seller/orders').then((r) => r.data)
 export const fulfillOrder = (id, data) =>
   api.post(`/seller/orders/${id}/fulfill`, data).then((r) => r.data)
+export const fetchMailings = () => api.get('/seller/mailings').then((r) => r.data)
+export const createMailing = (data) => api.post('/seller/mailings', data).then((r) => r.data)
