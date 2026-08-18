@@ -1,0 +1,28 @@
+"""Клиент Crypto Pay (pay.crypt.bot). Один API-токен на всю платформу —
+мультибот касается только приёма сообщений, платёжный слой единый (см. бриф)."""
+
+import hashlib
+import hmac
+from functools import lru_cache
+
+from aiocryptopay import AioCryptoPay, Networks
+
+from app.config import get_settings
+
+
+@lru_cache
+def get_crypto_pay() -> AioCryptoPay | None:
+    token = get_settings().crypto_pay_token
+    if not token:
+        return None  # локальная разработка/тесты без платежей
+    return AioCryptoPay(token=token, network=Networks.MAIN_NET)
+
+
+def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
+    """Подпись вебхука: HMAC-SHA256(body), ключ = SHA256(api_token)."""
+    token = get_settings().crypto_pay_token
+    if not token or not signature:
+        return False
+    secret = hashlib.sha256(token.encode()).digest()
+    computed = hmac.new(secret, raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(computed, signature)

@@ -9,6 +9,8 @@ from app.bots.hub import HUB_WEBHOOK_PATH, hub_bot, hub_dp, setup_hub_webhook
 from app.bots.runner import feed_seller_update, setup_all_seller_webhooks
 from app.config import get_settings
 from app.db import engine
+from app.payments.client import verify_webhook_signature
+from app.payments.service import handle_invoice_paid
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +51,28 @@ async def hub_webhook(
     except Exception:
         # Telegram ретраит не-200; ошибки обрабатываем сами, наружу всегда 200
         logger.exception("Ошибка обработки апдейта hub-бота")
+    return {"status": "ok"}
+
+
+@app.post("/webhook/cryptopay")
+async def cryptopay_webhook(request: Request) -> dict:
+    """Вебхук Crypto Pay. URL указывается в настройках приложения:
+    @CryptoBot -> Crypto Pay -> My Apps -> Webhooks."""
+    raw_body = await request.body()
+    signature = request.headers.get("crypto-pay-api-signature")
+    if not verify_webhook_signature(raw_body, signature):
+        raise HTTPException(status_code=403, detail="bad signature")
+
+    try:
+        update = await request.json()
+        if update.get("update_type") == "invoice_paid":
+            invoice = update.get("payload", {})
+            await handle_invoice_paid(
+                invoice_id=invoice.get("invoice_id"),
+                payload=invoice.get("payload"),
+            )
+    except Exception:
+        logger.exception("Ошибка обработки вебхука Crypto Pay")
     return {"status": "ok"}
 
 

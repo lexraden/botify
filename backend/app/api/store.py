@@ -52,6 +52,7 @@ class OrderOut(BaseModel):
     total: Decimal
     currency: str
     items: list[OrderItemOut]
+    payment_url: str | None = None  # ссылка на оплату в @CryptoBot
 
 
 @router.get("", response_model=ShopOut)
@@ -106,11 +107,20 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         )
     await ctx.session.commit()
 
+    from app.payments.service import create_invoice_for_order
+
+    try:
+        payment_url = await create_invoice_for_order(order.id, Decimal(total))
+    except Exception:
+        # заказ создан; оплату можно повторить — не роняем checkout
+        payment_url = None
+
     return OrderOut(
         id=order.id,
         status=order.status,
         total=Decimal(total),
         currency=order.currency,
+        payment_url=payment_url,
         items=[
             OrderItemOut(
                 product_id=i.product_id,

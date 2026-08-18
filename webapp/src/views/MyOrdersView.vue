@@ -27,8 +27,12 @@ onMounted(async () => {
       <a @click="router.push('/')">В каталог</a>
     </header>
     <p v-if="route.query.created" class="notice">
-      Заказ #{{ route.query.created }} создан. Оплата криптой появится на следующем этапе — пока
-      заказ ждёт в статусе «Ожидает оплаты».
+      Заказ #{{ route.query.created }} создан.
+      <template v-if="route.query.pay === '1'">
+        Заверши оплату в открывшемся окне @CryptoBot — после оплаты придёт подтверждение в чат
+        с ботом.
+      </template>
+      <template v-else>Оплата временно недоступна — попробуй позже.</template>
     </p>
     <p v-if="orders && !orders.length" class="empty">Покупок пока нет.</p>
     <div v-for="o in orders" :key="o.id" class="order">

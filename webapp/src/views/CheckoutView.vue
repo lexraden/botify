@@ -17,8 +17,12 @@ async function pay() {
   try {
     const order = await createOrder(cart.asOrderItems, comment.value || null)
     cart.clear()
-    // Этап 5: здесь появится редирект на оплату Crypto Pay по invoice_url
-    router.push({ name: 'my-orders', query: { created: order.id } })
+    if (order.payment_url) {
+      const tg = window.Telegram?.WebApp
+      if (tg?.openTelegramLink) tg.openTelegramLink(order.payment_url)
+      else window.open(order.payment_url, '_blank')
+    }
+    router.push({ name: 'my-orders', query: { created: order.id, pay: order.payment_url ? 1 : 0 } })
   } catch (e) {
     error.value = e.response?.data?.detail || 'Не удалось оформить заказ'
   } finally {
