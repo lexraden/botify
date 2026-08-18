@@ -1,0 +1,29 @@
+.block_change {
+  .item {
+    background: var(--bg-gray);
+    border-radius: 4px;
+    transition: 0.5s;
+  }
+
+  .active {
+    background: var(--active-info-bg);
+    color: var(--active-info-text);
+  }
+}
+
+.text_header {
+  color: var(--active-info-bg) !important;
+}
+
+.change_items {
+  display: flex;
+  width: 100%;
+
+  .item {
+    display: flex;
+    width: 50%;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+  }
+}

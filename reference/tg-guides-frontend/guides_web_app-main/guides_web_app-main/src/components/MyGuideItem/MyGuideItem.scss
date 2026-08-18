@@ -1,0 +1,110 @@
+.guide {
+  min-width: 270px;
+  border-radius: 15px;
+  padding-block: 0.25rem;
+
+  display: flex;
+  flex-direction: column;
+
+  background: var(--bg-slider);
+  transition: var(--color-transition);
+
+  &:hover {
+    cursor: pointer;
+    background-color: var(--hover-bg);
+  }
+
+  &__info {
+    padding: 10px;
+    gap: 0.5rem;
+
+    display: flex;
+    align-items: flex-start;
+
+    border-bottom: 1px solid var(--border-gray);
+  }
+
+  &__image {
+    max-height: 50px;
+    max-width: 90px;
+
+    object-fit: cover;
+
+    border-radius: 10px;
+  }
+
+  &__title {
+    font-size: 0.75rem;
+  }
+
+  &__more-icon {
+    color: var(--text-white);
+    height: 1.5rem;
+    width: 1.5rem;
+  }
+
+  &__earnings {
+    padding: 10px;
+    display: flex;
+    font-size: 0.625rem;
+    gap: 0.75rem;
+  }
+
+  &__earnings-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
+  }
+}
+
+.tooltip {
+  position: relative;
+  margin-left: auto;
+
+  &__content {
+    position: absolute;
+    top: var(--tooltip-button-size);
+    right: 0;
+
+    color: var(--text-tooltip);
+    background-color: var(--bg-tooltip);
+    overflow: hidden;
+    border-radius: 5px;
+    z-index: 10;
+
+    width: var(--tooltip-width);
+  }
+
+  &__options {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  &__option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    line-height: 1.2;
+    cursor: pointer;
+
+    font-weight: 400;
+    font-size: 0.75rem;
+  }
+
+  &__button {
+    width: var(--tooltip-button-size);
+    height: var(--tooltip-button-size);
+
+    &:hover {
+      cursor: pointer;
+    }
+  }
+
+  &__icon {
+    color: var(--text-gray);
+    width: 100%;
+    height: 100%;
+  }
+}

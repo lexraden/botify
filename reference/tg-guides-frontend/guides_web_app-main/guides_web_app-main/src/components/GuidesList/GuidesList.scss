@@ -1,0 +1,23 @@
+.guides-list {
+  & > *:not(last-child) {
+    margin-bottom: 1rem;
+  }
+
+  &__show-more-button {
+    display: flex;
+    align-items: center;
+    font-size: 1rem;
+    color: var(--text-white);
+
+    &:hover {
+      cursor: pointer;
+      background-color: var(--hover-color);
+    }
+  }
+
+  &__show-more-button-icon {
+    margin-left: 4px;
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+}

@@ -1,0 +1,17 @@
+.container {
+  height: 100%;
+
+  // max-width: var(--max-app-width);
+
+  margin: auto;
+
+  &__footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+  }
+
+  &__router-view {
+    padding-inline: var(--padding);
+  }
+}
