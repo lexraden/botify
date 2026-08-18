@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -19,11 +20,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def payout_retry_loop() -> None:
+    """Ежечасный ретрай незавершённых выплат (пачкой, как в брифе)."""
+    from app.payments.payouts import process_unsent_payouts
+
+    while True:
+        await asyncio.sleep(3600)
+        try:
+            await process_unsent_payouts()
+        except Exception:
+            logger.exception("Ошибка в цикле ретрая выплат")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await setup_hub_webhook()
     await setup_all_seller_webhooks()
+    retry_task = asyncio.create_task(payout_retry_loop())
     yield
+    retry_task.cancel()
     await hub_bot.session.close()
     await engine.dispose()
 

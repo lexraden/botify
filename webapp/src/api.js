@@ -24,3 +24,5 @@ export const saveProduct = (product) =>
   ).then((r) => r.data)
 export const deleteProduct = (id) => api.delete(`/seller/products/${id}`).then((r) => r.data)
 export const fetchSellerOrders = () => api.get('/seller/orders').then((r) => r.data)
+export const fulfillOrder = (id, data) =>
+  api.post(`/seller/orders/${id}/fulfill`, data).then((r) => r.data)

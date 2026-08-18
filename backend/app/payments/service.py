@@ -62,14 +62,15 @@ async def handle_invoice_paid(invoice_id: int, payload: str | None) -> bool:
         customer = await session.get(Customer, order.customer_id)
 
         commission = (order.total * seller.commission_pct / 100).quantize(Decimal("0.000001"))
-        session.add(
-            Payout(
-                order_id=order.id,
-                seller_id=seller.id,
-                amount=order.total - commission,
-                commission=commission,
-            )
+        payout = Payout(
+            order_id=order.id,
+            seller_id=seller.id,
+            amount=order.total - commission,
+            commission=commission,
         )
+        session.add(payout)
+        await session.flush()
+        payout_id = payout.id
 
         items = (
             await session.execute(
@@ -129,6 +130,15 @@ async def handle_invoice_paid(invoice_id: int, payload: str | None) -> bool:
         )
     except Exception:
         logger.exception("Не удалось уведомить продавца о заказе %s", order_id)
+
+    # Digital-заказ закрыт — сразу пробуем выплату; физические ждут fulfillment
+    if digital_lines and all_digital:
+        from app.payments.payouts import send_payout
+
+        try:
+            await send_payout(payout_id)
+        except Exception:
+            logger.exception("Выплата по заказу %s не отправлена (будет ретрай)", order_id)
 
     return True
 

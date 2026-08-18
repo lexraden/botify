@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_seller
 from app.db import get_api_session
-from app.models import Customer, Order, OrderItem, Product, Seller, SellerBot
+from app.models import Customer, Order, OrderItem, Payout, Product, Seller, SellerBot
 
 router = APIRouter(prefix="/seller")
 
@@ -160,6 +160,70 @@ async def delete_product(
     await session.delete(product)
     await session.commit()
     return {"status": "deleted"}
+
+
+class FulfillIn(BaseModel):
+    tracking: str | None = Field(default=None, max_length=256)  # трек-номер
+    url: str | None = Field(default=None, max_length=512)       # ссылка (файл/инвайт)
+    note: str | None = Field(default=None, max_length=1000)     # координаты/примечание
+
+
+@router.post("/orders/{order_id}/fulfill")
+async def fulfill_order(
+    order_id: int,
+    payload: FulfillIn,
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> dict:
+    """Продавец прикрепляет трек/ссылку/примечание -> бот пересылает покупателю,
+    затем платформа отправляет продавцу его долю (Crypto Pay transfer)."""
+    if not (payload.tracking or payload.url or payload.note):
+        raise HTTPException(status_code=400, detail="attach tracking, url or note")
+
+    order = await session.get(Order, order_id)
+    if order is None or order.seller_id != seller.id:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.status not in ("paid", "fulfilled"):
+        raise HTTPException(status_code=400, detail=f"order is {order.status}")
+
+    order.fulfillment = payload.model_dump(exclude_none=True)
+    order.status = "fulfilled"
+    await session.commit()
+
+    customer = await session.get(Customer, order.customer_id)
+    bot_record = await session.get(SellerBot, customer.bot_id)
+
+    from app.payments.service import _notify
+    from app.security import decrypt_bot_token
+
+    lines = [f"📦 Продавец отправил заказ #{order.id}!"]
+    if payload.tracking:
+        lines.append(f"Трек-номер: <code>{payload.tracking}</code>")
+    if payload.url:
+        lines.append(f"Ссылка: {payload.url}")
+    if payload.note:
+        lines.append(payload.note)
+    await _notify(
+        decrypt_bot_token(bot_record.bot_token_encrypted),
+        customer.telegram_id,
+        "\n".join(lines),
+    )
+
+    order.status = "delivered"
+    await session.commit()
+
+    payout = (
+        await session.execute(select(Payout).where(Payout.order_id == order.id))
+    ).scalar_one_or_none()
+    if payout is not None:
+        from app.payments.payouts import send_payout
+
+        try:
+            await send_payout(payout.id)
+        except Exception:
+            pass  # останется pending — ретрай подберёт
+
+    return {"status": order.status}
 
 
 @router.get("/orders", response_model=list[SellerOrderOut])
