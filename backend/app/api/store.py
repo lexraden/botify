@@ -1,0 +1,154 @@
+"""API витрины: покупатель внутри seller-бота. Всё отфильтровано по продавцу бота."""
+
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+
+from app.api.deps import BuyerContext, get_buyer
+from app.models import Order, OrderItem, Product
+
+router = APIRouter(prefix="/store/{bot_id}")
+
+
+class ProductOut(BaseModel):
+    id: int
+    type: str
+    title: str
+    description: str | None
+    image_url: str | None
+    price: Decimal
+    currency: str
+
+    model_config = {"from_attributes": True}
+
+
+class ShopOut(BaseModel):
+    shop_name: str
+    products: list[ProductOut]
+
+
+class CartItemIn(BaseModel):
+    product_id: int
+    qty: int = Field(ge=1, le=99)
+
+
+class OrderIn(BaseModel):
+    items: list[CartItemIn] = Field(min_length=1)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class OrderItemOut(BaseModel):
+    product_id: int
+    title: str
+    qty: int
+    price: Decimal
+
+
+class OrderOut(BaseModel):
+    id: int
+    status: str
+    total: Decimal
+    currency: str
+    items: list[OrderItemOut]
+
+
+@router.get("", response_model=ShopOut)
+async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
+    result = await ctx.session.execute(
+        select(Product)
+        .where(Product.seller_id == ctx.bot.seller_id, Product.is_active.is_(True))
+        .order_by(Product.id)
+    )
+    products = result.scalars().all()
+    return ShopOut(
+        shop_name=f"@{ctx.bot.bot_username}",
+        products=[ProductOut.model_validate(p) for p in products],
+    )
+
+
+@router.post("/orders", response_model=OrderOut)
+async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer)) -> OrderOut:
+    product_ids = [i.product_id for i in payload.items]
+    result = await ctx.session.execute(
+        select(Product).where(
+            Product.id.in_(product_ids),
+            Product.seller_id == ctx.bot.seller_id,  # чужие товары в заказ не попадут
+            Product.is_active.is_(True),
+        )
+    )
+    products = {p.id: p for p in result.scalars().all()}
+    missing = set(product_ids) - set(products)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"products not available: {sorted(missing)}")
+
+    # Сумма считается только на сервере, по текущим ценам из БД
+    total = sum(products[i.product_id].price * i.qty for i in payload.items)
+
+    order = Order(
+        seller_id=ctx.bot.seller_id,
+        customer_id=ctx.customer.id,
+        total=total,
+        currency="USDT",
+        comment=payload.comment,
+    )
+    ctx.session.add(order)
+    await ctx.session.flush()
+    for item in payload.items:
+        ctx.session.add(
+            OrderItem(
+                order_id=order.id,
+                product_id=item.product_id,
+                qty=item.qty,
+                price=products[item.product_id].price,
+            )
+        )
+    await ctx.session.commit()
+
+    return OrderOut(
+        id=order.id,
+        status=order.status,
+        total=Decimal(total),
+        currency=order.currency,
+        items=[
+            OrderItemOut(
+                product_id=i.product_id,
+                title=products[i.product_id].title,
+                qty=i.qty,
+                price=products[i.product_id].price,
+            )
+            for i in payload.items
+        ],
+    )
+
+
+@router.get("/orders/my", response_model=list[OrderOut])
+async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
+    result = await ctx.session.execute(
+        select(Order)
+        .where(Order.customer_id == ctx.customer.id)
+        .order_by(Order.id.desc())
+        .limit(50)
+    )
+    orders = result.scalars().all()
+    out: list[OrderOut] = []
+    for order in orders:
+        items_result = await ctx.session.execute(
+            select(OrderItem, Product.title)
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(OrderItem.order_id == order.id)
+        )
+        out.append(
+            OrderOut(
+                id=order.id,
+                status=order.status,
+                total=order.total,
+                currency=order.currency,
+                items=[
+                    OrderItemOut(product_id=i.product_id, title=title, qty=i.qty, price=i.price)
+                    for i, title in items_result.all()
+                ],
+            )
+        )
+    return out

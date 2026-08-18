@@ -1,0 +1,70 @@
+from dataclasses import dataclass
+
+from fastapi import Depends, Header, HTTPException, Path
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import get_settings
+from app.db import get_api_session
+from app.models import Customer, Seller, SellerBot
+from app.security import decrypt_bot_token
+from app.services.channels import TgUserInfo, upsert_customer
+from app.services.webapp_auth import validate_init_data
+
+
+@dataclass
+class BuyerContext:
+    customer: Customer
+    bot: SellerBot
+    session: AsyncSession
+
+
+async def get_buyer(
+    bot_id: int = Path(),
+    x_init_data: str = Header(default=""),
+    session: AsyncSession = Depends(get_api_session),
+) -> BuyerContext:
+    """Покупатель: initData подписана токеном seller-бота, из которого открыта витрина."""
+    bot = await session.get(SellerBot, bot_id)
+    if bot is None or not bot.is_active:
+        raise HTTPException(status_code=404, detail="shop not found")
+
+    token = decrypt_bot_token(bot.bot_token_encrypted)
+    data = validate_init_data(x_init_data, token)
+    if data is None or "user" not in data:
+        raise HTTPException(status_code=401, detail="invalid init data")
+
+    user = data["user"]
+    customer, _ = await upsert_customer(
+        bot,
+        TgUserInfo(
+            telegram_id=user["id"],
+            username=user.get("username"),
+            first_name=user.get("first_name"),
+            language_code=user.get("language_code"),
+        ),
+        source="webapp",
+    )
+    if customer.is_banned:
+        raise HTTPException(status_code=403, detail="banned")
+    return BuyerContext(customer=customer, bot=bot, session=session)
+
+
+async def get_seller(
+    x_init_data: str = Header(default=""),
+    session: AsyncSession = Depends(get_api_session),
+) -> Seller:
+    """Продавец: initData подписана токеном hub-бота (кабинет открыт из него)."""
+    data = validate_init_data(x_init_data, get_settings().hub_bot_token)
+    if data is None or "user" not in data:
+        raise HTTPException(status_code=401, detail="invalid init data")
+
+    result = await session.execute(
+        select(Seller).where(Seller.telegram_id == data["user"]["id"])
+    )
+    seller = result.scalar_one_or_none()
+    if seller is None:
+        raise HTTPException(status_code=403, detail="not registered; press /start in the bot")
+    if seller.is_banned:
+        raise HTTPException(status_code=403, detail="banned")
+    return seller

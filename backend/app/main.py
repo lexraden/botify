@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from aiogram import types
 from fastapi import FastAPI, Header, HTTPException, Request
 
-from app.api import health
+from app.api import health, seller, store
 from app.bots.hub import HUB_WEBHOOK_PATH, hub_bot, hub_dp, setup_hub_webhook
 from app.bots.runner import feed_seller_update, setup_all_seller_webhooks
 from app.config import get_settings
@@ -28,6 +28,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Botify", lifespan=lifespan)
 app.include_router(health.router, prefix="/api")
+app.include_router(store.router, prefix="/api")
+app.include_router(seller.router, prefix="/api")
 
 
 def check_telegram_secret(secret: str | None) -> None:

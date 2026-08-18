@@ -13,7 +13,10 @@ export function getInitData() {
   return tg?.initData ?? ''
 }
 
-// bot_id прокидывается seller-ботом как query-параметр кнопки Mini App
+// bot_id прокидывается seller-ботом как query-параметр кнопки Mini App.
+// Фиксируем при загрузке: роутер меняет URL, и параметр из адреса пропадает.
+const initialBotId = new URLSearchParams(window.location.search).get('bot_id')
+
 export function getBotId() {
-  return new URLSearchParams(window.location.search).get('bot_id')
+  return initialBotId
 }
