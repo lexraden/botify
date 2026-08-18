@@ -7,57 +7,77 @@
 <body>
 <x-dc>
 <helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@500;600;700;800&display=swap">
   <style>
-    body { margin: 0; font-family: -apple-system, system-ui, 'SF Pro Text', sans-serif; }
-    a { color: #2481cc; text-decoration: none; } a:hover { color: #1a6aa8; }
+    body { margin: 0; font-family: 'Manrope', -apple-system, system-ui, sans-serif; }
+    a { color: #6A58F5; text-decoration: none; } a:hover { color: #5847d6; }
   </style>
 </helmet>
-<div style="width: 390px; height: 844px; background: #ffffff; color: #0f0f0f; position: relative; overflow: hidden; display: flex; flex-direction: column;">
+<div style="width: 390px; height: 844px; background: {{c.bg}}; color: {{c.text}}; position: relative; overflow: hidden; display: flex; flex-direction: column;">
 
-  <div style="display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 84px 24px 0 24px;">
-    <div style="width: 96px; height: 96px; border-radius: 28px; background: #2481cc; display: flex; align-items: center; justify-content: center;">
-      <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1.2 12.2a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 7z"></path><path d="M9 7V6a3 3 0 0 1 6 0v1"></path><path d="M9.5 12.5l1.8 1.8 3.4-3.4"></path></svg>
+  <div style="display: flex; align-items: center; gap: 10px; padding: 26px 24px 0 24px;">
+    <div style="width: 30px; height: 30px; border-radius: 9px; background: {{c.accent}}; display: flex; align-items: center; justify-content: center;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1.2 12.2a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 7z"></path><path d="M9 7V6a3 3 0 0 1 6 0v1"></path></svg>
     </div>
-    <div style="font-size: 32px; font-weight: 800; letter-spacing: -0.5px;">Botify</div>
-    <div style="font-size: 22px; font-weight: 700; text-align: center; line-height: 1.3;">Магазин внутри Telegram — за 10 минут</div>
-    <div style="font-size: 15px; color: #5c5c61; text-align: center; line-height: 1.55; max-width: 320px;">Без сайта, юрлица и программиста. Подключаешь своего бота, добавляешь товары — и принимаешь оплату в USDT напрямую.</div>
+    <div style="font-family: 'Unbounded', 'Arial Black', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 0.5px;">Botify</div>
   </div>
 
-  <div style="display: flex; flex-direction: column; gap: 14px; padding: 30px 28px;">
-    <div style="display: flex; align-items: center; gap: 14px;">
-      <div style="width: 40px; height: 40px; border-radius: 12px; background: #f4f9ff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2481cc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="7" width="14" height="11" rx="3"></rect><path d="M12 7V4"></path><circle cx="12" cy="3" r="1" fill="#2481cc" stroke="none"></circle><circle cx="9.5" cy="12" r="1.1" fill="#2481cc" stroke="none"></circle><circle cx="14.5" cy="12" r="1.1" fill="#2481cc" stroke="none"></circle></svg>
+  <div style="display: flex; flex-direction: column; gap: 16px; padding: 40px 24px 0 24px;">
+    <div style="font-family: 'Unbounded', 'Arial Black', sans-serif; font-size: 31px; font-weight: 700; line-height: 1.18; letter-spacing: -0.3px;">Продавай прямо в Telegram</div>
+    <div style="font-size: 17px; font-weight: 600; color: {{c.sub}}; line-height: 1.45;">Магазин в твоём боте. Оплата в USDT — сразу тебе.</div>
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: center; padding: 40px 24px 0 24px; position: relative;">
+    <div style="width: 210px; background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 12px; transform: rotate(-4deg); box-shadow: {{c.shadow}};">
+      <div style="width: 96px; height: 96px; border-radius: 20px; background: {{c.surface2}}; display: flex; align-items: center; justify-content: center; font-size: 56px; align-self: center;">📕</div>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <div style="font-size: 15px; font-weight: 800;">Гайд по обжарке</div>
+        <div style="font-size: 13px; font-weight: 600; color: {{c.sub}};">digital · придёт в чат</div>
       </div>
-      <div style="font-size: 15px; line-height: 1.4;">Свой бот-витрина с каталогом и корзиной</div>
+      <div style="background: {{c.accent}}; color: #FFFFFF; border-radius: 13px; height: 42px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800;">15 USDT</div>
     </div>
-    <div style="display: flex; align-items: center; gap: 14px;">
-      <div style="width: 40px; height: 40px; border-radius: 12px; background: #eafaf1; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e9e57" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="13" rx="3"></rect><path d="M16.5 6V5a2 2 0 0 0-2-2h-9a2 2 0 0 0-2 2v1"></path><circle cx="17" cy="12.5" r="1.4" fill="#1e9e57" stroke="none"></circle></svg>
-      </div>
-      <div style="font-size: 15px; line-height: 1.4;">Оплата криптой через @CryptoBot — деньги сразу тебе</div>
-    </div>
-    <div style="display: flex; align-items: center; gap: 14px;">
-      <div style="width: 40px; height: 40px; border-radius: 12px; background: #fff6e8; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19a5.5 5.5 0 0 1 11 0"></path><path d="M16 4.5a3.2 3.2 0 0 1 0 7"></path><path d="M17.5 13.6a5.5 5.5 0 0 1 3 4.9"></path></svg>
-      </div>
-      <div style="font-size: 15px; line-height: 1.4;">База покупателей и рассылки — только твоя, целиком</div>
+    <div style="position: absolute; right: 34px; top: 12px; background: {{c.greenSoft}}; color: {{c.greenText}}; border: 1px solid {{c.border}}; border-radius: 14px; padding: 10px 14px; display: flex; align-items: center; gap: 8px; transform: rotate(3deg); backdrop-filter: blur(4px);">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+      <span style="font-size: 13px; font-weight: 800;">Оплачено</span>
     </div>
   </div>
 
-  <div style="position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 24px 20px; background: #ffffff;">
-    <div style="background: #2481cc; color: #ffffff; border-radius: 12px; height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 17px; font-weight: 700;">
+  <div style="display: flex; gap: 8px; justify-content: center; padding: 36px 24px 0 24px;">
+    <div style="background: {{c.surface2}}; color: {{c.text}}; border-radius: 20px; padding: 9px 14px; font-size: 13px; font-weight: 700;">Бот-витрина</div>
+    <div style="background: {{c.surface2}}; color: {{c.text}}; border-radius: 20px; padding: 9px 14px; font-size: 13px; font-weight: 700;">USDT-оплата</div>
+    <div style="background: {{c.surface2}}; color: {{c.text}}; border-radius: 20px; padding: 9px 14px; font-size: 13px; font-weight: 700;">Своя база</div>
+  </div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 24px 28px 24px;">
+    <div style="background: {{c.accent}}; color: #FFFFFF; border-radius: 16px; height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 18px; font-weight: 800;">
       <span>Начать</span>
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg>
     </div>
-    <div style="font-size: 13px; color: #8e8e93; text-align: center;">Настройка займёт ~10 минут · 2 шага</div>
+    <div style="font-size: 13px; font-weight: 600; color: {{c.sub}}; text-align: center;">2 шага · ~10 минут</div>
   </div>
 
 </div>
 </x-dc>
-<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
 class Component extends DCLogic {
   renderVals() {
-    return {};
+    const dark = (this.props.theme ?? 'light') === 'dark';
+    const c = dark ? {
+      bg: '#0E0F13', surface: '#171921', surface2: '#20232E',
+      border: 'rgba(255,255,255,0.09)', text: '#F4F5F7', sub: '#9AA0AB',
+      accent: '#7C6CFF', accentSoft: 'rgba(124,108,255,0.18)',
+      green: '#2FD48A', greenSoft: 'rgba(47,212,138,0.15)', greenText: '#2FD48A',
+      orange: '#FFB454', orangeSoft: 'rgba(255,180,84,0.14)', orangeText: '#FFCB7E',
+      red: '#FF6B5E', onGreen: '#062517', shadow: '0 16px 40px rgba(0,0,0,0.45)'
+    } : {
+      bg: '#F6F7F9', surface: '#FFFFFF', surface2: '#EFF1F5',
+      border: '#E8EAF0', text: '#14161B', sub: '#6B7280',
+      accent: '#6A58F5', accentSoft: '#ECE9FF',
+      green: '#17B877', greenSoft: '#E1F7ED', greenText: '#0E9A62',
+      orange: '#F59E1B', orangeSoft: '#FFF3DF', orangeText: '#9A6708',
+      red: '#E5544B', onGreen: '#FFFFFF', shadow: '0 14px 34px rgba(20,22,27,0.12)'
+    };
+    return { c, dark };
   }
 }
 </script>

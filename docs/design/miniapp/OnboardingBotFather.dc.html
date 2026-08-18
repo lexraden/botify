@@ -7,87 +7,101 @@
 <body>
 <x-dc>
 <helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@500;600;700;800&display=swap">
   <style>
-    body { margin: 0; font-family: -apple-system, system-ui, 'SF Pro Text', sans-serif; }
-    a { color: #2481cc; text-decoration: none; } a:hover { color: #1a6aa8; }
+    body { margin: 0; font-family: 'Manrope', -apple-system, system-ui, sans-serif; }
+    a { color: #6A58F5; text-decoration: none; } a:hover { color: #5847d6; }
   </style>
 </helmet>
-<div style="width: 390px; height: 844px; background: #ffffff; color: #0f0f0f; position: relative; overflow: hidden; display: flex; flex-direction: column;">
+<div style="width: 390px; height: 844px; background: {{c.bg}}; color: {{c.text}}; position: relative; overflow: hidden; display: flex; flex-direction: column;">
 
-  <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 20px 0 20px;">
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <div style="flex: 1; height: 4px; border-radius: 2px; background: #2ecc71;"></div>
-      <div style="flex: 1; height: 4px; border-radius: 2px; background: #2481cc;"></div>
+  <div style="display: flex; flex-direction: column; gap: 10px; padding: 24px 24px 0 24px;">
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <div style="flex: 1; height: 5px; border-radius: 3px; background: {{c.green}};"></div>
+      <div style="flex: 1; height: 5px; border-radius: 3px; background: {{c.accent}};"></div>
     </div>
-    <div style="font-size: 13px; color: #8e8e93; font-weight: 500;">Шаг 2 из 2 · Настройка магазина</div>
+    <div style="font-size: 13px; color: {{c.sub}}; font-weight: 700;">Шаг 2 из 2</div>
   </div>
 
-  <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 20px 0 20px;">
-    <div style="width: 64px; height: 64px; border-radius: 20px; background: #f4f9ff; display: flex; align-items: center; justify-content: center;">
-      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#2481cc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="7" width="14" height="11" rx="3"></rect><path d="M12 7V4"></path><circle cx="12" cy="3" r="1" fill="#2481cc" stroke="none"></circle><circle cx="9.5" cy="12" r="1.1" fill="#2481cc" stroke="none"></circle><circle cx="14.5" cy="12" r="1.1" fill="#2481cc" stroke="none"></circle><path d="M9.5 15.2h5"></path></svg>
-    </div>
-    <div style="font-size: 21px; font-weight: 800; text-align: center; line-height: 1.25;">Подключи своего бота</div>
-    <div style="font-size: 14px; color: #5c5c61; text-align: center; line-height: 1.45;">Через него покупатели увидят твой каталог. Создаётся за минуту в @BotFather.</div>
+  <div style="display: flex; flex-direction: column; gap: 12px; padding: 22px 24px 0 24px;">
+    <div style="font-family: 'Unbounded', 'Arial Black', sans-serif; font-size: 24px; font-weight: 700; line-height: 1.25;">Подключи своего бота</div>
+    <div style="font-size: 16px; font-weight: 600; color: {{c.sub}}; line-height: 1.5;">Через него покупатели увидят каталог. Создаётся за минуту в @BotFather.</div>
   </div>
 
-  <div style="margin: 12px 20px 0 20px; background: #fffaf2; border: 1px solid #ffe2b8; border-radius: 12px; padding: 10px 12px; display: flex; gap: 10px; align-items: flex-start;">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c47f14" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
-    <div style="font-size: 13px; color: #7a5410; line-height: 1.45;">Уже есть бот? Отключи его от других конструкторов и агрегаторов, если он там подключён, и просто вставь его токен ниже — новый создавать не нужно.</div>
+  <div style="margin: 14px 24px 0 24px; background: {{c.orangeSoft}}; border-radius: 16px; padding: 13px 14px; display: flex; gap: 10px; align-items: flex-start;">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="{{c.orange}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+    <div style="font-size: 14px; font-weight: 600; color: {{c.orangeText}}; line-height: 1.45;">Уже есть бот? Отключи его от других конструкторов и вставь его токен — новый создавать не нужно.</div>
   </div>
 
-  <div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 20px;">
+  <div style="display: flex; flex-direction: column; gap: 13px; padding: 18px 24px 0 24px;">
 
-    <div style="display: flex; gap: 12px; align-items: flex-start;">
-      <div style="width: 26px; height: 26px; border-radius: 50%; background: #2481cc; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0;">1</div>
-      <div style="font-size: 15px; line-height: 1.45; padding-top: 2px;">Открой <b>@BotFather</b> и отправь <b>/newbot</b></div>
+    <div style="display: flex; gap: 14px; align-items: center;">
+      <div style="width: 30px; height: 30px; border-radius: 10px; background: {{c.surface2}}; color: {{c.text}}; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; flex-shrink: 0;">1</div>
+      <div style="font-size: 16px; font-weight: 600; line-height: 1.4;">Открой <b>@BotFather</b>, отправь <b>/newbot</b></div>
     </div>
 
-    <div style="display: flex; gap: 12px; align-items: flex-start;">
-      <div style="width: 26px; height: 26px; border-radius: 50%; background: #2481cc; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0;">2</div>
-      <div style="font-size: 15px; line-height: 1.45; padding-top: 2px;">Придумай имя и username бота (оканчивается на <b>bot</b>)</div>
+    <div style="display: flex; gap: 14px; align-items: center;">
+      <div style="width: 30px; height: 30px; border-radius: 10px; background: {{c.surface2}}; color: {{c.text}}; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; flex-shrink: 0;">2</div>
+      <div style="font-size: 16px; font-weight: 600; line-height: 1.4;">Придумай имя и username бота</div>
     </div>
 
-    <div style="display: flex; gap: 12px; align-items: flex-start;">
-      <div style="width: 26px; height: 26px; border-radius: 50%; background: #2481cc; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0;">3</div>
-      <div style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1;">
-        <div style="font-size: 15px; line-height: 1.45; padding-top: 2px;">Скопируй токен из ответа и вставь его сюда</div>
-        <div style="background: #f4f4f5; border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 8px;">
-          <div style="width: 24px; height: 24px; border-radius: 50%; background: #3d3d42; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;">BF</div>
-          <div style="font-size: 12px; color: #5c5c61;">Done! Use this token: <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: #0f0f0f; background: #eef3f8; padding: 1px 5px; border-radius: 5px;">7212…:AAEhBOw…KWvs</span></div>
+    <div style="display: flex; gap: 14px; align-items: flex-start;">
+      <div style="width: 30px; height: 30px; border-radius: 10px; background: {{c.surface2}}; color: {{c.text}}; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; flex-shrink: 0;">3</div>
+      <div style="display: flex; flex-direction: column; gap: 10px; flex-grow: 1;">
+        <div style="font-size: 16px; font-weight: 600; line-height: 1.4; padding-top: 4px;">Скопируй токен и вставь сюда</div>
+        <div style="background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 9px;">
+          <div style="width: 26px; height: 26px; border-radius: 50%; background: {{c.surface2}}; color: {{c.text}}; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; flex-shrink: 0;">BF</div>
+          <div style="font-size: 13px; font-weight: 600; color: {{c.sub}};">Done! <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: {{c.text}}; background: {{c.surface2}}; padding: 2px 6px; border-radius: 6px;">7212…:AAEhBOw…KWvs</span></div>
         </div>
       </div>
     </div>
 
   </div>
 
-  <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 20px;">
-    <div style="border: 1.5px solid #2481cc; border-radius: 12px; padding: 14px; display: flex; align-items: center; justify-content: space-between;">
-      <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 14px; color: #8e8e93;">Вставь токен бота…</span>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2481cc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2"></rect><path d="M5.5 15.5h-1a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+  <div style="display: flex; flex-direction: column; gap: 9px; padding: 16px 24px 0 24px;">
+    <div style="border: 1.5px solid {{c.accent}}; background: {{c.surface}}; border-radius: 16px; padding: 16px; display: flex; align-items: center; justify-content: space-between;">
+      <span style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 14px; color: {{c.sub}};">Вставь токен бота…</span>
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="{{c.accent}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2"></rect><path d="M5.5 15.5h-1a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
     </div>
     <div style="display: flex; gap: 8px; align-items: center;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
-      <div style="font-size: 12px; color: #8e8e93; line-height: 1.4;">Сообщение с токеном удалится сразу после проверки — токен хранится только в зашифрованном виде.</div>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{c.sub}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><rect x="4" y="10" width="16" height="10" rx="2.5"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+      <div style="font-size: 12px; font-weight: 600; color: {{c.sub}}; line-height: 1.4;">Токен шифруется, сообщение с ним удалится после проверки</div>
     </div>
   </div>
 
-  <div style="position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 24px 20px; background: #ffffff;">
-    <div style="background: #2481cc; color: #ffffff; border-radius: 12px; height: 50px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 700;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"></path><path d="M8 7h9v9"></path></svg>
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 10px; padding: 16px 24px 28px 24px;">
+    <div style="background: {{c.surface2}}; color: {{c.text}}; border-radius: 16px; height: 54px; display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 16px; font-weight: 800;">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"></path><path d="M8 7h9v9"></path></svg>
       <span>Открыть @BotFather</span>
     </div>
-    <div style="background: #2ecc71; color: #ffffff; border-radius: 12px; height: 50px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 700;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+    <div style="background: {{c.accent}}; color: #FFFFFF; border-radius: 16px; height: 54px; display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 16px; font-weight: 800;">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
       <span>Подключить бота</span>
     </div>
   </div>
 
 </div>
 </x-dc>
-<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
 class Component extends DCLogic {
   renderVals() {
-    return {};
+    const dark = (this.props.theme ?? 'light') === 'dark';
+    const c = dark ? {
+      bg: '#0E0F13', surface: '#171921', surface2: '#20232E',
+      border: 'rgba(255,255,255,0.09)', text: '#F4F5F7', sub: '#9AA0AB',
+      accent: '#7C6CFF', accentSoft: 'rgba(124,108,255,0.18)',
+      green: '#2FD48A', greenSoft: 'rgba(47,212,138,0.15)', greenText: '#2FD48A',
+      orange: '#FFB454', orangeSoft: 'rgba(255,180,84,0.14)', orangeText: '#FFCB7E',
+      red: '#FF6B5E', onGreen: '#062517', shadow: '0 16px 40px rgba(0,0,0,0.45)'
+    } : {
+      bg: '#F6F7F9', surface: '#FFFFFF', surface2: '#EFF1F5',
+      border: '#E8EAF0', text: '#14161B', sub: '#6B7280',
+      accent: '#6A58F5', accentSoft: '#ECE9FF',
+      green: '#17B877', greenSoft: '#E1F7ED', greenText: '#0E9A62',
+      orange: '#F59E1B', orangeSoft: '#FFF3DF', orangeText: '#9A6708',
+      red: '#E5544B', onGreen: '#FFFFFF', shadow: '0 14px 34px rgba(20,22,27,0.12)'
+    };
+    return { c, dark };
   }
 }
 </script>
