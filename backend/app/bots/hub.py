@@ -4,6 +4,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.config import get_settings
+from app.handlers.hub import onboarding as hub_onboarding
 from app.handlers.hub import start as hub_start
 
 HUB_WEBHOOK_PATH = "/webhook/hub"
@@ -14,6 +15,7 @@ hub_bot = Bot(
 )
 
 hub_dp = Dispatcher(storage=MemoryStorage())
+hub_dp.include_router(hub_onboarding.router)
 hub_dp.include_router(hub_start.router)
 
 
@@ -21,6 +23,14 @@ async def setup_hub_webhook() -> None:
     settings = get_settings()
     if not settings.webhook_base_url:
         return
+    from aiogram.types import BotCommand
+
+    await hub_bot.set_my_commands(
+        [
+            BotCommand(command="start", description="Начать / настройка"),
+            BotCommand(command="mybots", description="Мои подключённые боты"),
+        ]
+    )
     url = f"{settings.webhook_base_url}{HUB_WEBHOOK_PATH}"
     info = await hub_bot.get_webhook_info()
     if info.url != url:

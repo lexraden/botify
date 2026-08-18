@@ -61,13 +61,3 @@ async def cmd_start(message: types.Message) -> None:
         await session.commit()
 
     await message.answer(WELCOME, reply_markup=onboarding_keyboard())
-
-
-@router.callback_query(lambda c: c.data == "onboarding:begin")
-async def onboarding_begin(callback: types.CallbackQuery) -> None:
-    # Полноценные шаги онбординга (подключение @CryptoBot, подключение бота) — этап 2
-    await callback.answer()
-    if callback.message:
-        await callback.message.answer(
-            "Онбординг в разработке: следующий шаг — подключение выплат через @CryptoBot."
-        )
