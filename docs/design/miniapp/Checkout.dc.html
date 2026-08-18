@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, system-ui, 'SF Pro Text', sans-serif; }
+    a { color: #2481cc; text-decoration: none; } a:hover { color: #1a6aa8; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #ffffff; color: #0f0f0f; position: relative; overflow: hidden; display: flex; flex-direction: column;">
+
+  <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 22px 16px 8px 16px;">
+    <div style="font-size: 18px; font-weight: 800; letter-spacing: 0.6px;">ВАШ ЗАКАЗ</div>
+    <div style="color: #2ecc71; font-size: 15px; font-weight: 600;">Изменить</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; padding: 0 16px;">
+
+    <div style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f2;">
+      <div style="font-size: 34px; width: 44px; text-align: center;">☕️</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 600;">Капучино <span style="color: #f5a623;">1x</span></div>
+        <div style="font-size: 13px; color: #8e8e93;">Классический, 300 мл</div>
+      </div>
+      <div style="font-size: 15px; font-weight: 600;">4.00</div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f2;">
+      <div style="font-size: 34px; width: 44px; text-align: center;">📕</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 600;">Гайд по обжарке <span style="color: #f5a623;">1x</span></div>
+        <div style="font-size: 13px; color: #8e8e93;">PDF, придёт в чат после оплаты</div>
+      </div>
+      <div style="font-size: 15px; font-weight: 600;">15.00</div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; padding: 14px 0 4px 0; font-size: 16px; font-weight: 700;">
+      <div>Итого</div>
+      <div>19.00 USDT</div>
+    </div>
+  </div>
+
+  <div style="padding: 12px 16px;">
+    <div style="border: 1px solid #e8e8ea; border-radius: 12px; padding: 12px; color: #8e8e93; font-size: 14px; min-height: 64px;">Комментарий к заказу — детали, пожелания…</div>
+  </div>
+
+  <div style="margin: 4px 16px; background: #f4f9ff; border-radius: 12px; padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2481cc" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+    <div style="font-size: 13px; color: #3c5a75; line-height: 1.45;">Оплата откроется в @CryptoBot. После оплаты подтверждение и digital-покупки придут в чат с ботом.</div>
+  </div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; background: #2ecc71; color: #ffffff; display: flex; align-items: center; justify-content: center; height: 56px; font-size: 16px; font-weight: 700; letter-spacing: 0.4px;">ОПЛАТИТЬ 19 USDT</div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
