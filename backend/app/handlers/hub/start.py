@@ -25,7 +25,7 @@ WELCOME = (
 
 def onboarding_keyboard() -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
-    webapp_url = get_settings().webapp_url
+    webapp_url = get_settings().effective_webapp_url
     if webapp_url:
         kb.button(
             text="🚀 Открыть кабинет продавца",

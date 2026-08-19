@@ -1,9 +1,12 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from aiogram import types
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api import health, seller, store
 from app.bots.hub import HUB_WEBHOOK_PATH, hub_bot, hub_dp, setup_hub_webhook
@@ -119,3 +122,19 @@ async def seller_webhook(
     except Exception:
         logger.exception("Ошибка обработки апдейта seller-бота id=%s", bot_id)
     return {"status": "ok"}
+
+
+# Собранная витрина (webapp/dist) раздаётся этим же сервисом — Mini App
+# живёт на том же домене, что и API/вебхуки. Catch-all стоит последним,
+# поэтому /api и /webhook обрабатываются раньше.
+WEBAPP_DIST = Path(__file__).resolve().parents[2] / "webapp" / "dist"
+
+if WEBAPP_DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=WEBAPP_DIST / "assets"), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_webapp(full_path: str) -> FileResponse:
+        candidate = WEBAPP_DIST / full_path
+        if full_path and ".." not in full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(WEBAPP_DIST / "index.html")

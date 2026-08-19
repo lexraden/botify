@@ -12,10 +12,11 @@ from app.config import get_settings
 
 @lru_cache
 def get_crypto_pay() -> AioCryptoPay | None:
-    token = get_settings().crypto_pay_token
-    if not token:
+    settings = get_settings()
+    if not settings.crypto_pay_token:
         return None  # локальная разработка/тесты без платежей
-    return AioCryptoPay(token=token, network=Networks.MAIN_NET)
+    network = Networks.TEST_NET if settings.crypto_pay_network == "testnet" else Networks.MAIN_NET
+    return AioCryptoPay(token=settings.crypto_pay_token, network=network)
 
 
 def verify_webhook_signature(raw_body: bytes, signature: str | None) -> bool:

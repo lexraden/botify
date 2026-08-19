@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     database_url: str
 
     crypto_pay_token: str = ""
+    crypto_pay_network: str = "mainnet"  # mainnet | testnet (@CryptoTestnetBot)
 
     # Ключ Fernet: токены seller-ботов никогда не хранятся в БД открытым текстом
     bot_token_encryption_key: str
@@ -30,6 +31,12 @@ class Settings(BaseSettings):
         if v.startswith("postgresql://"):
             return v.replace("postgresql://", "postgresql+asyncpg://", 1)
         return v
+
+    @property
+    def effective_webapp_url(self) -> str:
+        # витрину раздаёт сам бэкенд — отдельный WEBAPP_URL нужен только
+        # если фронт хостится отдельно
+        return self.webapp_url or self.webhook_base_url
 
     @property
     def admin_ids(self) -> set[int]:

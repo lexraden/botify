@@ -12,7 +12,7 @@ router = Router()
 
 
 def catalog_keyboard(bot_record: SellerBot) -> types.InlineKeyboardMarkup | None:
-    webapp_url = get_settings().webapp_url
+    webapp_url = get_settings().effective_webapp_url
     if not webapp_url:
         return None
     kb = InlineKeyboardBuilder()
@@ -20,7 +20,7 @@ def catalog_keyboard(bot_record: SellerBot) -> types.InlineKeyboardMarkup | None
     # витрина фильтрует каталог по этому bot_id (проверка — на бэкенде по initData)
     kb.button(
         text="🛍 Открыть каталог",
-        web_app=types.WebAppInfo(url=f"{get_settings().webapp_url}?bot_id={bot_record.id}"),
+        web_app=types.WebAppInfo(url=f"{webapp_url}?bot_id={bot_record.id}"),
     )
     return kb.as_markup()
 
