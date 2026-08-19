@@ -44,17 +44,7 @@ async function submit() {
     <div class="step-label">Шаг 2 из 2</div>
 
     <h2>Подключи своего бота</h2>
-    <p class="lead">Через него покупатели увидят каталог. Создаётся за минуту в @BotFather.</p>
-
-    <div class="alert">
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="9" /><path d="M12 8v4" /><path d="M12 16h.01" />
-      </svg>
-      <span>
-        Уже есть бот? Отключи его от других конструкторов и вставь его токен — новый создавать
-        не нужно.
-      </span>
-    </div>
+    <p class="lead">Через него покупатели увидят каталог.</p>
 
     <ol class="steps">
       <li><span class="num">1</span><span>Открой <b>@BotFather</b>, отправь <b>/newbot</b></span></li>
@@ -68,6 +58,16 @@ async function submit() {
         <rect x="4" y="10" width="16" height="10" rx="2.5" /><path d="M8 10V7a4 4 0 0 1 8 0v3" />
       </svg>
       <span>Токен хранится только в зашифрованном виде</span>
+    </div>
+
+    <div class="alert">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9" /><path d="M12 8v4" /><path d="M12 16h.01" />
+      </svg>
+      <span>
+        Уже есть бот? Отключи его от других конструкторов и вставь его токен — новый создавать
+        не нужно.
+      </span>
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>
@@ -93,7 +93,7 @@ async function submit() {
 h2 { font-size: 21px; margin: 18px 0 10px; }
 .lead { font-size: 14px; color: var(--sub); line-height: 1.5; margin: 0; }
 .alert {
-  display: flex; gap: 10px; align-items: flex-start; margin-top: 16px;
+  display: flex; gap: 10px; align-items: flex-start; margin-top: 14px;
   background: var(--orange-soft); border-radius: 14px; padding: 11px 12px;
   font-size: 13px; color: var(--orange-text); line-height: 1.45;
 }
