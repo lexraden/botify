@@ -82,7 +82,7 @@ h1 {
 .chips { display: flex; gap: 6px; justify-content: center; flex-wrap: nowrap; margin-top: 34px; }
 .chips span {
   background: var(--surface2); border-radius: 20px; padding: 8px 11px;
-  font-size: 12px; font-weight: 700; white-space: nowrap;
+  font-size: 13px; font-weight: 700; white-space: nowrap;
 }
 .actions {
   position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 20px 26px;
