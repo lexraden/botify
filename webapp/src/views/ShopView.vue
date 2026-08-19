@@ -126,13 +126,13 @@ async function submitMailing() {
 
       <div class="stats">
         <div class="card stat">
-          <b>{{ summary.customers_count }}</b><span>покупателей</span>
+          <b class="num">{{ summary.customers_count }}</b><span>покупателей</span>
         </div>
         <div class="card stat">
-          <b>{{ summary.orders_count }}</b><span>заказов</span>
+          <b class="num">{{ summary.orders_count }}</b><span>заказов</span>
         </div>
         <div class="card stat green">
-          <b>{{ Number(summary.revenue).toFixed(0) }}</b><span>USDT</span>
+          <b class="num">{{ Number(summary.revenue).toFixed(0) }}</b><span>USDT</span>
         </div>
       </div>
 
@@ -228,22 +228,22 @@ async function submitMailing() {
       <template v-else>
         <div v-if="stats" class="stats-grid">
           <div class="card metric">
-            <b>{{ stats.telegram_users }}</b><span>пользователей Telegram</span>
+            <b class="num">{{ stats.telegram_users }}</b><span>пользователей Telegram</span>
           </div>
           <div class="card metric">
-            <b>{{ stats.product_views }}</b><span>просмотров товаров</span>
+            <b class="num">{{ stats.product_views }}</b><span>просмотров товаров</span>
           </div>
           <div class="card metric">
-            <b>{{ stats.checkout_starts }}</b><span>переходов к оплате</span>
+            <b class="num">{{ stats.checkout_starts }}</b><span>переходов к оплате</span>
           </div>
           <div class="card metric">
-            <b>{{ stats.purchases }}</b><span>покупок</span>
+            <b class="num">{{ stats.purchases }}</b><span>покупок</span>
           </div>
           <div class="card metric green">
-            <b>{{ Number(stats.total_sales).toFixed(0) }}</b><span>USDT продаж</span>
+            <b class="num">{{ Number(stats.total_sales).toFixed(0) }}</b><span>USDT продаж</span>
           </div>
           <div class="card metric">
-            <b>{{ stats.repeat_customers }}</b><span>повторных покупателей</span>
+            <b class="num">{{ stats.repeat_customers }}</b><span>повторных покупателей</span>
           </div>
         </div>
 
@@ -283,7 +283,7 @@ h2 { font-size: 18px; margin: 0 0 4px; }
 }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .stat { padding: 12px 10px; display: flex; flex-direction: column; gap: 3px; }
-.stat b { font-family: 'Unbounded', sans-serif; font-size: 18px; }
+.stat b { font-size: 19px; }
 .stat span { font-size: 12px; font-weight: 700; color: var(--sub); }
 .stat.green { background: var(--green-soft); }
 .stat.green b, .stat.green span { color: var(--green-text); }
@@ -314,7 +314,7 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .mailing-form textarea { resize: none; }
 .stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .metric { display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; }
-.metric b { font-family: 'Unbounded', sans-serif; font-size: 20px; line-height: 1.1; }
+.metric b { font-size: 21px; line-height: 1.1; }
 .metric span { font-size: 12px; font-weight: 700; color: var(--sub); }
 .metric.green { background: var(--green-soft); }
 .metric.green b, .metric.green span { color: var(--green-text); }

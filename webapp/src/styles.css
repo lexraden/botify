@@ -112,3 +112,12 @@ input:focus, textarea:focus {
 }
 
 .muted { color: var(--sub); }
+
+/* Цифры показателей: Space Grotesk с табличными цифрами — колонки не «прыгают»
+   при смене значений, начертание современнее дисплейного Unbounded */
+.num {
+  font-family: 'Space Grotesk', 'Manrope', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+}

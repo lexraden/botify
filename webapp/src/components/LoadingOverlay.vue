@@ -9,20 +9,28 @@ const MESSAGES = [
   'Загружаем бота…',
   'Подключаем базу…',
   'Готовим витрину…',
+  'Считаем статистику…',
+  'Синхронизируем заказы…',
+  'Проверяем каталог…',
+  'Обновляем базу клиентов…',
+  'Шифруем соединение…',
   'Почти готово…',
 ]
 const STEP_MS = 1400
 
-const message = ref(MESSAGES[0])
-let index = 0
+// Подписи идут вразнобой, но подряд одна и та же не повторяется
+function pickMessage(previous) {
+  const pool = MESSAGES.filter((m) => m !== previous)
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
+const message = ref(pickMessage(null))
 let timer = null
 
 function startCycling() {
-  index = 0
-  message.value = MESSAGES[0]
+  message.value = pickMessage(null)
   timer = setInterval(() => {
-    index = (index + 1) % MESSAGES.length
-    message.value = MESSAGES[index]
+    message.value = pickMessage(message.value)
   }, STEP_MS)
 }
 
