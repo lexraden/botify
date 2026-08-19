@@ -12,18 +12,8 @@ function start() {
 
 <template>
   <div class="welcome">
-    <div class="brand">
-      <div class="logo">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M6 7h12l-1.2 12.2a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 7z" />
-          <path d="M9 7V6a3 3 0 0 1 6 0v1" />
-        </svg>
-      </div>
-      <span>Botify</span>
-    </div>
-
-    <h1>Продавай прямо в Telegram</h1>
-    <p class="lead">Магазин в твоём боте. Оплата в USDT — сразу тебе.</p>
+    <h1>Твой магазин внутри Telegram</h1>
+    <p class="lead">Твой бот, твои клиенты, твои деньги</p>
 
     <div class="hero">
       <div class="card preview">
@@ -43,8 +33,8 @@ function start() {
     </div>
 
     <div class="chips">
-      <span>Бот-витрина</span>
-      <span>USDT-оплата</span>
+      <span>Без сайта</span>
+      <span>Быстрая оплата</span>
       <span>Своя база</span>
     </div>
 
@@ -62,14 +52,8 @@ function start() {
 
 <style scoped>
 .welcome { padding: 22px 20px 130px; }
-.brand { display: flex; align-items: center; gap: 10px; }
-.brand span { font-family: 'Unbounded', sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 0.4px; }
-.logo {
-  width: 28px; height: 28px; border-radius: 9px; background: var(--accent);
-  display: flex; align-items: center; justify-content: center;
-}
 h1 {
-  font-size: 26px; line-height: 1.2; margin: 30px 0 12px;
+  font-size: 26px; line-height: 1.2; margin: 8px 0 12px;
 }
 .lead { font-size: 16px; font-weight: 600; color: var(--sub); line-height: 1.45; margin: 0; }
 .hero { position: relative; display: flex; justify-content: center; margin-top: 32px; }
