@@ -45,7 +45,7 @@ function start() {
           <path d="M5 12h14" /><path d="M13 6l6 6-6 6" />
         </svg>
       </button>
-      <div class="note">2 шага · ~10 минут</div>
+      <div class="note">2 шага · ~5 минут</div>
     </div>
   </div>
 </template>
