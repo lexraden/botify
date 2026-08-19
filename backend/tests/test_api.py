@@ -4,6 +4,8 @@ import time
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from sqlalchemy import select
+
 from app.models import Seller, SellerBot
 from app.security import encrypt_bot_token
 from app.services.webapp_auth import sign_init_data, validate_init_data
@@ -194,3 +196,37 @@ async def test_connect_bot_notifies_seller_in_hub(db):
             r = await c.post("/api/seller/bots", headers=seller_headers(), json={"token": "это точно не токен"})
             assert r.json() == {"ok": False, "error": "bad_format", "bot": None}
     assert hub_mock2.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_payments_health_is_admin_only(db):
+    """Диагностика платежей доступна только админу платформы."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    async with db() as session:
+        session.add(Seller(telegram_id=SELLER_TG["id"]))
+        await session.commit()
+
+    async with client() as c:
+        r = await c.get("/api/admin/payments/health", headers=seller_headers())
+        assert r.status_code == 403  # обычный продавец не админ
+
+    async with db() as session:
+        seller = (await session.execute(select(Seller))).scalar_one()
+        seller.is_admin = True
+        await session.commit()
+
+    # токен не задан — честно сообщаем, что оплата не настроена
+    async with client() as c:
+        r = await c.get("/api/admin/payments/health", headers=seller_headers())
+        body = r.json()
+        assert body["configured"] is False and body["reachable"] is False
+
+    # токен задан и API отвечает — эндпоинт показывает имя приложения
+    fake_crypto = SimpleNamespace(get_me=AsyncMock(return_value=SimpleNamespace(name="Botify")))
+    with patch("app.payments.client.get_crypto_pay", return_value=fake_crypto):
+        async with client() as c:
+            r = await c.get("/api/admin/payments/health", headers=seller_headers())
+            body = r.json()
+    assert body["configured"] and body["reachable"] and body["app_name"] == "Botify"

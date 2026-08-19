@@ -1,5 +1,6 @@
 """API витрины: покупатель внутри seller-бота. Всё отфильтровано по продавцу бота."""
 
+import logging
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +9,8 @@ from sqlalchemy import select
 
 from app.api.deps import BuyerContext, get_buyer
 from app.models import Order, OrderItem, Product, ShopEvent
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/store/{bot_id}")
 
@@ -139,7 +142,9 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     try:
         payment_url = await create_invoice_for_order(order.id, Decimal(total))
     except Exception:
-        # заказ создан; оплату можно повторить — не роняем checkout
+        # Заказ уже создан, оплату можно повторить — checkout не роняем,
+        # но причину пишем в лог: иначе «кнопка не работает» не диагностируется
+        logger.exception("Не удалось создать инвойс для заказа %s", order.id)
         payment_url = None
 
     return OrderOut(

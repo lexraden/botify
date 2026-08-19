@@ -8,7 +8,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import health, seller, store
+from app.api import admin, health, seller, store
 from app.bots.hub import HUB_WEBHOOK_PATH, hub_bot, hub_dp, setup_hub_webhook
 from app.bots.runner import feed_seller_update, setup_all_seller_webhooks
 from app.config import get_settings
@@ -66,6 +66,7 @@ app = FastAPI(title="Botify", lifespan=lifespan)
 app.include_router(health.router, prefix="/api")
 app.include_router(store.router, prefix="/api")
 app.include_router(seller.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 def check_telegram_secret(secret: str | None) -> None:
