@@ -25,6 +25,7 @@ async def make_order(db, product_type="digital", digital_url="https://guide.exam
         customer = Customer(telegram_id=777, seller_id=seller.id, bot_id=bot.id)
         product = Product(
             seller_id=seller.id,
+            bot_id=bot.id,
             type=product_type,
             title="Гайд",
             price=Decimal("100"),
@@ -34,6 +35,7 @@ async def make_order(db, product_type="digital", digital_url="https://guide.exam
         await session.flush()
         order = Order(
             seller_id=seller.id,
+            bot_id=bot.id,
             customer_id=customer.id,
             total=Decimal("100"),
             invoice_id=555001,

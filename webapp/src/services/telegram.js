@@ -7,6 +7,10 @@ export function initTelegram() {
   if (!tg) return
   tg.ready()
   tg.expand()
+  if (tg.colorScheme === 'dark') document.body.classList.add('tg-dark')
+  tg.onEvent?.('themeChanged', () => {
+    document.body.classList.toggle('tg-dark', tg.colorScheme === 'dark')
+  })
 }
 
 export function getInitData() {
@@ -19,4 +23,10 @@ const initialBotId = new URLSearchParams(window.location.search).get('bot_id')
 
 export function getBotId() {
   return initialBotId
+}
+
+// Переход в другой чат Telegram (@BotFather, @CryptoBot) из Mini App
+export function openTelegramLink(url) {
+  if (tg?.openTelegramLink) tg.openTelegramLink(url)
+  else window.open(url, '_blank')
 }

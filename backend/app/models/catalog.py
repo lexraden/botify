@@ -12,6 +12,10 @@ class Category(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="CASCADE"), index=True)
+    # Каждый бот — отдельный магазин: каталог не шарится между ботами продавца
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="CASCADE"), index=True
+    )
     name: Mapped[str] = mapped_column(String(128))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -24,6 +28,10 @@ class Product(Base, CreatedAtMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="CASCADE"), index=True)
+    # Магазин, которому принадлежит товар (см. Category.bot_id)
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="CASCADE"), index=True
+    )
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
 
     type: Mapped[str] = mapped_column(String(16))  # physical | digital | service

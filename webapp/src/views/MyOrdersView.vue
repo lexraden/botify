@@ -54,17 +54,17 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  a { color: var(--tg-theme-link-color, #2481cc); cursor: pointer; font-size: 14px; }
+  a { color: var(--accent); cursor: pointer; font-size: 14px; }
 }
 .notice {
-  background: var(--tg-theme-secondary-bg-color, #fff8e6);
+  background: var(--accent-soft);
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 14px;
 }
 .empty { text-align: center; opacity: 0.6; margin-top: 40px; }
 .order {
-  border: 1px solid var(--tg-theme-secondary-bg-color, #eee);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 10px;

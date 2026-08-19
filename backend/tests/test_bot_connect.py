@@ -64,7 +64,7 @@ async def test_connect_success_encrypts_token_and_finishes_onboarding(db):
         assert record.webhook_status == "pending"
 
         seller = await session.get(Seller, seller_id)
-        assert seller.onboarding_step == "done"
+        assert seller.onboarding_step == "bot_done"
 
 
 @pytest.mark.asyncio

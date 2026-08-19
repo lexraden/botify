@@ -12,6 +12,11 @@ class Order(Base, CreatedAtMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="RESTRICT"), index=True)
+    # Магазин (бот), в котором оформлен заказ — статистика и выдача заказов
+    # фильтруются по нему, а не по продавцу целиком
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="RESTRICT"), index=True
+    )
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id", ondelete="RESTRICT"), index=True)
 
     # pending_payment -> paid -> fulfilled (продавец приложил трек/ссылку/файл)

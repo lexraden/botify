@@ -5,7 +5,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.config import get_settings
 from app.handlers.hub import mybots as hub_mybots
-from app.handlers.hub import onboarding as hub_onboarding
 from app.handlers.hub import start as hub_start
 
 HUB_WEBHOOK_PATH = "/webhook/hub"
@@ -17,7 +16,6 @@ hub_bot = Bot(
 
 hub_dp = Dispatcher(storage=MemoryStorage())
 hub_dp.include_router(hub_mybots.router)
-hub_dp.include_router(hub_onboarding.router)
 hub_dp.include_router(hub_start.router)
 
 

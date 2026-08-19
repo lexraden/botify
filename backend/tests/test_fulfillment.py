@@ -16,7 +16,7 @@ async def paid_physical_order(db) -> tuple[int, int]:
     bot_id = await setup_shop(db)
     async with client() as c:
         r = await c.post(
-            "/api/seller/products",
+            f"/api/seller/bots/{bot_id}/products",
             headers=seller_headers(),
             json={"type": "physical", "title": "Кроссовки", "price": "50"},
         )
@@ -46,18 +46,18 @@ async def paid_physical_order(db) -> tuple[int, int]:
 
 @pytest.mark.asyncio
 async def test_fulfill_flow(db):
-    _, order_id = await paid_physical_order(db)
+    bot_id, order_id = await paid_physical_order(db)
 
     with patch("app.payments.service._notify", new=AsyncMock()) as notify_mock:
         async with client() as c:
             # пустой fulfillment отклоняется
             r = await c.post(
-                f"/api/seller/orders/{order_id}/fulfill", headers=seller_headers(), json={}
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill", headers=seller_headers(), json={}
             )
             assert r.status_code == 400
 
             r = await c.post(
-                f"/api/seller/orders/{order_id}/fulfill",
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
                 json={"tracking": "RA123456789CN", "note": "Отправлено CDEK"},
             )
@@ -66,7 +66,7 @@ async def test_fulfill_flow(db):
 
             # повторная отправка уже доставленного — отказ
             r = await c.post(
-                f"/api/seller/orders/{order_id}/fulfill",
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
                 json={"tracking": "x"},
             )

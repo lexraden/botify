@@ -1,4 +1,8 @@
-"""Hub-бот: точка входа для продавцов. Регистрирует продавца и ведёт в онбординг."""
+"""Hub-бот: точка входа для продавцов.
+
+Онбординг целиком живёт в Mini App (см. docs/project-brief.md, п. 8.1),
+поэтому бот только регистрирует продавца и открывает приложение.
+"""
 
 from aiogram import Router, types
 from aiogram.filters import CommandStart
@@ -8,7 +12,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import get_session
-from app.models import Seller, SellerBot
+from app.models import Seller
 
 router = Router()
 
@@ -23,36 +27,19 @@ WELCOME = (
     "Начнём с настройки — жми кнопку ниже"
 )
 
+NO_WEBAPP = (
+    "⚠️ Приложение пока не настроено: у платформы не задан публичный адрес. "
+    "Загляни позже."
+)
 
-def new_seller_keyboard() -> types.InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="🧭 Пройти настройку", callback_data="onboarding:begin")
-    return kb.as_markup()
 
-
-def returning_seller_keyboard() -> types.InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
+def open_app_keyboard() -> types.InlineKeyboardMarkup | None:
     webapp_url = get_settings().effective_webapp_url
-    if webapp_url:
-        kb.button(
-            text="🚀 Открыть кабинет продавца",
-            web_app=types.WebAppInfo(url=webapp_url),
-        )
-    kb.button(text="🤖 Мои боты", callback_data="mybots:list")
-    kb.button(text="➕ Подключить ещё бота", callback_data="onboarding:add_bot")
-    kb.adjust(1)
+    if not webapp_url:
+        return None
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🚀 Открыть приложение", web_app=types.WebAppInfo(url=webapp_url))
     return kb.as_markup()
-
-
-def welcome_back_text(bots: list[SellerBot]) -> str:
-    active = [b for b in bots if b.is_active]
-    if len(active) == 1:
-        status = f"Твой бот <b>@{active[0].bot_username}</b> работает 🟢"
-    elif active:
-        status = f"Подключено ботов: <b>{len(active)}</b> 🟢"
-    else:
-        status = "Все твои боты сейчас отключены ⚪"
-    return f"👋 С возвращением!\n\n{status}"
 
 
 @router.message(CommandStart())
@@ -60,37 +47,29 @@ async def cmd_start(message: types.Message, state: FSMContext) -> None:
     tg_user = message.from_user
     if tg_user is None:
         return
-    await state.clear()  # /start всегда выводит из ожидания токена
+    await state.clear()
 
     async with get_session() as session:
         result = await session.execute(select(Seller).where(Seller.telegram_id == tg_user.id))
         seller = result.scalar_one_or_none()
         if seller is None:
-            seller = Seller(
-                telegram_id=tg_user.id,
-                username=tg_user.username,
-                first_name=tg_user.first_name,
-                language_code=tg_user.language_code,
-                is_admin=tg_user.id in get_settings().admin_ids,
+            session.add(
+                Seller(
+                    telegram_id=tg_user.id,
+                    username=tg_user.username,
+                    first_name=tg_user.first_name,
+                    language_code=tg_user.language_code,
+                    is_admin=tg_user.id in get_settings().admin_ids,
+                )
             )
-            session.add(seller)
-            bots: list[SellerBot] = []
         else:
             # обновляем то, что могло поменяться
             seller.username = tg_user.username
             seller.first_name = tg_user.first_name
-            bots = (
-                (
-                    await session.execute(
-                        select(SellerBot).where(SellerBot.seller_id == seller.id)
-                    )
-                )
-                .scalars()
-                .all()
-            )
         await session.commit()
 
-    if bots:
-        await message.answer(welcome_back_text(bots), reply_markup=returning_seller_keyboard())
-    else:
-        await message.answer(WELCOME, reply_markup=new_seller_keyboard())
+    keyboard = open_app_keyboard()
+    if keyboard is None:
+        await message.answer(NO_WEBAPP)
+        return
+    await message.answer(WELCOME, reply_markup=keyboard)

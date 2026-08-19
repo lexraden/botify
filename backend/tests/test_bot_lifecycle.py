@@ -76,10 +76,19 @@ async def test_delete_bot_with_orders_only_disconnects(db):
     bot_id = await connect(db, seller_id)
     async with db() as session:
         customer = Customer(telegram_id=777, seller_id=seller_id, bot_id=bot_id)
-        product = Product(seller_id=seller_id, type="physical", title="X", price=Decimal("5"))
+        product = Product(
+            seller_id=seller_id, bot_id=bot_id, type="physical", title="X", price=Decimal("5")
+        )
         session.add_all([customer, product])
         await session.flush()
-        session.add(Order(seller_id=seller_id, customer_id=customer.id, total=Decimal("5")))
+        session.add(
+            Order(
+                seller_id=seller_id,
+                bot_id=bot_id,
+                customer_id=customer.id,
+                total=Decimal("5"),
+            )
+        )
         await session.commit()
 
     with patch_webhook_removal:

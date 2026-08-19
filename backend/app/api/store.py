@@ -59,7 +59,7 @@ class OrderOut(BaseModel):
 async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
     result = await ctx.session.execute(
         select(Product)
-        .where(Product.seller_id == ctx.bot.seller_id, Product.is_active.is_(True))
+        .where(Product.bot_id == ctx.bot.id, Product.is_active.is_(True))
         .order_by(Product.id)
     )
     products = result.scalars().all()
@@ -75,7 +75,7 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     result = await ctx.session.execute(
         select(Product).where(
             Product.id.in_(product_ids),
-            Product.seller_id == ctx.bot.seller_id,  # чужие товары в заказ не попадут
+            Product.bot_id == ctx.bot.id,  # товары чужого магазина в заказ не попадут
             Product.is_active.is_(True),
         )
     )
@@ -89,6 +89,7 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
 
     order = Order(
         seller_id=ctx.bot.seller_id,
+        bot_id=ctx.bot.id,
         customer_id=ctx.customer.id,
         total=total,
         currency="USDT",

@@ -77,14 +77,14 @@ async def test_full_buy_flow(db):
     async with client() as c:
         # продавец добавляет товары через кабинет
         r = await c.post(
-            "/api/seller/products",
+            f"/api/seller/bots/{bot_id}/products",
             headers=seller_headers(),
             json={"type": "physical", "title": "Бургер", "price": "4.99"},
         )
         assert r.status_code == 200, r.text
         burger_id = r.json()["id"]
         r = await c.post(
-            "/api/seller/products",
+            f"/api/seller/bots/{bot_id}/products",
             headers=seller_headers(),
             json={"type": "digital", "title": "Гайд", "price": "10", "digital_content": {"url": "https://x"}},
         )
@@ -111,7 +111,7 @@ async def test_full_buy_flow(db):
         # заказ виден покупателю и продавцу
         r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
         assert [o["id"] for o in r.json()] == [order["id"]]
-        r = await c.get("/api/seller/orders", headers=seller_headers())
+        r = await c.get(f"/api/seller/bots/{bot_id}/orders", headers=seller_headers())
         seller_orders = r.json()
         assert seller_orders[0]["comment"] == "без лука"
         assert seller_orders[0]["customer_username"] == "petya"
@@ -119,8 +119,12 @@ async def test_full_buy_flow(db):
         # статистика продавца
         r = await c.get("/api/seller/me", headers=seller_headers())
         me = r.json()
-        assert me["customers_count"] == 1
-        assert me["orders_count"] == 1
+        assert [b["id"] for b in me["bots"]] == [bot_id]
+
+        r = await c.get(f"/api/seller/bots/{bot_id}/summary", headers=seller_headers())
+        summary = r.json()
+        assert summary["customers_count"] == 1
+        assert summary["orders_count"] == 1
 
 
 @pytest.mark.asyncio
@@ -140,7 +144,7 @@ async def test_delete_product_with_orders_deactivates(db):
     bot_id = await setup_shop(db)
     async with client() as c:
         r = await c.post(
-            "/api/seller/products",
+            f"/api/seller/bots/{bot_id}/products",
             headers=seller_headers(),
             json={"type": "physical", "title": "Кофе", "price": "3"},
         )
@@ -150,7 +154,7 @@ async def test_delete_product_with_orders_deactivates(db):
             headers=buyer_headers(),
             json={"items": [{"product_id": pid, "qty": 1}]},
         )
-        r = await c.delete(f"/api/seller/products/{pid}", headers=seller_headers())
+        r = await c.delete(f"/api/seller/bots/{bot_id}/products/{pid}", headers=seller_headers())
         assert r.json()["status"] == "deactivated"
         # с витрины товар пропал
         r = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())

@@ -8,7 +8,7 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// --- витрина (контекст seller-бота) ---
+// --- витрина покупателя (контекст seller-бота из query-параметра) ---
 export const fetchShop = () => api.get(`/store/${getBotId()}`).then((r) => r.data)
 export const createOrder = (items, comment) =>
   api.post(`/store/${getBotId()}/orders`, { items, comment }).then((r) => r.data)
@@ -16,15 +16,24 @@ export const fetchMyOrders = () => api.get(`/store/${getBotId()}/orders/my`).the
 
 // --- кабинет продавца (контекст hub-бота) ---
 export const fetchMe = () => api.get('/seller/me').then((r) => r.data)
-export const fetchProducts = () => api.get('/seller/products').then((r) => r.data)
-export const saveProduct = (product) =>
+export const confirmPayment = () => api.post('/seller/onboarding/payment-done').then((r) => r.data)
+export const connectBot = (token) => api.post('/seller/bots', { token }).then((r) => r.data)
+
+// --- всё ниже — в контексте конкретного магазина (bot_id) ---
+export const fetchShopSummary = (botId) =>
+  api.get(`/seller/bots/${botId}/summary`).then((r) => r.data)
+export const fetchProducts = (botId) =>
+  api.get(`/seller/bots/${botId}/products`).then((r) => r.data)
+export const saveProduct = (botId, product) =>
   (product.id
-    ? api.put(`/seller/products/${product.id}`, product)
-    : api.post('/seller/products', product)
+    ? api.put(`/seller/bots/${botId}/products/${product.id}`, product)
+    : api.post(`/seller/bots/${botId}/products`, product)
   ).then((r) => r.data)
-export const deleteProduct = (id) => api.delete(`/seller/products/${id}`).then((r) => r.data)
-export const fetchSellerOrders = () => api.get('/seller/orders').then((r) => r.data)
-export const fulfillOrder = (id, data) =>
-  api.post(`/seller/orders/${id}/fulfill`, data).then((r) => r.data)
-export const fetchMailings = () => api.get('/seller/mailings').then((r) => r.data)
-export const createMailing = (data) => api.post('/seller/mailings', data).then((r) => r.data)
+export const deleteProduct = (botId, id) =>
+  api.delete(`/seller/bots/${botId}/products/${id}`).then((r) => r.data)
+export const fetchShopOrders = (botId) => api.get(`/seller/bots/${botId}/orders`).then((r) => r.data)
+export const fulfillOrder = (botId, id, data) =>
+  api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
+export const fetchMailings = (botId) => api.get(`/seller/bots/${botId}/mailings`).then((r) => r.data)
+export const createMailing = (botId, data) =>
+  api.post(`/seller/bots/${botId}/mailings`, data).then((r) => r.data)

@@ -12,7 +12,7 @@ from sqlalchemy import exists, select
 
 from app.bots.runner import remove_seller_webhook, setup_seller_webhook
 from app.db import get_session
-from app.models import Customer, Order, Seller, SellerBot
+from app.models import Order, Seller, SellerBot
 from app.security import encrypt_bot_token
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
 
         seller = await session.get(Seller, seller_id)
         if seller is not None:
-            seller.onboarding_step = "done"
+            seller.onboarding_step = "bot_done"
 
         await session.commit()
         return ConnectResult(ok=True, bot_record=record, bot_username=record.bot_username)
@@ -132,14 +132,7 @@ async def delete_bot(bot_id: int, seller_id: int) -> str:
             return "not_found"
 
         has_orders = (
-            await session.execute(
-                select(
-                    exists().where(
-                        Order.customer_id == Customer.id,
-                        Customer.bot_id == bot_id,
-                    )
-                )
-            )
+            await session.execute(select(exists().where(Order.bot_id == bot_id)))
         ).scalar()
         if has_orders:
             await remove_seller_webhook(bot)
@@ -149,6 +142,7 @@ async def delete_bot(bot_id: int, seller_id: int) -> str:
             return "has_orders"
 
         await remove_seller_webhook(bot)
-        await session.delete(bot)  # customers/mailings уходят каскадом
+        # каскадом уходят покупатели, каталог и рассылки этого магазина
+        await session.delete(bot)
         await session.commit()
         return "deleted"

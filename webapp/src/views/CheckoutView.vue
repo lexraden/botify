@@ -65,34 +65,34 @@ header {
   justify-content: space-between;
   align-items: baseline;
   h2 { margin: 0 0 16px; font-size: 18px; letter-spacing: 0.5px; }
-  .edit { color: #2ecc71; cursor: pointer; }
+  .edit { color: var(--green); cursor: pointer; }
 }
 .row {
   display: flex;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #f0f0f0);
+  border-bottom: 1px solid var(--surface2);
   .qty { color: #f5a623; font-weight: 700; margin-left: 8px; }
 }
 textarea {
   width: 100%;
   box-sizing: border-box;
   margin-top: 16px;
-  border: 1px solid var(--tg-theme-secondary-bg-color, #ddd);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px;
-  background: var(--tg-theme-bg-color, #fff);
+  background: var(--surface);
   color: inherit;
   font: inherit;
   resize: none;
 }
-.empty { text-align: center; opacity: 0.7; a { color: var(--tg-theme-link-color, #2481cc); cursor: pointer; } }
-.error { color: #e74c3c; }
+.empty { text-align: center; opacity: 0.7; a { color: var(--accent); cursor: pointer; } }
+.error { color: var(--red); }
 .pay {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   border: 0;
-  background: #2ecc71;
+  background: var(--green);
   color: #fff;
   font-size: 16px;
   font-weight: 700;

@@ -18,8 +18,10 @@ class Seller(Base, CreatedAtMixin):
     first_name: Mapped[str | None] = mapped_column(String(128))
     language_code: Mapped[str | None] = mapped_column(String(8))
 
-    # Онбординг: none -> cryptobot -> bot_connect -> done
-    onboarding_step: Mapped[str] = mapped_column(String(32), default="none")
+    # Онбординг идёт в Mini App; прогресс хранится здесь, чтобы пересоздание
+    # webview (уход в @BotFather/@CryptoBot и обратно) не сбрасывало шаг:
+    # payment_pending -> payment_done -> bot_pending -> bot_done
+    onboarding_step: Mapped[str] = mapped_column(String(32), default="payment_pending")
     # Продавец нажал /start у @CryptoBot — без этого transfer не сработает
     cryptobot_connected: Mapped[bool] = mapped_column(Boolean, default=False)
 

@@ -5,76 +5,51 @@ import { useCartStore } from '../stores/cart'
 const props = defineProps({ product: { type: Object, required: true } })
 const cart = useCartStore()
 const qty = computed(() => cart.qtyOf(props.product.id))
+const emoji = computed(
+  () => ({ physical: '📦', digital: '📕', service: '🛎' })[props.product.type] ?? '📦',
+)
 </script>
 
 <template>
-  <div class="card">
-    <div class="badge" v-if="qty">{{ qty }}</div>
-    <div class="img">
+  <div class="card product">
+    <div v-if="qty" class="badge">{{ qty }}</div>
+    <div class="image">
       <img v-if="product.image_url" :src="product.image_url" :alt="product.title" />
-      <span v-else class="emoji">{{ product.type === 'physical' ? '📦' : product.type === 'digital' ? '📕' : '🛎' }}</span>
+      <span v-else>{{ emoji }}</span>
     </div>
-    <div class="name">{{ product.title }} · <b>{{ Number(product.price) }} USDT</b></div>
-    <div class="actions">
-      <template v-if="qty">
-        <button class="btn minus" @click="cart.remove(product)">−</button>
-        <button class="btn plus" @click="cart.add(product)">+</button>
-      </template>
-      <button v-else class="btn add" @click="cart.add(product)">ADD</button>
+    <div class="meta">
+      <div class="title">{{ product.title }}</div>
+      <div class="price">{{ Number(product.price) }} USDT</div>
     </div>
+    <div v-if="qty" class="stepper">
+      <button class="minus" @click="cart.remove(product)">−</button>
+      <button class="plus" @click="cart.add(product)">+</button>
+    </div>
+    <button v-else class="add" @click="cart.add(product)">В корзину</button>
   </div>
 </template>
 
-<style scoped lang="scss">
-.card {
-  position: relative;
-  text-align: center;
-  padding: 8px 4px;
-}
+<style scoped>
+.product { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 14px; }
 .badge {
-  position: absolute;
-  top: 0;
-  right: 10px;
-  background: var(--tg-theme-button-color, #f5a623);
-  color: var(--tg-theme-button-text-color, #fff);
-  border-radius: 50%;
-  min-width: 22px;
-  height: 22px;
-  line-height: 22px;
-  font-size: 13px;
-  font-weight: 700;
+  position: absolute; top: 10px; right: 10px; background: var(--accent); color: #fff;
+  border-radius: 11px; min-width: 22px; height: 22px; display: flex; align-items: center;
+  justify-content: center; font-size: 12px; font-weight: 800;
 }
-.img {
-  height: 76px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  img { max-height: 76px; max-width: 100%; border-radius: 8px; }
-  .emoji { font-size: 56px; }
+.image {
+  height: 72px; border-radius: 14px; background: var(--surface2);
+  display: flex; align-items: center; justify-content: center; font-size: 46px;
 }
-.name {
-  font-size: 13px;
-  margin: 6px 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.image img { max-height: 72px; max-width: 100%; border-radius: 12px; }
+.meta { display: flex; flex-direction: column; gap: 2px; }
+.title { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.price { font-size: 15px; font-weight: 800; }
+.add, .stepper button {
+  border: 0; border-radius: 12px; height: 40px; font-size: 14px; font-weight: 800; cursor: pointer;
 }
-.actions {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-}
-.btn {
-  border: 0;
-  border-radius: 8px;
-  padding: 8px 0;
-  font-weight: 700;
-  color: #fff;
-  cursor: pointer;
-  flex: 1;
-  max-width: 110px;
-  &.add { background: #f5a623; }
-  &.plus { background: #f5a623; }
-  &.minus { background: #e74c3c; }
-}
+.add { background: var(--accent-soft); color: var(--accent); width: 100%; }
+.stepper { display: flex; gap: 8px; }
+.stepper button { flex: 1; font-size: 20px; }
+.stepper .minus { background: var(--surface2); color: var(--text); }
+.stepper .plus { background: var(--accent); color: #fff; }
 </style>

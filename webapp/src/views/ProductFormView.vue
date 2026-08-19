@@ -1,10 +1,11 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchProducts, saveProduct } from '../api'
 
 const route = useRoute()
 const router = useRouter()
+const botId = computed(() => route.params.botId)
 const error = ref('')
 const saving = ref(false)
 
@@ -21,7 +22,7 @@ const form = ref({
 
 onMounted(async () => {
   if (!route.params.id) return
-  const products = await fetchProducts()
+  const products = await fetchProducts(botId.value)
   const p = products.find((x) => x.id === Number(route.params.id))
   if (p) {
     form.value = {
@@ -43,7 +44,7 @@ async function submit() {
   error.value = ''
   try {
     const f = form.value
-    await saveProduct({
+    await saveProduct(botId.value, {
       id: f.id,
       type: f.type,
       title: f.title,
@@ -53,7 +54,7 @@ async function submit() {
       digital_content: f.type !== 'physical' && f.digital_url ? { url: f.digital_url } : null,
       is_active: f.is_active,
     })
-    router.push('/seller')
+    router.push(`/shop/${botId.value}`)
   } catch (e) {
     error.value = e.response?.data?.detail || 'Не удалось сохранить'
   } finally {
@@ -64,7 +65,7 @@ async function submit() {
 
 <template>
   <div class="form">
-    <h2>{{ form.id ? 'Редактировать' : 'Новый товар / услуга' }}</h2>
+    <h2>{{ form.id ? 'Редактировать' : 'Новый товар или услуга' }}</h2>
 
     <label>Тип</label>
     <div class="types">
@@ -77,7 +78,7 @@ async function submit() {
     </div>
 
     <label>Название</label>
-    <input v-model="form.title" maxlength="256" placeholder="Бургер / Гайд по крипте / Консультация" />
+    <input v-model="form.title" maxlength="256" placeholder="Капучино / Гайд по обжарке" />
 
     <label>Описание</label>
     <textarea v-model="form.description" rows="3" placeholder="Что получит покупатель" />
@@ -90,7 +91,7 @@ async function submit() {
 
     <template v-if="form.type !== 'physical'">
       <label>Ссылка для выдачи после оплаты</label>
-      <input v-model="form.digital_url" placeholder="https://… (файл, документ, инвайт в чат)" />
+      <input v-model="form.digital_url" placeholder="https://… (файл, инвайт в чат)" />
     </template>
 
     <label class="check">
@@ -100,53 +101,27 @@ async function submit() {
     <p v-if="error" class="error">{{ error }}</p>
 
     <div class="actions">
-      <button class="secondary" @click="router.push('/seller')">Отмена</button>
-      <button class="primary" :disabled="!form.title || !form.price || saving" @click="submit">
+      <button class="btn btn-soft" @click="router.push(`/shop/${botId}`)">Отмена</button>
+      <button class="btn btn-primary" :disabled="!form.title || !form.price || saving" @click="submit">
         {{ saving ? '…' : 'Сохранить' }}
       </button>
     </div>
   </div>
 </template>
 
-<style scoped lang="scss">
-.form { padding: 16px; display: flex; flex-direction: column; }
-label { font-size: 13px; opacity: 0.7; margin: 12px 0 4px; &.check { display: flex; gap: 8px; align-items: center; opacity: 1; } }
-input:not([type='checkbox']), textarea {
-  border: 1px solid var(--tg-theme-secondary-bg-color, #ddd);
-  border-radius: 10px;
-  padding: 10px;
-  background: var(--tg-theme-bg-color, #fff);
-  color: inherit;
-  font: inherit;
+<style scoped>
+.form { padding: 22px 20px 40px; display: flex; flex-direction: column; }
+h2 { font-size: 20px; margin: 0 0 8px; }
+label { font-size: 13px; color: var(--sub); margin: 14px 0 6px; font-weight: 700; }
+label.check { display: flex; gap: 10px; align-items: center; color: var(--text); }
+label.check input { width: auto; }
+textarea { resize: none; }
+.types { display: flex; gap: 8px; }
+.types button {
+  flex: 1; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 14px; padding: 12px 4px; cursor: pointer; font-weight: 700;
 }
-.types {
-  display: flex;
-  gap: 8px;
-  button {
-    flex: 1;
-    border: 1px solid var(--tg-theme-secondary-bg-color, #ddd);
-    background: none;
-    color: inherit;
-    border-radius: 10px;
-    padding: 10px 4px;
-    cursor: pointer;
-    &.active { border-color: var(--tg-theme-button-color, #2481cc); background: var(--tg-theme-secondary-bg-color, #eef6fd); }
-  }
-}
-.error { color: #e74c3c; }
-.actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 20px;
-  button {
-    flex: 1;
-    border: 0;
-    border-radius: 10px;
-    padding: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    &.primary { background: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #fff); &:disabled { opacity: 0.5; } }
-    &.secondary { background: var(--tg-theme-secondary-bg-color, #f0f0f0); color: inherit; }
-  }
-}
+.types button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.error { color: var(--red); }
+.actions { display: flex; gap: 8px; margin-top: 22px; }
 </style>
