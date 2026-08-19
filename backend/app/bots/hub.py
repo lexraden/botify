@@ -4,6 +4,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.config import get_settings
+from app.handlers.hub import admin as hub_admin
 from app.handlers.hub import mybots as hub_mybots
 from app.handlers.hub import start as hub_start
 
@@ -15,6 +16,7 @@ hub_bot = Bot(
 )
 
 hub_dp = Dispatcher(storage=MemoryStorage())
+hub_dp.include_router(hub_admin.router)
 hub_dp.include_router(hub_mybots.router)
 hub_dp.include_router(hub_start.router)
 
