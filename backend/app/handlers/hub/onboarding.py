@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from app.db import get_session
 from app.models import Seller
-from app.services.bot_connect import connect_seller_bot
+from app.services.bot_connect import TOKEN_RE, connect_seller_bot
 
 router = Router()
 
@@ -39,12 +39,14 @@ CRYPTOBOT_STEP = (
 BOTFATHER_STEP = (
     "<b>Шаг 2 из 2 — подключи своего бота</b>\n\n"
     "Через этого бота твои покупатели будут видеть каталог и оформлять заказы.\n\n"
-    "1️⃣ Открой @BotFather по кнопке ниже\n"
-    "2️⃣ Отправь команду <b>/newbot</b>\n"
-    "3️⃣ Придумай имя, затем username бота (должен оканчиваться на <i>bot</i>)\n"
-    "4️⃣ Скопируй токен из ответа @BotFather — строка вида "
+    "1. Открой @BotFather по кнопке ниже\n"
+    "2. Отправь команду <b>/newbot</b>\n"
+    "3. Придумай имя, затем username бота (должен оканчиваться на <i>bot</i>)\n"
+    "4. Скопируй токен из ответа @BotFather — строка вида "
     "<code>1234567890:AA...</code>\n"
-    "5️⃣ Нажми «Ввести токен» и пришли его сюда"
+    "5. Просто пришли этот токен следующим сообщением сюда, в этот чат\n\n"
+    "Если бот уже создан раньше — открой @BotFather → <b>/mybots</b> → выбери бота → "
+    "<b>API Token</b>, и пришли этот токен так же."
 )
 
 TOKEN_ERRORS = {
@@ -77,9 +79,13 @@ def cryptobot_keyboard() -> types.InlineKeyboardMarkup:
 def botfather_keyboard() -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="🤖 Открыть @BotFather", url="https://t.me/BotFather")
-    kb.button(text="🔑 Ввести токен", callback_data="onboarding:enter_token")
-    kb.adjust(1)
     return kb.as_markup()
+
+
+async def show_botfather_step(message: types.Message, state: FSMContext) -> None:
+    """Показывает шаг подключения бота и сразу ждёт токен сообщением."""
+    await message.answer(BOTFATHER_STEP, reply_markup=botfather_keyboard())
+    await state.set_state(ConnectBot.waiting_token)
 
 
 async def _get_seller(telegram_id: int) -> Seller | None:
@@ -89,7 +95,7 @@ async def _get_seller(telegram_id: int) -> Seller | None:
 
 
 @router.callback_query(F.data == "onboarding:begin")
-async def onboarding_begin(callback: types.CallbackQuery) -> None:
+async def onboarding_begin(callback: types.CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     if callback.message is None or callback.from_user is None:
         return
@@ -101,20 +107,20 @@ async def onboarding_begin(callback: types.CallbackQuery) -> None:
     if not seller.cryptobot_connected:
         await callback.message.answer(CRYPTOBOT_STEP, reply_markup=cryptobot_keyboard())
     else:
-        await callback.message.answer(BOTFATHER_STEP, reply_markup=botfather_keyboard())
+        await show_botfather_step(callback.message, state)
 
 
 @router.callback_query(F.data == "onboarding:add_bot")
-async def add_another_bot(callback: types.CallbackQuery) -> None:
+async def add_another_bot(callback: types.CallbackQuery, state: FSMContext) -> None:
     """Кнопка «Подключить ещё бота» — сразу к шагу BotFather, без повторного онбординга."""
     await callback.answer()
     if callback.message is None:
         return
-    await callback.message.answer(BOTFATHER_STEP, reply_markup=botfather_keyboard())
+    await show_botfather_step(callback.message, state)
 
 
 @router.callback_query(F.data == "onboarding:cryptobot_done")
-async def cryptobot_done(callback: types.CallbackQuery) -> None:
+async def cryptobot_done(callback: types.CallbackQuery, state: FSMContext) -> None:
     await callback.answer("Отлично!")
     if callback.message is None or callback.from_user is None:
         return
@@ -130,21 +136,7 @@ async def cryptobot_done(callback: types.CallbackQuery) -> None:
             seller.onboarding_step = "bot_connect"
         await session.commit()
 
-    await callback.message.answer(BOTFATHER_STEP, reply_markup=botfather_keyboard())
-
-
-@router.callback_query(F.data == "onboarding:enter_token")
-async def enter_token(callback: types.CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
-    if callback.message is None:
-        return
-    await state.set_state(ConnectBot.waiting_token)
-    await callback.message.answer(
-        "Пришли токен бота одним сообщением.\n"
-        "Сообщение с токеном будет удалено сразу после проверки — "
-        "токен хранится только в зашифрованном виде.\n\n"
-        "Отмена — /cancel"
-    )
+    await show_botfather_step(callback.message, state)
 
 
 @router.message(Command("cancel"), ConnectBot.waiting_token)
@@ -153,17 +145,19 @@ async def cancel_token(message: types.Message, state: FSMContext) -> None:
     await message.answer("Ок, подключение бота отменено. Вернуться: /start")
 
 
-@router.message(ConnectBot.waiting_token, F.text)
+@router.message(ConnectBot.waiting_token, F.text, ~F.text.startswith("/"))
 async def process_token(message: types.Message, state: FSMContext) -> None:
     if message.from_user is None or message.text is None:
         return
 
     raw_token = message.text
-    # Сообщение с токеном не должно оставаться в чате
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    # Сообщение с настоящим токеном не должно оставаться в чате;
+    # обычный текст (не токен) не трогаем — просто подскажем формат
+    if TOKEN_RE.match(raw_token.strip()):
+        try:
+            await message.delete()
+        except Exception:
+            pass
 
     seller = await _get_seller(message.from_user.id)
     if seller is None:

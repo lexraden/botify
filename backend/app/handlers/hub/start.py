@@ -2,6 +2,7 @@
 
 from aiogram import Router, types
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 
@@ -55,10 +56,11 @@ def welcome_back_text(bots: list[SellerBot]) -> str:
 
 
 @router.message(CommandStart())
-async def cmd_start(message: types.Message) -> None:
+async def cmd_start(message: types.Message, state: FSMContext) -> None:
     tg_user = message.from_user
     if tg_user is None:
         return
+    await state.clear()  # /start всегда выводит из ожидания токена
 
     async with get_session() as session:
         result = await session.execute(select(Seller).where(Seller.telegram_id == tg_user.id))
