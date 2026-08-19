@@ -55,7 +55,6 @@ onMounted(async () => {
         <span>{{ cart.total.toFixed(2) }} USDT</span>
       </button>
     </template>
-    <p v-else class="empty">Загрузка…</p>
   </div>
 </template>
 

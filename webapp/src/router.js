@@ -1,10 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { getBotId } from './services/telegram'
 import { fetchMe } from './api'
+import { isIntroSeen } from './services/intro'
 
 import StoreView from './views/StoreView.vue'
 import CheckoutView from './views/CheckoutView.vue'
 import MyOrdersView from './views/MyOrdersView.vue'
+import WelcomeView from './views/WelcomeView.vue'
 import OnboardingPayment from './views/OnboardingPayment.vue'
 import OnboardingBot from './views/OnboardingBot.vue'
 import ShopsView from './views/ShopsView.vue'
@@ -19,6 +21,7 @@ const router = createRouter({
     { path: '/checkout', component: CheckoutView },
     { path: '/my-orders', name: 'my-orders', component: MyOrdersView },
     // продавец — Mini App открыт из hub-бота
+    { path: '/onboarding/welcome', component: WelcomeView },
     { path: '/onboarding/payment', component: OnboardingPayment },
     { path: '/onboarding/bot', component: OnboardingBot },
     { path: '/shops', component: ShopsView },
@@ -31,7 +34,9 @@ const router = createRouter({
 // на бэкенде, поэтому пересоздание webview (уход в @BotFather и обратно)
 // возвращает ровно на тот шаг, где он остановился.
 function entryRouteFor(me) {
-  if (!me.cryptobot_connected) return '/onboarding/payment'
+  if (!me.cryptobot_connected) {
+    return isIntroSeen() ? '/onboarding/payment' : '/onboarding/welcome'
+  }
   if (!me.bots.length) return '/onboarding/bot'
   if (me.bots.length === 1) return `/shop/${me.bots[0].id}`
   return '/shops'
@@ -47,7 +52,7 @@ router.beforeEach(async (to) => {
   try {
     return entryRouteFor(await fetchMe())
   } catch {
-    return '/onboarding/payment'
+    return isIntroSeen() ? '/onboarding/payment' : '/onboarding/welcome'
   }
 })
 

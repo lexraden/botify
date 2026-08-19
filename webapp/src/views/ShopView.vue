@@ -220,7 +220,6 @@ async function submitMailing() {
         <p v-if="!mailings.length" class="empty">Рассылок пока не было.</p>
       </template>
     </template>
-    <p v-else class="empty">Загрузка…</p>
   </div>
 </template>
 
