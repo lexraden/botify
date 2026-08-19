@@ -26,7 +26,11 @@ async function done() {
 <template>
   <div class="step">
     <div class="progress">
-      <span class="filled" />
+      <span
+        class="filled"
+        title="Вернуться к началу"
+        @click="router.push('/onboarding/welcome')"
+      />
       <span />
     </div>
     <div class="step-label">Шаг 1 из 2</div>
@@ -59,7 +63,9 @@ async function done() {
 .step { padding: 20px 18px 110px; }
 .progress { display: flex; gap: 6px; }
 .progress span { flex: 1; height: 5px; border-radius: 3px; background: var(--surface2); }
-.progress .filled { background: var(--accent); }
+.progress .filled { background: var(--accent); cursor: pointer; position: relative; }
+/* полоска всего 5px — расширяем область нажатия по вертикали */
+.progress .filled::after { content: ''; position: absolute; inset: -14px 0; }
 .step-label { font-size: 13px; font-weight: 700; color: var(--sub); margin-top: 10px; }
 h2 { font-size: 21px; margin: 20px 0 10px; line-height: 1.2; }
 .lead { font-size: 15px; color: var(--sub); line-height: 1.5; margin: 0; }
