@@ -110,6 +110,27 @@ async def connect_bot(
     result = await connect_seller_bot(seller.id, payload.token)
     if not result.ok or result.bot_record is None:
         return ConnectBotOut(ok=False, error=result.error)
+
+    # Подтверждение приходит в чат с hub-ботом: Mini App может закрыться,
+    # а сообщение останется историей о подключённом магазине
+    import logging
+
+    from app.bots.hub import hub_bot
+
+    try:
+        await hub_bot.send_message(
+            seller.telegram_id,
+            f"🎉 Бот <b>@{result.bot_username}</b> подключён!\n\n"
+            "Что дальше:\n"
+            "• добавь первый товар или услугу в приложении\n"
+            "• поделись ссылкой на бота с покупателями — каждый, кто напишет ему, "
+            "попадёт в твою базу",
+        )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Не удалось отправить подтверждение о подключении бота %s", result.bot_record.id
+        )
+
     return ConnectBotOut(ok=True, bot=BotOut.model_validate(result.bot_record))
 
 

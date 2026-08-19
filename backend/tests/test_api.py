@@ -159,3 +159,38 @@ async def test_delete_product_with_orders_deactivates(db):
         # с витрины товар пропал
         r = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
         assert r.json()["products"] == []
+
+
+@pytest.mark.asyncio
+async def test_connect_bot_notifies_seller_in_hub(db):
+    """После подключения бота продавцу приходит подтверждение в hub-бот."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    async with db() as session:
+        session.add(Seller(telegram_id=SELLER_TG["id"]))
+        await session.commit()
+
+    token = "555666777:AAconnect-via-api-token-aaaaaaaaaa"
+    with (
+        patch(
+            "app.services.bot_connect.Bot.get_me",
+            new=AsyncMock(return_value=SimpleNamespace(id=555666777, username="new_shop_bot")),
+        ),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as hub_mock,
+    ):
+        async with client() as c:
+            r = await c.post("/api/seller/bots", headers=seller_headers(), json={"token": token})
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["ok"] and body["bot"]["bot_username"] == "new_shop_bot"
+
+    assert hub_mock.await_count == 1
+    assert "new_shop_bot" in hub_mock.call_args.args[1]
+
+    # невалидный токен: ни бота, ни уведомления
+    with patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as hub_mock2:
+        async with client() as c:
+            r = await c.post("/api/seller/bots", headers=seller_headers(), json={"token": "это точно не токен"})
+            assert r.json() == {"ok": False, "error": "bad_format", "bot": None}
+    assert hub_mock2.await_count == 0

@@ -60,7 +60,7 @@ async function submit() {
     <div class="step-label">Шаг 2 из 2</div>
 
     <h2>Подключи своего бота</h2>
-    <p class="lead">Через него покупатели увидят каталог.</p>
+    <p class="lead">Через него покупатели увидят твой каталог</p>
 
     <ol class="steps">
       <li><span class="num">1</span><span>Открой <b>@BotFather</b>, отправь <b>/newbot</b></span></li>

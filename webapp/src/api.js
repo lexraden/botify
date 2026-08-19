@@ -1,12 +1,26 @@
 import axios from 'axios'
 import { getBotId, getInitData } from './services/telegram'
+import { startLoading, stopLoading } from './services/loading'
 
 const api = axios.create({ baseURL: '/api' })
 
 api.interceptors.request.use((config) => {
   config.headers['X-Init-Data'] = getInitData()
+  startLoading()
   return config
 })
+
+// Любой ответ снимает запрос со счётчика — оверлей не залипает на ошибке
+api.interceptors.response.use(
+  (response) => {
+    stopLoading()
+    return response
+  },
+  (error) => {
+    stopLoading()
+    return Promise.reject(error)
+  },
+)
 
 // --- витрина покупателя (контекст seller-бота из query-параметра) ---
 export const fetchShop = () => api.get(`/store/${getBotId()}`).then((r) => r.data)
