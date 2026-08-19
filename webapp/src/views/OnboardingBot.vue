@@ -54,7 +54,7 @@ async function submit() {
 <template>
   <div class="step" :class="{ 'kb-open': keyboardOpen }">
     <div class="progress">
-      <span class="done" />
+      <span class="done" title="Вернуться к шагу 1" @click="router.push('/onboarding/payment')" />
       <span class="filled" />
     </div>
     <div class="step-label">Шаг 2 из 2</div>
@@ -115,7 +115,9 @@ async function submit() {
 .progress { display: flex; gap: 6px; }
 .progress span { flex: 1; height: 5px; border-radius: 3px; background: var(--surface2); }
 .progress .filled { background: var(--accent); }
-.progress .done { background: var(--green); }
+.progress .done { background: var(--green); cursor: pointer; position: relative; }
+/* полоска всего 5px — расширяем область нажатия по вертикали */
+.progress .done::after { content: ''; position: absolute; inset: -14px 0; }
 .step-label { font-size: 13px; font-weight: 700; color: var(--sub); margin-top: 10px; }
 h2 { font-size: 21px; margin: 18px 0 10px; }
 .lead { font-size: 14px; color: var(--sub); line-height: 1.5; margin: 0; }
