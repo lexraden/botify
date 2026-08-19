@@ -1,0 +1,2 @@
+# Точка входа для Railway/Nixpacks: ставит зависимости бэкенда из корня репо
+-r backend/requirements.txt

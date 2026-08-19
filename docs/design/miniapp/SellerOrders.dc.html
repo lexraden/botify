@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@500;600;700;800&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Manrope', -apple-system, system-ui, sans-serif; }
+    a { color: #6A58F5; text-decoration: none; } a:hover { color: #5847d6; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: {{c.bg}}; color: {{c.text}}; position: relative; overflow: hidden; display: flex; flex-direction: column;">
+
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 24px 20px 14px 20px;">
+    <div style="font-family: 'Unbounded', 'Arial Black', sans-serif; font-size: 20px; font-weight: 700;">Кабинет</div>
+    <div style="width: 42px; height: 42px; border-radius: 14px; background: {{c.surface2}}; display: flex; align-items: center; justify-content: center;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{c.text}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 20a7.5 7.5 0 0 1 15 0"></path></svg>
+    </div>
+  </div>
+
+  <div style="margin: 0 20px 14px 20px; background: {{c.surface2}}; border-radius: 15px; padding: 4px; display: flex; gap: 4px;">
+    <div style="flex: 1; color: {{c.text}}; border-radius: 12px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;">Товары</div>
+    <div style="flex: 1; background: {{c.accent}}; color: #FFFFFF; border-radius: 12px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800;">Заказы</div>
+    <div style="flex: 1; color: {{c.text}}; border-radius: 12px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;">Рассылки</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; padding: 0 20px; gap: 12px;">
+
+    <div style="background: {{c.surface}}; border: 1.5px solid {{c.orange}}; border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 11px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-size: 16px; font-weight: 800;">#37 · 16 USDT</div>
+        <div style="background: {{c.orangeSoft}}; color: {{c.orangeText}}; font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 12px;">Оплачен</div>
+      </div>
+      <div style="font-size: 14px; font-weight: 600; color: {{c.sub}};">@marina_k · Зерно 250 г ×1, Печенье ×2</div>
+      <div style="background: {{c.surface2}}; border-radius: 12px; padding: 10px 12px; font-size: 14px; font-weight: 600; display: flex; gap: 8px; align-items: flex-start;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{c.sub}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.6 8.6 0 0 1-3.3-.7L3 21l1.8-4.4a8.4 8.4 0 1 1 16.2-5.1z"></path></svg>
+        <span>Помол под фильтр, пожалуйста</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="border: 1px solid {{c.border}}; background: {{c.bg}}; border-radius: 12px; padding: 12px 14px; font-size: 14px; font-weight: 600; color: {{c.sub}};">Трек-номер</div>
+        <div style="border: 1px solid {{c.border}}; background: {{c.bg}}; border-radius: 12px; padding: 12px 14px; font-size: 14px; font-weight: 600; color: {{c.sub}};">Ссылка или примечание</div>
+        <div style="background: {{c.green}}; color: {{c.onGreen}}; border-radius: 13px; height: 48px; display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 15px; font-weight: 800;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"></path><path d="M22 2l-7 20-4-9-9-4 20-7z"></path></svg>
+          <span>Отправить покупателю</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 9px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-size: 16px; font-weight: 800;">#36 · 15 USDT</div>
+        <div style="background: {{c.greenSoft}}; color: {{c.greenText}}; font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 12px;">Доставлен</div>
+      </div>
+      <div style="font-size: 14px; font-weight: 600; color: {{c.sub}};">@ivan_p · Гайд по обжарке ×1 · digital выдан</div>
+      <div style="display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; color: {{c.greenText}};">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+        <span>Выплата 14.25 USDT отправлена</span>
+      </div>
+    </div>
+
+    <div style="background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 9px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-size: 16px; font-weight: 800;">#35 · 4 USDT</div>
+        <div style="background: {{c.surface2}}; color: {{c.sub}}; font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 12px;">Ждёт оплаты</div>
+      </div>
+      <div style="font-size: 14px; font-weight: 600; color: {{c.sub}};">@olga_m · Капучино ×1</div>
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = (this.props.theme ?? 'light') === 'dark';
+    const c = dark ? {
+      bg: '#0E0F13', surface: '#171921', surface2: '#20232E',
+      border: 'rgba(255,255,255,0.09)', text: '#F4F5F7', sub: '#9AA0AB',
+      accent: '#7C6CFF', accentSoft: 'rgba(124,108,255,0.18)',
+      green: '#2FD48A', greenSoft: 'rgba(47,212,138,0.15)', greenText: '#2FD48A',
+      orange: '#FFB454', orangeSoft: 'rgba(255,180,84,0.14)', orangeText: '#FFCB7E',
+      red: '#FF6B5E', onGreen: '#062517', shadow: '0 16px 40px rgba(0,0,0,0.45)'
+    } : {
+      bg: '#F6F7F9', surface: '#FFFFFF', surface2: '#EFF1F5',
+      border: '#E8EAF0', text: '#14161B', sub: '#6B7280',
+      accent: '#6A58F5', accentSoft: '#ECE9FF',
+      green: '#17B877', greenSoft: '#E1F7ED', greenText: '#0E9A62',
+      orange: '#F59E1B', orangeSoft: '#FFF3DF', orangeText: '#9A6708',
+      red: '#E5544B', onGreen: '#FFFFFF', shadow: '0 14px 34px rgba(20,22,27,0.12)'
+    };
+    return { c, dark };
+  }
+}
+</script>
+</body>
+</html>

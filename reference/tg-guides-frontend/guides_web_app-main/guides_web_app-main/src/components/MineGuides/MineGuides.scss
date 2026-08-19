@@ -1,0 +1,55 @@
+.my-guides-page {
+  &__heading {
+    font-weight: 700;
+    font-size: 1.5rem;
+    line-height: 2;
+    color: var(--text-white);
+  }
+
+  &__guides-list {
+    margin-top: 1rem;
+  }
+}
+
+.switch-block {
+  display: flex;
+  width: 100%;
+
+  background-color: var(--bg-slider);
+  border-radius: 10px;
+
+  &__button {
+    flex: 0 0 50%;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 10px;
+
+    border-radius: inherit;
+    overflow: hidden;
+
+    font-size: 1rem;
+    font-weight: bold;
+
+    background: var(--bg-slider-button);
+    color: var(--text-white);
+
+    transition: var(--color-transition);
+
+    &:hover {
+      cursor: pointer;
+    }
+
+    &:hover:not(&_active) {
+      background: var(--hover-bg);
+      color: var(--text-white);
+    }
+
+    &_active {
+      background: var(--text-white);
+      color: var(--active-info-text);
+    }
+  }
+}

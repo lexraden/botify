@@ -1,0 +1,128 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@500;600;700;800&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Manrope', -apple-system, system-ui, sans-serif; }
+    a { color: #6A58F5; text-decoration: none; } a:hover { color: #5847d6; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: {{c.bg}}; color: {{c.text}}; position: relative; overflow: hidden; display: flex; flex-direction: column;">
+
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 24px 20px 14px 20px;">
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'Unbounded', 'Arial Black', sans-serif; font-size: 20px; font-weight: 700;">Кабинет</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: {{c.sub}};">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: {{c.green}};"></span>
+        <span>@coffeelab_bot подключён</span>
+      </div>
+    </div>
+    <div style="width: 42px; height: 42px; border-radius: 14px; background: {{c.surface2}}; display: flex; align-items: center; justify-content: center;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{c.text}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 20a7.5 7.5 0 0 1 15 0"></path></svg>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 0 20px;">
+    <div style="background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 16px; padding: 14px 12px; display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'Unbounded', 'Arial Black', sans-serif; font-size: 20px; font-weight: 700;">128</div>
+      <div style="font-size: 12px; font-weight: 700; color: {{c.sub}};">покупателей</div>
+    </div>
+    <div style="background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 16px; padding: 14px 12px; display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'Unbounded', 'Arial Black', sans-serif; font-size: 20px; font-weight: 700;">37</div>
+      <div style="font-size: 12px; font-weight: 700; color: {{c.sub}};">заказов</div>
+    </div>
+    <div style="background: {{c.greenSoft}}; border: 1px solid {{c.border}}; border-radius: 16px; padding: 14px 12px; display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'Unbounded', 'Arial Black', sans-serif; font-size: 20px; font-weight: 700; color: {{c.greenText}};">412</div>
+      <div style="font-size: 12px; font-weight: 700; color: {{c.greenText}};">USDT</div>
+    </div>
+  </div>
+
+  <div style="margin: 14px 20px 12px 20px; background: {{c.surface2}}; border-radius: 15px; padding: 4px; display: flex; gap: 4px;">
+    <div style="flex: 1; background: {{c.accent}}; color: #FFFFFF; border-radius: 12px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800;">Товары</div>
+    <div style="flex: 1; color: {{c.text}}; border-radius: 12px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;">Заказы</div>
+    <div style="flex: 1; color: {{c.text}}; border-radius: 12px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;">Рассылки</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; padding: 0 20px; gap: 10px;">
+
+    <div style="background: {{c.accentSoft}}; color: {{c.accent}}; border-radius: 16px; height: 52px; display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 15px; font-weight: 800;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+      <span>Добавить товар или услугу</span>
+    </div>
+
+    <div style="background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+      <div style="width: 46px; height: 46px; border-radius: 13px; background: {{c.surface2}}; display: flex; align-items: center; justify-content: center; font-size: 25px; flex-shrink: 0;">☕️</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 700;">Капучино</div>
+        <div style="font-size: 13px; font-weight: 600; color: {{c.sub}};">4 USDT · 14 продаж</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{c.sub}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15.6 4.9l3.5 3.5L8 19.5l-4.3.8.8-4.3L15.6 4.9z"></path></svg>
+    </div>
+
+    <div style="background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+      <div style="width: 46px; height: 46px; border-radius: 13px; background: {{c.surface2}}; display: flex; align-items: center; justify-content: center; font-size: 25px; flex-shrink: 0;">📕</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 700;">Гайд по обжарке</div>
+        <div style="font-size: 13px; font-weight: 600; color: {{c.sub}};">15 USDT · digital · 21 продажа</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{c.sub}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15.6 4.9l3.5 3.5L8 19.5l-4.3.8.8-4.3L15.6 4.9z"></path></svg>
+    </div>
+
+    <div style="background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+      <div style="width: 46px; height: 46px; border-radius: 13px; background: {{c.surface2}}; display: flex; align-items: center; justify-content: center; font-size: 25px; flex-shrink: 0;">🛎</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 700;">Консультация</div>
+        <div style="font-size: 13px; font-weight: 600; color: {{c.sub}};">25 USDT · услуга · 2 продажи</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{c.sub}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15.6 4.9l3.5 3.5L8 19.5l-4.3.8.8-4.3L15.6 4.9z"></path></svg>
+    </div>
+
+    <div style="background: {{c.surface}}; border: 1px solid {{c.border}}; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; opacity: 0.5;">
+      <div style="width: 46px; height: 46px; border-radius: 13px; background: {{c.surface2}}; display: flex; align-items: center; justify-content: center; font-size: 25px; flex-shrink: 0;">🎁</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 700;">Подарочный сет</div>
+        <div style="font-size: 13px; font-weight: 600; color: {{c.sub}};">30 USDT · скрыт с витрины</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{c.sub}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15.6 4.9l3.5 3.5L8 19.5l-4.3.8.8-4.3L15.6 4.9z"></path></svg>
+    </div>
+
+  </div>
+
+  <div style="position: absolute; left: 16px; right: 16px; bottom: 18px; background: {{c.accentSoft}}; border-radius: 16px; padding: 13px 16px; display: flex; gap: 10px; align-items: center;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{c.accent}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M12 3l1.9 5.6H20l-4.9 3.6 1.9 5.8-5-3.6-5 3.6 1.9-5.8L4 8.6h6.1L12 3z"></path></svg>
+    <div style="font-size: 13px; font-weight: 700; color: {{c.text}}; line-height: 1.4;">До 1000 покупателей — бесплатно, комиссия 5%. Дальше — Pro.</div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = (this.props.theme ?? 'light') === 'dark';
+    const c = dark ? {
+      bg: '#0E0F13', surface: '#171921', surface2: '#20232E',
+      border: 'rgba(255,255,255,0.09)', text: '#F4F5F7', sub: '#9AA0AB',
+      accent: '#7C6CFF', accentSoft: 'rgba(124,108,255,0.18)',
+      green: '#2FD48A', greenSoft: 'rgba(47,212,138,0.15)', greenText: '#2FD48A',
+      orange: '#FFB454', orangeSoft: 'rgba(255,180,84,0.14)', orangeText: '#FFCB7E',
+      red: '#FF6B5E', onGreen: '#062517', shadow: '0 16px 40px rgba(0,0,0,0.45)'
+    } : {
+      bg: '#F6F7F9', surface: '#FFFFFF', surface2: '#EFF1F5',
+      border: '#E8EAF0', text: '#14161B', sub: '#6B7280',
+      accent: '#6A58F5', accentSoft: '#ECE9FF',
+      green: '#17B877', greenSoft: '#E1F7ED', greenText: '#0E9A62',
+      orange: '#F59E1B', orangeSoft: '#FFF3DF', orangeText: '#9A6708',
+      red: '#E5544B', onGreen: '#FFFFFF', shadow: '0 14px 34px rgba(20,22,27,0.12)'
+    };
+    return { c, dark };
+  }
+}
+</script>
+</body>
+</html>

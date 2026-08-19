@@ -1,0 +1,25 @@
+{
+  "artboards": [
+    { "file": "Welcome.dc.html", "x": 0, "y": 0, "w": 390, "h": 844, "title": "Welcome" },
+    { "file": "OnboardingCryptoBot.dc.html", "x": 450, "y": 0, "w": 390, "h": 844, "title": "Онбординг · Шаг 1" },
+    { "file": "OnboardingBotFather.dc.html", "x": 900, "y": 0, "w": 390, "h": 844, "title": "Онбординг · Шаг 2" },
+    { "file": "Main.dc.html", "x": 1440, "y": 0, "w": 390, "h": 844, "title": "Витрина" },
+    { "file": "Checkout.dc.html", "x": 1890, "y": 0, "w": 390, "h": 844, "title": "Оформление заказа" },
+    { "file": "SellerCabinet.dc.html", "x": 2430, "y": 0, "w": 390, "h": 844, "title": "Кабинет · Товары" },
+    { "file": "SellerOrders.dc.html", "x": 2880, "y": 0, "w": 390, "h": 844, "title": "Кабинет · Заказы" },
+    { "file": "WelcomeDark.dc.html", "x": 0, "y": 990, "w": 390, "h": 844, "title": "Welcome · Dark" },
+    { "file": "OnboardingCryptoBotDark.dc.html", "x": 450, "y": 990, "w": 390, "h": 844, "title": "Шаг 1 · Dark" },
+    { "file": "OnboardingBotFatherDark.dc.html", "x": 900, "y": 990, "w": 390, "h": 844, "title": "Шаг 2 · Dark" },
+    { "file": "MainDark.dc.html", "x": 1440, "y": 990, "w": 390, "h": 844, "title": "Витрина · Dark" },
+    { "file": "CheckoutDark.dc.html", "x": 1890, "y": 990, "w": 390, "h": 844, "title": "Оформление · Dark" },
+    { "file": "SellerCabinetDark.dc.html", "x": 2430, "y": 990, "w": 390, "h": 844, "title": "Кабинет · Dark" },
+    { "file": "SellerOrdersDark.dc.html", "x": 2880, "y": 990, "w": 390, "h": 844, "title": "Заказы · Dark" }
+  ],
+  "annotations": [
+    { "id": "flow-onboarding", "x": 0, "y": -130, "w": 380, "text": "Онбординг продавца — из hub-бота.\nWelcome → Шаг 1: выплаты через @CryptoBot → Шаг 2: подключение бота (существующий бот тоже подходит)." },
+    { "id": "flow-store", "x": 1440, "y": -130, "w": 380, "text": "Витрина покупателя — из seller-бота.\nСетка → корзина → комментарий → оплата в @CryptoBot." },
+    { "id": "flow-cabinet", "x": 2430, "y": -130, "w": 380, "text": "Кабинет продавца.\nОплаченный заказ: трек/ссылка → «Отправить покупателю» → авто-выплата доли." },
+    { "id": "themes-note", "x": 0, "y": 900, "w": 420, "text": "Тёмная тема — те же экраны, зеркалируются автоматически. Правки текста и layout делаются в верхнем (светлом) ряду; у каждого светлого экрана есть переключатель theme." }
+  ],
+  "launch": { "view": "canvas" }
+}
