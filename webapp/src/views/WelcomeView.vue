@@ -78,10 +78,11 @@ h1 {
   background: var(--green-soft); color: var(--green-text); border: 1px solid var(--border);
   border-radius: 14px; padding: 9px 13px; font-size: 13px; font-weight: 800;
 }
-.chips { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 34px; }
+/* три плашки держим в одну строку даже на узких экранах */
+.chips { display: flex; gap: 6px; justify-content: center; flex-wrap: nowrap; margin-top: 34px; }
 .chips span {
-  background: var(--surface2); border-radius: 20px; padding: 9px 14px;
-  font-size: 13px; font-weight: 700;
+  background: var(--surface2); border-radius: 20px; padding: 8px 11px;
+  font-size: 12px; font-weight: 700; white-space: nowrap;
 }
 .actions {
   position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 20px 26px;
