@@ -3,6 +3,7 @@ from app.models.bots import SellerBot
 from app.models.catalog import Category, Product
 from app.models.channels import Channel
 from app.models.customers import Customer
+from app.models.events import ShopEvent
 from app.models.mailings import Mailing
 from app.models.orders import Order, OrderItem, Payout
 from app.models.sellers import Seller
@@ -14,6 +15,7 @@ __all__ = [
     "Customer",
     "Channel",
     "Mailing",
+    "ShopEvent",
     "Category",
     "Product",
     "Order",

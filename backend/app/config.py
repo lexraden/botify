@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     admin_telegram_ids: str = ""
     platform_commission_pct: float = 5.0
 
+    # Лимиты бесплатного тарифа (см. app/plans.py). Пока False — лимиты
+    # только считаются и показываются, но ничего не блокируют.
+    enforce_plan_limits: bool = False
+
     @field_validator("database_url")
     @classmethod
     def force_asyncpg(cls, v: str) -> str:

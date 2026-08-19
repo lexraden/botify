@@ -8,6 +8,7 @@ import {
   fetchMe,
   fetchProducts,
   fetchShopOrders,
+  fetchShopStats,
   fetchShopSummary,
   fulfillOrder,
 } from '../api'
@@ -17,6 +18,7 @@ const router = useRouter()
 const botId = computed(() => route.params.botId)
 
 const summary = ref(null)
+const stats = ref(null)
 const products = ref([])
 const orders = ref([])
 const mailings = ref([])
@@ -35,12 +37,14 @@ const TYPE_LABEL = { physical: 'товар', digital: 'digital', service: 'ус�
 
 async function reload() {
   const id = botId.value
-  ;[summary.value, products.value, orders.value, mailings.value] = await Promise.all([
-    fetchShopSummary(id),
-    fetchProducts(id),
-    fetchShopOrders(id),
-    fetchMailings(id),
-  ])
+  ;[summary.value, stats.value, products.value, orders.value, mailings.value] =
+    await Promise.all([
+      fetchShopSummary(id),
+      fetchShopStats(id),
+      fetchProducts(id),
+      fetchShopOrders(id),
+      fetchMailings(id),
+    ])
 }
 
 onMounted(async () => {
@@ -136,6 +140,7 @@ async function submitMailing() {
         <button :class="{ active: tab === 'products' }" @click="tab = 'products'">Товары</button>
         <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">Заказы</button>
         <button :class="{ active: tab === 'mailings' }" @click="tab = 'mailings'">Рассылки</button>
+        <button :class="{ active: tab === 'stats' }" @click="tab = 'stats'">Статистика</button>
       </nav>
 
       <template v-if="tab === 'products'">
@@ -195,7 +200,7 @@ async function submitMailing() {
         <p v-if="!orders.length" class="empty">Заказов пока нет.</p>
       </template>
 
-      <template v-else>
+      <template v-else-if="tab === 'mailings'">
         <div class="card mailing-form">
           <textarea v-model="mailingForm.text" rows="4" placeholder="Текст рассылки по базе этого магазина" />
           <input v-model="mailingForm.button_text" placeholder="Текст кнопки (опционально)" />
@@ -218,6 +223,48 @@ async function submitMailing() {
           </div>
         </div>
         <p v-if="!mailings.length" class="empty">Рассылок пока не было.</p>
+      </template>
+
+      <template v-else>
+        <div v-if="stats" class="stats-grid">
+          <div class="card metric">
+            <b>{{ stats.telegram_users }}</b><span>пользователей Telegram</span>
+          </div>
+          <div class="card metric">
+            <b>{{ stats.product_views }}</b><span>просмотров товаров</span>
+          </div>
+          <div class="card metric">
+            <b>{{ stats.checkout_starts }}</b><span>переходов к оплате</span>
+          </div>
+          <div class="card metric">
+            <b>{{ stats.purchases }}</b><span>покупок</span>
+          </div>
+          <div class="card metric green">
+            <b>{{ Number(stats.total_sales).toFixed(0) }}</b><span>USDT продаж</span>
+          </div>
+          <div class="card metric">
+            <b>{{ stats.repeat_customers }}</b><span>повторных покупателей</span>
+          </div>
+        </div>
+
+        <div v-if="summary.limits" class="card plan">
+          <div class="plan-head">
+            <b>Тариф: {{ summary.limits.plan === 'pro' ? 'Pro' : 'Бесплатный' }}</b>
+            <span v-if="!summary.limits.enforced" class="muted">лимиты пока не действуют</span>
+          </div>
+          <div class="plan-row">
+            <span>Товары</span>
+            <span>{{ summary.limits.products_used }}{{ summary.limits.products_cap ? ' из ' + summary.limits.products_cap : '' }}</span>
+          </div>
+          <div class="plan-row">
+            <span>Услуги</span>
+            <span>{{ summary.limits.services_used }}{{ summary.limits.services_cap ? ' из ' + summary.limits.services_cap : '' }}</span>
+          </div>
+          <div class="plan-row">
+            <span>Рассылка</span>
+            <span>{{ summary.limits.mailing_recipients_cap ? 'до ' + summary.limits.mailing_recipients_cap + ' получателей' : 'без лимита' }}</span>
+          </div>
+        </div>
       </template>
     </template>
   </div>
@@ -265,6 +312,17 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .pair .btn { height: 42px; }
 .mailing-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 .mailing-form textarea { resize: none; }
+.stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.metric { display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; }
+.metric b { font-family: 'Unbounded', sans-serif; font-size: 20px; line-height: 1.1; }
+.metric span { font-size: 12px; font-weight: 700; color: var(--sub); }
+.metric.green { background: var(--green-soft); }
+.metric.green b, .metric.green span { color: var(--green-text); }
+.plan { margin-top: 12px; display: flex; flex-direction: column; gap: 9px; }
+.plan-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.plan-head .muted { font-size: 12px; }
+.plan-row { display: flex; justify-content: space-between; font-size: 14px; }
+.plan-row span:first-child { color: var(--sub); font-weight: 700; }
 .empty { text-align: center; color: var(--sub); margin-top: 24px; }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
 </style>

@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import BuyerContext, get_buyer
-from app.models import Order, OrderItem, Product
+from app.models import Order, OrderItem, Product, ShopEvent
 
 router = APIRouter(prefix="/store/{bot_id}")
 
@@ -67,6 +67,32 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
         shop_name=f"@{ctx.bot.bot_username}",
         products=[ProductOut.model_validate(p) for p in products],
     )
+
+
+class EventIn(BaseModel):
+    type: str  # shop_open | product_view | checkout_start
+    product_id: int | None = None
+
+
+EVENT_TYPES = {"shop_open", "product_view", "checkout_start"}
+
+
+@router.post("/events")
+async def track_event(payload: EventIn, ctx: BuyerContext = Depends(get_buyer)) -> dict:
+    """Событие витрины для статистики продавца. Незнакомый тип молча
+    игнорируется, чтобы старые клиенты не получали ошибок после обновлений."""
+    if payload.type not in EVENT_TYPES:
+        return {"status": "ignored"}
+    ctx.session.add(
+        ShopEvent(
+            bot_id=ctx.bot.id,
+            customer_id=ctx.customer.id,
+            product_id=payload.product_id,
+            type=payload.type,
+        )
+    )
+    await ctx.session.commit()
+    return {"status": "ok"}
 
 
 @router.post("/orders", response_model=OrderOut)

@@ -15,7 +15,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_seller
 from app.db import get_api_session
-from app.models import Customer, Mailing, Order, OrderItem, Payout, Product, Seller, SellerBot
+from app.models import (
+    Customer,
+    Mailing,
+    Order,
+    OrderItem,
+    Payout,
+    Product,
+    Seller,
+    SellerBot,
+    ShopEvent,
+)
+from app.plans import SERVICE_TYPES, is_pro, limits_for, over_limit
 
 router = APIRouter(prefix="/seller")
 
@@ -150,6 +161,20 @@ async def get_shop(
     return bot
 
 
+class LimitsOut(BaseModel):
+    """Использование против лимитов тарифа. Пока enforced=False лимиты
+    только показываются; при включении они блокируют рост, но ничего
+    не удаляют (см. app/plans.py)."""
+
+    plan: str
+    enforced: bool
+    products_used: int
+    products_cap: int | None
+    services_used: int
+    services_cap: int | None
+    mailing_recipients_cap: int | None
+
+
 class ShopSummaryOut(BaseModel):
     id: int
     bot_username: str
@@ -159,6 +184,42 @@ class ShopSummaryOut(BaseModel):
     orders_count: int
     revenue: Decimal
     commission_pct: Decimal
+    limits: LimitsOut
+
+
+async def _catalog_usage(session: AsyncSession, bot_id: int) -> tuple[int, int]:
+    """(товаров, услуг) в магазине — считаем и скрытые: они занимают место."""
+    products_used = (
+        await session.execute(
+            select(func.count())
+            .select_from(Product)
+            .where(Product.bot_id == bot_id, Product.type == "physical")
+        )
+    ).scalar_one()
+    services_used = (
+        await session.execute(
+            select(func.count())
+            .select_from(Product)
+            .where(Product.bot_id == bot_id, Product.type.in_(SERVICE_TYPES))
+        )
+    ).scalar_one()
+    return products_used, services_used
+
+
+async def _limits_payload(session: AsyncSession, seller: Seller, bot_id: int) -> LimitsOut:
+    from app.config import get_settings
+
+    limits = limits_for(seller)
+    products_used, services_used = await _catalog_usage(session, bot_id)
+    return LimitsOut(
+        plan="pro" if is_pro(seller) else "free",
+        enforced=get_settings().enforce_plan_limits,
+        products_used=products_used,
+        products_cap=limits.max_products,
+        services_used=services_used,
+        services_cap=limits.max_services,
+        mailing_recipients_cap=limits.max_mailing_recipients,
+    )
 
 
 @router.get("/bots/{bot_id}/summary", response_model=ShopSummaryOut)
@@ -194,6 +255,80 @@ async def shop_summary(
         orders_count=orders_count,
         revenue=revenue,
         commission_pct=seller.commission_pct,
+        limits=await _limits_payload(session, seller, shop.id),
+    )
+
+
+# --------------------------------------------------------------------------
+# Статистика магазина
+# --------------------------------------------------------------------------
+
+PAID_STATUSES = ("paid", "fulfilled", "delivered")
+
+
+class ShopStatsOut(BaseModel):
+    telegram_users: int      # покупателей в базе этого бота
+    product_views: int       # просмотры карточек товара
+    checkout_starts: int     # открытий оформления заказа
+    purchases: int           # оплаченные заказы
+    total_sales: Decimal     # сумма оплаченных заказов
+    repeat_customers: int    # покупатели с двумя и более покупками
+
+
+async def _count_events(session: AsyncSession, bot_id: int, event_type: str) -> int:
+    return (
+        await session.execute(
+            select(func.count())
+            .select_from(ShopEvent)
+            .where(ShopEvent.bot_id == bot_id, ShopEvent.type == event_type)
+        )
+    ).scalar_one()
+
+
+@router.get("/bots/{bot_id}/stats", response_model=ShopStatsOut)
+async def shop_stats(
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> ShopStatsOut:
+    telegram_users = (
+        await session.execute(
+            select(func.count()).select_from(Customer).where(Customer.bot_id == shop.id)
+        )
+    ).scalar_one()
+    purchases = (
+        await session.execute(
+            select(func.count())
+            .select_from(Order)
+            .where(Order.bot_id == shop.id, Order.status.in_(PAID_STATUSES))
+        )
+    ).scalar_one()
+    total_sales = (
+        await session.execute(
+            select(func.coalesce(func.sum(Order.total), 0)).where(
+                Order.bot_id == shop.id, Order.status.in_(PAID_STATUSES)
+            )
+        )
+    ).scalar_one()
+    # повторные: покупатели, у которых больше одной оплаченной покупки
+    repeat_customers = (
+        await session.execute(
+            select(func.count()).select_from(
+                select(Order.customer_id)
+                .where(Order.bot_id == shop.id, Order.status.in_(PAID_STATUSES))
+                .group_by(Order.customer_id)
+                .having(func.count(Order.id) > 1)
+                .subquery()
+            )
+        )
+    ).scalar_one()
+
+    return ShopStatsOut(
+        telegram_users=telegram_users,
+        product_views=await _count_events(session, shop.id, "product_view"),
+        checkout_starts=await _count_events(session, shop.id, "checkout_start"),
+        purchases=purchases,
+        total_sales=total_sales,
+        repeat_customers=repeat_customers,
     )
 
 
@@ -234,10 +369,29 @@ async def list_products(
 async def create_product(
     payload: ProductIn,
     shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
     session: AsyncSession = Depends(get_api_session),
 ) -> ProductOut:
     if payload.type not in PRODUCT_TYPES:
         raise HTTPException(status_code=400, detail=f"type must be one of {sorted(PRODUCT_TYPES)}")
+
+    from app.config import get_settings
+
+    if get_settings().enforce_plan_limits:
+        limits = limits_for(seller)
+        products_used, services_used = await _catalog_usage(session, shop.id)
+        is_service = payload.type in SERVICE_TYPES
+        used = services_used if is_service else products_used
+        cap = limits.max_services if is_service else limits.max_products
+        if over_limit(used, cap):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"plan limit reached: {cap} "
+                    f"{'услуг' if is_service else 'товаров'} на бесплатном тарифе"
+                ),
+            )
+
     product = Product(seller_id=shop.seller_id, bot_id=shop.id, **payload.model_dump())
     session.add(product)
     await session.commit()
@@ -420,12 +574,32 @@ class MailingOut(BaseModel):
 async def create_mailing(
     payload: MailingIn,
     shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
     session: AsyncSession = Depends(get_api_session),
 ) -> MailingOut:
     from datetime import datetime
 
+    from app.config import get_settings
+
     if not shop.is_active:
         raise HTTPException(status_code=400, detail="bot is disconnected")
+
+    if get_settings().enforce_plan_limits:
+        cap = limits_for(seller).max_mailing_recipients
+        if cap is not None:
+            recipients = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(Customer)
+                    .where(Customer.bot_id == shop.id, Customer.is_banned.is_(False))
+                )
+            ).scalar_one()
+            if recipients > cap:
+                # база остаётся целой — блокируется только отправка сверх лимита
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"plan limit reached: рассылка до {cap} получателей на бесплатном тарифе",
+                )
     if bool(payload.button_text) != bool(payload.button_url):
         raise HTTPException(status_code=400, detail="button needs both text and url")
 

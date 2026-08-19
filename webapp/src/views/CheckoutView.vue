@@ -1,7 +1,7 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { createOrder } from '../api'
+import { createOrder, trackEvent } from '../api'
 import { useCartStore } from '../stores/cart'
 
 const router = useRouter()
@@ -9,6 +9,8 @@ const cart = useCartStore()
 const comment = ref('')
 const submitting = ref(false)
 const error = ref('')
+
+onMounted(() => trackEvent('checkout_start'))
 
 async function pay() {
   if (!cart.count || submitting.value) return

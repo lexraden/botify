@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchShop } from '../api'
+import { fetchShop, trackEvent } from '../api'
 import ProductCard from '../components/ProductCard.vue'
 import { useCartStore } from '../stores/cart'
 
@@ -13,6 +13,7 @@ const error = ref('')
 onMounted(async () => {
   try {
     shop.value = await fetchShop()
+    trackEvent('shop_open')
   } catch (e) {
     error.value = e.response?.data?.detail || 'Не удалось загрузить магазин'
   }
@@ -41,7 +42,7 @@ onMounted(async () => {
 
       <p v-if="!shop.products.length" class="empty">В этом магазине пока нет товаров.</p>
       <div class="grid">
-        <ProductCard v-for="p in shop.products" :key="p.id" :product="p" />
+        <ProductCard v-for="p in shop.products" :key="p.id" :product="p" @seen="trackEvent('product_view', p.id)" />
       </div>
 
       <button v-if="cart.count" class="cart-bar" @click="router.push('/checkout')">

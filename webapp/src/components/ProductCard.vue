@@ -1,8 +1,31 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useCartStore } from '../stores/cart'
 
 const props = defineProps({ product: { type: Object, required: true } })
+const emit = defineEmits(['seen'])
+
+// Просмотром считаем первое реальное появление карточки на экране,
+// а не отрисовку списка — иначе метрика раздувается
+const root = ref(null)
+let observer = null
+
+onMounted(() => {
+  if (!root.value || typeof IntersectionObserver === 'undefined') return
+  observer = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        emit('seen')
+        observer?.disconnect()
+        observer = null
+      }
+    },
+    { threshold: 0.5 },
+  )
+  observer.observe(root.value)
+})
+
+onUnmounted(() => observer?.disconnect())
 const cart = useCartStore()
 const qty = computed(() => cart.qtyOf(props.product.id))
 const emoji = computed(
@@ -11,7 +34,7 @@ const emoji = computed(
 </script>
 
 <template>
-  <div class="card product">
+  <div ref="root" class="card product">
     <div v-if="qty" class="badge">{{ qty }}</div>
     <div class="image">
       <img v-if="product.image_url" :src="product.image_url" :alt="product.title" />

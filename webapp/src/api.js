@@ -27,6 +27,9 @@ export const fetchShop = () => api.get(`/store/${getBotId()}`).then((r) => r.dat
 export const createOrder = (items, comment) =>
   api.post(`/store/${getBotId()}/orders`, { items, comment }).then((r) => r.data)
 export const fetchMyOrders = () => api.get(`/store/${getBotId()}/orders/my`).then((r) => r.data)
+// Статистика витрины: ошибки глотаем — аналитика не должна ломать покупку
+export const trackEvent = (type, productId = null) =>
+  api.post(`/store/${getBotId()}/events`, { type, product_id: productId }).catch(() => {})
 
 // --- кабинет продавца (контекст hub-бота) ---
 export const fetchMe = () => api.get('/seller/me').then((r) => r.data)
@@ -36,6 +39,7 @@ export const connectBot = (token) => api.post('/seller/bots', { token }).then((r
 // --- всё ниже — в контексте конкретного магазина (bot_id) ---
 export const fetchShopSummary = (botId) =>
   api.get(`/seller/bots/${botId}/summary`).then((r) => r.data)
+export const fetchShopStats = (botId) => api.get(`/seller/bots/${botId}/stats`).then((r) => r.data)
 export const fetchProducts = (botId) =>
   api.get(`/seller/bots/${botId}/products`).then((r) => r.data)
 export const saveProduct = (botId, product) =>
