@@ -42,6 +42,7 @@ body.tg-dark {
 
 body {
   margin: 0;
+  font-size: 15px;
   background: var(--bg);
   color: var(--text);
   font-family: 'Manrope', -apple-system, system-ui, sans-serif;
@@ -72,10 +73,10 @@ input, textarea, button {
 input, textarea {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px;
+  border-radius: 13px;
+  padding: 12px 13px;
   color: var(--text);
-  font-size: 15px;
+  font-size: 14px;
   width: 100%;
 }
 
@@ -86,10 +87,10 @@ input:focus, textarea:focus {
 
 .btn {
   border: 0;
-  border-radius: 16px;
-  height: 54px;
+  border-radius: 15px;
+  height: 48px;
   width: 100%;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 800;
   cursor: pointer;
   display: flex;
@@ -106,8 +107,8 @@ input:focus, textarea:focus {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 14px;
 }
 
 .muted { color: var(--sub); }

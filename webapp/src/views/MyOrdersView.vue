@@ -58,9 +58,9 @@ header {
 }
 .notice {
   background: var(--accent-soft);
-  border-radius: 10px;
+  border-radius: 11px;
   padding: 10px 12px;
-  font-size: 14px;
+  font-size: 13px;
 }
 .empty { text-align: center; opacity: 0.6; margin-top: 40px; }
 .order {
@@ -69,7 +69,7 @@ header {
   padding: 12px;
   margin-bottom: 10px;
   .head { display: flex; justify-content: space-between; margin-bottom: 6px; }
-  .item { font-size: 14px; padding: 2px 0; }
+  .item { font-size: 13px; padding: 2px 0; }
   .total { margin-top: 6px; font-weight: 700; }
 }
 </style>

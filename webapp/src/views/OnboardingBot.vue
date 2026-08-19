@@ -84,31 +84,31 @@ async function submit() {
 </template>
 
 <style scoped>
-.step { padding: 24px 20px 130px; }
+.step { padding: 20px 18px 118px; }
 .progress { display: flex; gap: 6px; }
 .progress span { flex: 1; height: 5px; border-radius: 3px; background: var(--surface2); }
 .progress .filled { background: var(--accent); }
 .progress .done { background: var(--green); }
 .step-label { font-size: 13px; font-weight: 700; color: var(--sub); margin-top: 10px; }
-h2 { font-size: 24px; margin: 22px 0 12px; }
-.lead { font-size: 16px; color: var(--sub); line-height: 1.5; margin: 0; }
+h2 { font-size: 21px; margin: 18px 0 10px; }
+.lead { font-size: 14px; color: var(--sub); line-height: 1.5; margin: 0; }
 .alert {
   display: flex; gap: 10px; align-items: flex-start; margin-top: 16px;
-  background: var(--orange-soft); border-radius: 16px; padding: 13px 14px;
-  font-size: 14px; color: var(--orange-text); line-height: 1.45;
+  background: var(--orange-soft); border-radius: 14px; padding: 11px 12px;
+  font-size: 13px; color: var(--orange-text); line-height: 1.45;
 }
 .alert svg { flex-shrink: 0; margin-top: 1px; }
-.steps { list-style: none; padding: 0; margin: 20px 0 16px; display: flex; flex-direction: column; gap: 13px; }
-.steps li { display: flex; gap: 14px; align-items: center; font-size: 16px; line-height: 1.4; }
+.steps { list-style: none; padding: 0; margin: 16px 0 14px; display: flex; flex-direction: column; gap: 11px; }
+.steps li { display: flex; gap: 12px; align-items: center; font-size: 14px; line-height: 1.4; }
 .num {
-  width: 30px; height: 30px; border-radius: 10px; background: var(--surface2);
+  width: 27px; height: 27px; border-radius: 9px; background: var(--surface2);
   display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0;
 }
 .token { font-family: ui-monospace, 'SF Mono', Menlo, monospace; border-color: var(--accent); }
 .hint { display: flex; gap: 8px; align-items: center; margin-top: 9px; font-size: 12px; color: var(--sub); }
 .error { color: var(--red); }
 .actions {
-  position: fixed; left: 0; right: 0; bottom: 0; padding: 16px 20px 28px;
+  position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 18px 24px;
   display: flex; flex-direction: column; gap: 10px; background: var(--bg);
 }
 </style>

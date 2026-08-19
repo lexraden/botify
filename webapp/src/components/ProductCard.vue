@@ -30,26 +30,26 @@ const emoji = computed(
 </template>
 
 <style scoped>
-.product { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.product { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 .badge {
   position: absolute; top: 10px; right: 10px; background: var(--accent); color: #fff;
   border-radius: 11px; min-width: 22px; height: 22px; display: flex; align-items: center;
   justify-content: center; font-size: 12px; font-weight: 800;
 }
 .image {
-  height: 72px; border-radius: 14px; background: var(--surface2);
-  display: flex; align-items: center; justify-content: center; font-size: 46px;
+  height: 64px; border-radius: 13px; background: var(--surface2);
+  display: flex; align-items: center; justify-content: center; font-size: 40px;
 }
-.image img { max-height: 72px; max-width: 100%; border-radius: 12px; }
+.image img { max-height: 64px; max-width: 100%; border-radius: 12px; }
 .meta { display: flex; flex-direction: column; gap: 2px; }
-.title { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.price { font-size: 15px; font-weight: 800; }
+.title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.price { font-size: 14px; font-weight: 800; }
 .add, .stepper button {
-  border: 0; border-radius: 12px; height: 40px; font-size: 14px; font-weight: 800; cursor: pointer;
+  border: 0; border-radius: 11px; height: 36px; font-size: 13px; font-weight: 800; cursor: pointer;
 }
 .add { background: var(--accent-soft); color: var(--accent); width: 100%; }
 .stepper { display: flex; gap: 8px; }
-.stepper button { flex: 1; font-size: 20px; }
+.stepper button { flex: 1; font-size: 18px; }
 .stepper .minus { background: var(--surface2); color: var(--text); }
 .stepper .plus { background: var(--accent); color: #fff; }
 </style>

@@ -64,26 +64,26 @@ async function done() {
 </template>
 
 <style scoped>
-.step { padding: 24px 20px 120px; }
+.step { padding: 20px 18px 110px; }
 .progress { display: flex; gap: 6px; }
 .progress span { flex: 1; height: 5px; border-radius: 3px; background: var(--surface2); }
 .progress .filled { background: var(--accent); }
 .step-label { font-size: 13px; font-weight: 700; color: var(--sub); margin-top: 10px; }
 .icon {
-  width: 72px; height: 72px; border-radius: 22px; background: var(--accent-soft);
-  display: flex; align-items: center; justify-content: center; margin: 24px 0 14px;
+  width: 62px; height: 62px; border-radius: 20px; background: var(--accent-soft);
+  display: flex; align-items: center; justify-content: center; margin: 18px 0 12px;
 }
-h2 { font-size: 24px; margin: 0 0 12px; }
-.lead { font-size: 16px; color: var(--sub); line-height: 1.5; margin: 0; }
-.steps { list-style: none; padding: 0; margin: 24px 0 0; display: flex; flex-direction: column; gap: 14px; }
-.steps li { display: flex; gap: 14px; align-items: center; font-size: 16px; line-height: 1.4; }
+h2 { font-size: 21px; margin: 0 0 10px; }
+.lead { font-size: 14px; color: var(--sub); line-height: 1.5; margin: 0; }
+.steps { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-direction: column; gap: 12px; }
+.steps li { display: flex; gap: 12px; align-items: center; font-size: 14px; line-height: 1.4; }
 .num {
-  width: 30px; height: 30px; border-radius: 10px; background: var(--surface2);
+  width: 27px; height: 27px; border-radius: 9px; background: var(--surface2);
   display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0;
 }
 .error { color: var(--red); }
 .actions {
-  position: fixed; left: 0; right: 0; bottom: 0; padding: 16px 20px 28px;
+  position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 18px 24px;
   display: flex; flex-direction: column; gap: 10px; background: var(--bg);
 }
 </style>

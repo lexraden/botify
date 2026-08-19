@@ -225,9 +225,9 @@ async function submitMailing() {
 </template>
 
 <style scoped>
-.shop { padding: 22px 20px 40px; }
+.shop { padding: 18px 16px 36px; }
 header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
-h2 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 18px; margin: 0 0 4px; }
 .bot-line { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sub); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
 .dot.off { background: var(--sub); }
@@ -236,34 +236,34 @@ h2 { font-size: 20px; margin: 0 0 4px; }
   padding: 9px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.stat { padding: 14px 12px; display: flex; flex-direction: column; gap: 3px; }
-.stat b { font-family: 'Unbounded', sans-serif; font-size: 20px; }
+.stat { padding: 12px 10px; display: flex; flex-direction: column; gap: 3px; }
+.stat b { font-family: 'Unbounded', sans-serif; font-size: 18px; }
 .stat span { font-size: 12px; font-weight: 700; color: var(--sub); }
 .stat.green { background: var(--green-soft); }
 .stat.green b, .stat.green span { color: var(--green-text); }
 nav { display: flex; gap: 4px; background: var(--surface2); border-radius: 15px; padding: 4px; margin: 14px 0 12px; }
 nav button {
-  flex: 1; border: 0; border-radius: 12px; height: 40px; background: none; color: var(--text);
-  font-size: 14px; font-weight: 700; cursor: pointer;
+  flex: 1; border: 0; border-radius: 11px; height: 37px; background: none; color: var(--text);
+  font-size: 13px; font-weight: 700; cursor: pointer;
 }
 nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .add { background: var(--accent-soft); color: var(--accent); margin-bottom: 10px; }
 .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .row.inactive { opacity: 0.5; }
 .info { display: flex; flex-direction: column; gap: 3px; }
-.info span { font-size: 13px; }
+.info span { font-size: 12px; }
 .row-actions button { border: 0; background: none; font-size: 18px; cursor: pointer; }
 .order { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .order-head { display: flex; justify-content: space-between; align-items: center; }
 .badge {
   background: var(--surface2); border-radius: 12px; padding: 5px 11px;
-  font-size: 12px; font-weight: 800;
+  font-size: 11px; font-weight: 800;
 }
-.comment { background: var(--surface2); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
-.fulfill-btn { height: 46px; }
+.comment { background: var(--surface2); border-radius: 11px; padding: 9px 11px; font-size: 13px; }
+.fulfill-btn { height: 42px; }
 .fulfill-form { display: flex; flex-direction: column; gap: 8px; }
 .pair { display: flex; gap: 8px; }
-.pair .btn { height: 46px; }
+.pair .btn { height: 42px; }
 .mailing-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 .mailing-form textarea { resize: none; }
 .empty { text-align: center; color: var(--sub); margin-top: 24px; }

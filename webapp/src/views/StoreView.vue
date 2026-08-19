@@ -60,17 +60,17 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.store { padding: 22px 20px 100px; }
+.store { padding: 18px 16px 96px; }
 header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .shop-name { display: flex; align-items: center; gap: 12px; }
 .avatar {
-  width: 42px; height: 42px; border-radius: 14px; background: var(--accent); color: #fff;
+  width: 38px; height: 38px; border-radius: 13px; background: var(--accent); color: #fff;
   display: flex; align-items: center; justify-content: center; font-weight: 800;
 }
-h2 { font-size: 16px; margin: 0; }
-.muted { font-size: 13px; }
+h2 { font-size: 15px; margin: 0; }
+.muted { font-size: 12px; }
 .orders {
-  width: 42px; height: 42px; border-radius: 14px; border: 0; background: var(--surface2);
+  width: 38px; height: 38px; border-radius: 13px; border: 0; background: var(--surface2);
   color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -80,7 +80,7 @@ h2 { font-size: 16px; margin: 0; }
   position: fixed; left: 16px; right: 16px; bottom: 18px; height: 56px; border: 0;
   border-radius: 18px; background: var(--green); color: var(--on-green); box-shadow: var(--shadow);
   display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
-  font-size: 16px; font-weight: 800; cursor: pointer;
+  font-size: 15px; font-weight: 800; cursor: pointer;
 }
 .cart-bar .left { display: flex; align-items: center; gap: 10px; }
 </style>

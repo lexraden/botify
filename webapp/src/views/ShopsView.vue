@@ -40,17 +40,17 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.shops { padding: 24px 20px; }
-h2 { font-size: 22px; margin: 0 0 8px; }
-.lead { font-size: 15px; color: var(--sub); line-height: 1.5; margin: 0 0 20px; }
+.shops { padding: 20px 18px; }
+h2 { font-size: 19px; margin: 0 0 8px; }
+.lead { font-size: 14px; color: var(--sub); line-height: 1.5; margin: 0 0 20px; }
 .shop { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; cursor: pointer; }
 .avatar {
-  width: 46px; height: 46px; border-radius: 14px; background: var(--accent); color: #fff;
+  width: 42px; height: 42px; border-radius: 13px; background: var(--accent); color: #fff;
   display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px;
   flex-shrink: 0;
 }
 .info { display: flex; flex-direction: column; gap: 2px; flex-grow: 1; }
-.info span { font-size: 13px; }
+.info span { font-size: 12px; }
 .on { color: var(--green-text); }
 .off { color: var(--sub); }
 .add {

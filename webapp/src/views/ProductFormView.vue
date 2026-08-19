@@ -110,16 +110,16 @@ async function submit() {
 </template>
 
 <style scoped>
-.form { padding: 22px 20px 40px; display: flex; flex-direction: column; }
-h2 { font-size: 20px; margin: 0 0 8px; }
-label { font-size: 13px; color: var(--sub); margin: 14px 0 6px; font-weight: 700; }
+.form { padding: 18px 16px 36px; display: flex; flex-direction: column; }
+h2 { font-size: 18px; margin: 0 0 8px; }
+label { font-size: 12px; color: var(--sub); margin: 12px 0 5px; font-weight: 700; }
 label.check { display: flex; gap: 10px; align-items: center; color: var(--text); }
 label.check input { width: auto; }
 textarea { resize: none; }
 .types { display: flex; gap: 8px; }
 .types button {
   flex: 1; border: 1px solid var(--border); background: var(--surface); color: var(--text);
-  border-radius: 14px; padding: 12px 4px; cursor: pointer; font-weight: 700;
+  border-radius: 13px; padding: 11px 4px; cursor: pointer; font-weight: 700; font-size: 14px;
 }
 .types button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .error { color: var(--red); }

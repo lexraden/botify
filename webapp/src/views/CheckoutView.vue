@@ -59,12 +59,12 @@ async function pay() {
 </template>
 
 <style scoped lang="scss">
-.checkout { padding: 16px 16px 84px; }
+.checkout { padding: 16px 16px 80px; }
 header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  h2 { margin: 0 0 16px; font-size: 18px; letter-spacing: 0.5px; }
+  h2 { margin: 0 0 14px; font-size: 17px; letter-spacing: 0.3px; }
   .edit { color: var(--green); cursor: pointer; }
 }
 .row {
@@ -94,9 +94,9 @@ textarea {
   border: 0;
   background: var(--green);
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
-  padding: 16px;
+  padding: 15px;
   cursor: pointer;
   &:disabled { opacity: 0.5; }
 }
