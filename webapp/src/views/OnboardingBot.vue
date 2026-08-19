@@ -16,6 +16,22 @@ const ERRORS = {
   already_yours: 'Этот бот уже подключён к твоему аккаунту.',
 }
 
+const tokenInput = ref(null)
+const keyboardOpen = ref(false)
+
+// Клавиатура перекрывает нижнюю часть экрана: поднимаем поле ввода к верху.
+// Дополнительный нижний отступ нужен, чтобы странице было куда прокрутиться.
+function onTokenFocus() {
+  keyboardOpen.value = true
+  setTimeout(() => {
+    tokenInput.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, 300)
+}
+
+function onTokenBlur() {
+  keyboardOpen.value = false
+}
+
 async function submit() {
   if (saving.value || !token.value.trim()) return
   saving.value = true
@@ -36,7 +52,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="step">
+  <div class="step" :class="{ 'kb-open': keyboardOpen }">
     <div class="progress">
       <span class="done" />
       <span class="filled" />
@@ -52,7 +68,17 @@ async function submit() {
       <li><span class="num">3</span><span>Скопируй токен и вставь его ниже</span></li>
     </ol>
 
-    <input v-model="token" class="token" placeholder="1234567890:AA…" autocapitalize="off" autocorrect="off" spellcheck="false" />
+    <input
+      ref="tokenInput"
+      v-model="token"
+      class="token"
+      placeholder="1234567890:AA…"
+      autocapitalize="off"
+      autocorrect="off"
+      spellcheck="false"
+      @focus="onTokenFocus"
+      @blur="onTokenBlur"
+    />
     <div class="hint">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--sub)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="4" y="10" width="16" height="10" rx="2.5" /><path d="M8 10V7a4 4 0 0 1 8 0v3" />
@@ -85,6 +111,7 @@ async function submit() {
 
 <style scoped>
 .step { padding: 20px 18px 118px; }
+.step.kb-open { padding-bottom: 75vh; }
 .progress { display: flex; gap: 6px; }
 .progress span { flex: 1; height: 5px; border-radius: 3px; background: var(--surface2); }
 .progress .filled { background: var(--accent); }
