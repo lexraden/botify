@@ -71,6 +71,18 @@ async def setup_seller_webhook(record: SellerBot) -> bool:
         await bot.session.close()
 
 
+async def remove_seller_webhook(record: SellerBot) -> None:
+    """Снимает вебхук выключаемого бота — Telegram перестаёт слать апдейты."""
+    token = decrypt_bot_token(record.bot_token_encrypted)
+    bot = make_seller_bot(token)
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+    except Exception:
+        logger.exception("Не удалось снять вебхук seller-бота id=%s", record.id)
+    finally:
+        await bot.session.close()
+
+
 async def setup_all_seller_webhooks() -> None:
     async with get_session() as session:
         result = await session.execute(

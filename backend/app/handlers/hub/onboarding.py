@@ -190,32 +190,3 @@ async def process_token(message: types.Message, state: FSMContext) -> None:
         return
 
     await message.answer(TOKEN_ERRORS.get(result.error or "", TOKEN_ERRORS["get_me_failed"]))
-
-
-@router.message(Command("mybots"))
-async def my_bots(message: types.Message) -> None:
-    if message.from_user is None:
-        return
-    async with get_session() as session:
-        seller = (
-            await session.execute(
-                select(Seller).where(Seller.telegram_id == message.from_user.id)
-            )
-        ).scalar_one_or_none()
-        if seller is None:
-            await message.answer("Нажми /start, чтобы зарегистрироваться.")
-            return
-        await session.refresh(seller, ["bots"])
-        bots = seller.bots
-
-    if not bots:
-        await message.answer("У тебя пока нет подключённых ботов. Настройка: /start")
-        return
-
-    status_icons = {"active": "🟢", "pending": "🟡", "failed": "🔴"}
-    lines = [
-        f"{status_icons.get(b.webhook_status, '⚪')} @{b.bot_username}"
-        + ("" if b.is_active else " (выключен)")
-        for b in bots
-    ]
-    await message.answer("<b>Твои боты:</b>\n" + "\n".join(lines))
