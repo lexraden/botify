@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import get_session
-from app.models import Seller
+from app.models import Seller, SellerBot
 
 router = Router()
 
@@ -23,7 +23,13 @@ WELCOME = (
 )
 
 
-def onboarding_keyboard() -> types.InlineKeyboardMarkup:
+def new_seller_keyboard() -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🧭 Пройти настройку", callback_data="onboarding:begin")
+    return kb.as_markup()
+
+
+def returning_seller_keyboard() -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     webapp_url = get_settings().effective_webapp_url
     if webapp_url:
@@ -31,9 +37,21 @@ def onboarding_keyboard() -> types.InlineKeyboardMarkup:
             text="🚀 Открыть кабинет продавца",
             web_app=types.WebAppInfo(url=webapp_url),
         )
-    kb.button(text="🧭 Пройти настройку", callback_data="onboarding:begin")
+    kb.button(text="🤖 Мои боты", callback_data="mybots:list")
+    kb.button(text="➕ Подключить ещё бота", callback_data="onboarding:add_bot")
     kb.adjust(1)
     return kb.as_markup()
+
+
+def welcome_back_text(bots: list[SellerBot]) -> str:
+    active = [b for b in bots if b.is_active]
+    if len(active) == 1:
+        status = f"Твой бот <b>@{active[0].bot_username}</b> работает 🟢"
+    elif active:
+        status = f"Подключено ботов: <b>{len(active)}</b> 🟢"
+    else:
+        status = "Все твои боты сейчас отключены ⚪"
+    return f"👋 С возвращением!\n\n{status}"
 
 
 @router.message(CommandStart())
@@ -54,10 +72,23 @@ async def cmd_start(message: types.Message) -> None:
                 is_admin=tg_user.id in get_settings().admin_ids,
             )
             session.add(seller)
+            bots: list[SellerBot] = []
         else:
             # обновляем то, что могло поменяться
             seller.username = tg_user.username
             seller.first_name = tg_user.first_name
+            bots = (
+                (
+                    await session.execute(
+                        select(SellerBot).where(SellerBot.seller_id == seller.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
         await session.commit()
 
-    await message.answer(WELCOME, reply_markup=onboarding_keyboard())
+    if bots:
+        await message.answer(welcome_back_text(bots), reply_markup=returning_seller_keyboard())
+    else:
+        await message.answer(WELCOME, reply_markup=new_seller_keyboard())

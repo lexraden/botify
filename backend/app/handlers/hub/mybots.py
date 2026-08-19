@@ -38,14 +38,7 @@ async def _seller_for(telegram_id: int) -> Seller | None:
         return result.scalar_one_or_none()
 
 
-@router.message(Command("mybots"))
-async def my_bots(message: types.Message) -> None:
-    if message.from_user is None:
-        return
-    seller = await _seller_for(message.from_user.id)
-    if seller is None:
-        await message.answer("Нажми /start, чтобы зарегистрироваться.")
-        return
+async def send_bot_cards(message: types.Message, seller: Seller) -> None:
     async with get_session() as session:
         bots = (
             (await session.execute(select(SellerBot).where(SellerBot.seller_id == seller.id)))
@@ -57,6 +50,29 @@ async def my_bots(message: types.Message) -> None:
         return
     for bot in bots:
         await message.answer(bot_card_text(bot), reply_markup=bot_card_keyboard(bot))
+
+
+@router.message(Command("mybots"))
+async def my_bots(message: types.Message) -> None:
+    if message.from_user is None:
+        return
+    seller = await _seller_for(message.from_user.id)
+    if seller is None:
+        await message.answer("Нажми /start, чтобы зарегистрироваться.")
+        return
+    await send_bot_cards(message, seller)
+
+
+@router.callback_query(F.data == "mybots:list")
+async def my_bots_button(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    if callback.from_user is None or callback.message is None:
+        return
+    seller = await _seller_for(callback.from_user.id)
+    if seller is None:
+        await callback.message.answer("Нажми /start, чтобы зарегистрироваться.")
+        return
+    await send_bot_cards(callback.message, seller)
 
 
 async def _owned_bot_from_callback(callback: types.CallbackQuery) -> tuple[Seller, int] | None:

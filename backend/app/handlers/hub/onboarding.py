@@ -104,6 +104,15 @@ async def onboarding_begin(callback: types.CallbackQuery) -> None:
         await callback.message.answer(BOTFATHER_STEP, reply_markup=botfather_keyboard())
 
 
+@router.callback_query(F.data == "onboarding:add_bot")
+async def add_another_bot(callback: types.CallbackQuery) -> None:
+    """Кнопка «Подключить ещё бота» — сразу к шагу BotFather, без повторного онбординга."""
+    await callback.answer()
+    if callback.message is None:
+        return
+    await callback.message.answer(BOTFATHER_STEP, reply_markup=botfather_keyboard())
+
+
 @router.callback_query(F.data == "onboarding:cryptobot_done")
 async def cryptobot_done(callback: types.CallbackQuery) -> None:
     await callback.answer("Отлично!")
