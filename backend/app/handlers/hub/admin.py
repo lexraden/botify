@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import get_session
-from app.models import Seller
+from app.models import Payout, Seller
 
 router = Router()
 
@@ -56,4 +56,45 @@ async def health(message: types.Message) -> None:
         "\nНе забудь включить <b>Security → Transfers</b> в приложении Crypto Pay — "
         "без этого выплаты продавцам не пройдут."
     )
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("payouts"))
+async def payouts(message: types.Message) -> None:
+    """/payouts — незавершённые выплаты с причиной отказа. Только для админов."""
+    if message.from_user is None:
+        return
+    async with get_session() as session:
+        seller = (
+            await session.execute(select(Seller).where(Seller.telegram_id == message.from_user.id))
+        ).scalar_one_or_none()
+        is_admin = (seller is not None and seller.is_admin) or (
+            message.from_user.id in get_settings().admin_ids
+        )
+        if not is_admin:
+            return
+
+        stuck = (
+            (
+                await session.execute(
+                    select(Payout)
+                    .where(Payout.status.in_(("pending", "failed")))
+                    .order_by(Payout.id.desc())
+                    .limit(10)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    if not stuck:
+        await message.answer("✅ Незавершённых выплат нет.")
+        return
+
+    lines = ["<b>Незавершённые выплаты</b>"]
+    for payout in stuck:
+        icon = "🔴" if payout.status == "failed" else "🟡"
+        lines.append(f"\n{icon} Заказ #{payout.order_id} — {payout.amount} USDT")
+        if payout.last_error:
+            lines.append(f"<code>{payout.last_error}</code>")
     await message.answer("\n".join(lines))

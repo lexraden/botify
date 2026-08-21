@@ -60,6 +60,8 @@ class Payout(Base, CreatedAtMixin):
     amount: Mapped[float] = mapped_column(Numeric(18, 6))
     commission: Mapped[float] = mapped_column(Numeric(18, 6))
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending | sent | failed
+    # Причина последнего отказа от Crypto Pay — чтобы не искать её в логах
+    last_error: Mapped[str | None] = mapped_column(String(512))
     transfer_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
