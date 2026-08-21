@@ -464,3 +464,79 @@ def test_fee_tier_hint_stops_at_the_cheapest_rate():
     assert _next_tier(Decimal(0)) == (Decimal(10_000), Decimal("2.9"))
     assert _next_tier(Decimal(30_000)) == (Decimal(20_000), Decimal("2.7"))
     assert _next_tier(Decimal(100_000)) is None
+
+
+@pytest.mark.asyncio
+async def test_failed_batch_is_retried_with_the_same_spend_id(db):
+    """Упавший перевод повторяется той же пачкой — Crypto Pay не заплатит дважды."""
+    from app.payments.payouts import flush_shop_payouts
+
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
+    await _paid_order_payout(db)
+    async with db() as session:
+        bot_id = (await session.execute(select(SellerBot))).scalars().first().id
+
+    # первая попытка обрывается уже после того, как Crypto Pay мог принять перевод
+    failing = SimpleNamespace(transfer=AsyncMock(side_effect=Exception("ReadTimeout")))
+    with (
+        patch("app.payments.payouts.get_crypto_pay", return_value=failing),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        assert await flush_shop_payouts(bot_id) is False
+
+    async with db() as session:
+        batch = (await session.execute(select(PayoutBatch))).scalar_one()
+        assert batch.status == "failed" and "ReadTimeout" in batch.last_error
+
+    retry = SimpleNamespace(transfer=AsyncMock(return_value=SimpleNamespace(transfer_id=606)))
+    with (
+        patch("app.payments.payouts.get_crypto_pay", return_value=retry),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        assert await flush_shop_payouts(bot_id) is True
+
+    # тот же spend_id и та же пачка: повторной выплаты по этим деньгам не будет
+    assert (
+        retry.transfer.call_args.kwargs["spend_id"]
+        == failing.transfer.call_args.kwargs["spend_id"]
+    )
+    async with db() as session:
+        batches = (await session.execute(select(PayoutBatch))).scalars().all()
+        assert len(batches) == 1 and batches[0].status == "sent"
+        payout = (await session.execute(select(Payout))).scalar_one()
+        assert payout.status == "sent" and payout.transfer_id == 606
+
+
+@pytest.mark.asyncio
+async def test_withdraw_twice_in_a_row_sends_one_transfer(db):
+    """Два нажатия «Вывести» подряд: перевод один, второй раз выводить нечего."""
+    from tests.test_api import client, seller_headers
+
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
+    await _paid_order_payout(db)
+    async with db() as session:
+        bot_id = (await session.execute(select(SellerBot))).scalars().first().id
+
+    fake_crypto = SimpleNamespace(
+        transfer=AsyncMock(return_value=SimpleNamespace(transfer_id=707))
+    )
+    with (
+        patch("app.payments.client.get_crypto_pay", return_value=fake_crypto),
+        patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        async with client() as c:
+            first = (
+                await c.post(
+                    f"/api/seller/bots/{bot_id}/payouts/withdraw", headers=seller_headers()
+                )
+            ).json()
+            second = (
+                await c.post(
+                    f"/api/seller/bots/{bot_id}/payouts/withdraw", headers=seller_headers()
+                )
+            ).json()
+
+    assert first["ok"] is True and float(first["sent"]) == pytest.approx(95.0)
+    assert second["ok"] is False and second["reason"] == "no_funds"
+    assert fake_crypto.transfer.await_count == 1

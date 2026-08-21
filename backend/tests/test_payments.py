@@ -120,3 +120,61 @@ async def test_unknown_invoice_ignored(db):
     p1, p2 = patched_notifications()
     with p1, p2:
         assert await handle_invoice_paid(999999, None) is False
+
+
+@pytest.mark.asyncio
+async def test_cryptopay_webhook_checks_signature_and_reads_fee(db):
+    """Вход денег: чужая подпись отбивается, своя — проводит оплату с фактической комиссией."""
+    import hashlib
+    import hmac
+    import json
+
+    from app.config import get_settings
+    from tests.test_api import client
+
+    order_id = await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
+    token = "12345:crypto-pay-token-for-tests"
+    body = json.dumps(
+        {
+            "update_type": "invoice_paid",
+            "payload": {
+                "invoice_id": 555001,
+                "payload": f"order:{order_id}",
+                "fee_amount": 2.9,
+                "fee_asset": "USDT",
+            },
+        }
+    ).encode()
+    secret = hashlib.sha256(token.encode()).digest()
+    signature = hmac.new(secret, body, hashlib.sha256).hexdigest()
+
+    settings = get_settings().model_copy(update={"crypto_pay_token": token})
+    with patch("app.payments.client.get_settings", return_value=settings):
+        async with client() as c:
+            r = await c.post(
+                "/webhook/cryptopay", content=body, headers={"crypto-pay-api-signature": "deadbeef"}
+            )
+            assert r.status_code == 403  # подделать вебхук нельзя
+
+            p1, p2 = patched_notifications()
+            with p1, p2:
+                r = await c.post(
+                    "/webhook/cryptopay",
+                    content=body,
+                    headers={"crypto-pay-api-signature": signature},
+                )
+            assert r.status_code == 200
+
+    async with db() as session:
+        assert (await session.get(Order, order_id)).status == "paid"
+        payout = (await session.execute(select(Payout))).scalar_one()
+        assert payout.amount == Decimal("95")  # продавцу — за вычетом наших 5%
+        assert payout.provider_fee == Decimal("2.9")  # фактическая из вебхука
+
+
+@pytest.mark.asyncio
+async def test_invoice_paid_survives_broken_payload(db):
+    """Мусор в payload не должен ронять обработку вебхука."""
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        assert await handle_invoice_paid(999999, "order:не-число") is False

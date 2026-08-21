@@ -63,9 +63,12 @@ async def health(message: types.Message) -> None:
         except Exception as exc:
             lines.append(f"\n⚠️ Баланс не прочитался: <code>{type(exc).__name__}: {exc}</code>")
 
-    # Адрес вебхука и напоминание про настройки — разовые вещи, в ежедневной
-    # сводке им не место; остаётся только сигнал о поломке
-    if not settings.webhook_base_url:
+    if settings.webhook_base_url:
+        lines.append(
+            "\nWebhook для настроек Crypto Pay:\n"
+            f"<code>{settings.webhook_base_url}/webhook/cryptopay</code>"
+        )
+    else:
         lines.append("\n⚠️ WEBHOOK_BASE_URL не задан — вебхуки не работают")
 
     lines += await _margin_lines()

@@ -60,11 +60,23 @@ async def handle_invoice_paid(
     from sqlalchemy.sql import func
 
     async with get_session() as session:
+        # FOR UPDATE: Crypto Pay ретраит вебхук, и две доставки подряд могут
+        # войти сюда одновременно. Без блокировки обе увидят pending_payment
+        # и обе пойдут создавать выплату.
         order = (
-            await session.execute(select(Order).where(Order.invoice_id == invoice_id))
+            await session.execute(
+                select(Order).where(Order.invoice_id == invoice_id).with_for_update()
+            )
         ).scalar_one_or_none()
         if order is None and payload and payload.startswith("order:"):
-            order = await session.get(Order, int(payload.split(":", 1)[1]))
+            # инвойс успели создать, но записать invoice_id заказу не успели
+            raw_id = payload.split(":", 1)[1]
+            if raw_id.isdigit():
+                order = (
+                    await session.execute(
+                        select(Order).where(Order.id == int(raw_id)).with_for_update()
+                    )
+                ).scalar_one_or_none()
 
         if order is None:
             logger.warning("invoice_paid для неизвестного invoice_id=%s", invoice_id)
