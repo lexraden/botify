@@ -247,6 +247,21 @@ async function submitMailing() {
           </div>
         </div>
 
+        <div class="card plan">
+          <div class="plan-head">
+            <b>Выплаты</b>
+            <span class="muted">комиссия {{ Number(summary.commission_pct) }}%</span>
+          </div>
+          <div class="plan-row">
+            <span>Накоплено к выплате</span>
+            <span class="num">{{ Number(summary.payout_pending).toFixed(2) }} USDT</span>
+          </div>
+          <p class="hint">
+            Деньги уходят в @CryptoBot автоматически, когда накопится
+            <span class="num">{{ Number(summary.payout_min).toFixed(2) }}</span> USDT.
+          </p>
+        </div>
+
         <div v-if="summary.limits" class="card plan">
           <div class="plan-head">
             <b>Тариф: {{ summary.limits.plan === 'pro' ? 'Pro' : 'Бесплатный' }}</b>
@@ -323,6 +338,7 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .plan-head .muted { font-size: 12px; }
 .plan-row { display: flex; justify-content: space-between; font-size: 14px; }
 .plan-row span:first-child { color: var(--sub); font-weight: 700; }
+.plan .hint { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--sub); }
 .empty { text-align: center; color: var(--sub); margin-top: 24px; }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
 </style>

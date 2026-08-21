@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_seller
+from app.config import get_settings
 from app.db import get_api_session
 from app.models import (
     Customer,
@@ -26,6 +27,7 @@ from app.models import (
     SellerBot,
     ShopEvent,
 )
+from app.payments.payouts import pending_total
 from app.plans import SERVICE_TYPES, is_pro, limits_for, over_limit
 
 router = APIRouter(prefix="/seller")
@@ -184,6 +186,8 @@ class ShopSummaryOut(BaseModel):
     orders_count: int
     revenue: Decimal
     commission_pct: Decimal
+    payout_pending: Decimal   # накоплено к выплате (по всем магазинам продавца)
+    payout_min: Decimal       # минимум, с которого уходит перевод
     limits: LimitsOut
 
 
@@ -255,6 +259,8 @@ async def shop_summary(
         orders_count=orders_count,
         revenue=revenue,
         commission_pct=seller.commission_pct,
+        payout_pending=await pending_total(session, seller.id),
+        payout_min=Decimal(str(get_settings().min_payout_usdt)),
         limits=await _limits_payload(session, seller, shop.id),
     )
 

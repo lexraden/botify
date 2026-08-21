@@ -48,8 +48,33 @@ class OrderItem(Base):
     order = relationship("Order", back_populates="items")
 
 
+class PayoutBatch(Base, CreatedAtMixin):
+    """Один transfer в Crypto Pay, покрывающий несколько выплат сразу.
+
+    У Crypto Pay есть минимальная сумма перевода, и одна продажа на пару
+    долларов её не набирает. Поэтому доли продавца копятся в payouts, а в
+    пачку попадают только когда сумма уже проходит минимум — так перевод
+    не отбивается с AMOUNT_TOO_SMALL.
+    """
+
+    __tablename__ = "payout_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="RESTRICT"), index=True)
+
+    amount: Mapped[float] = mapped_column(Numeric(18, 6))
+    # pending | sent | failed | too_small (минимум оказался выше нашего — копим дальше)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    last_error: Mapped[str | None] = mapped_column(String(512))
+    transfer_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    payouts = relationship("Payout", back_populates="batch")
+
+
 class Payout(Base, CreatedAtMixin):
-    """Выплата доли продавцу через Crypto Pay transfer на его telegram_id."""
+    """Доля продавца по одному заказу. Уходит не сама по себе, а в составе
+    PayoutBatch — см. app/payments/payouts.py."""
 
     __tablename__ = "payouts"
 
@@ -62,7 +87,12 @@ class Payout(Base, CreatedAtMixin):
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending | sent | failed
     # Причина последнего отказа от Crypto Pay — чтобы не искать её в логах
     last_error: Mapped[str | None] = mapped_column(String(512))
-    transfer_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+    # transfer_id общий для всей пачки, поэтому без unique
+    transfer_id: Mapped[int | None] = mapped_column(BigInteger)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("payout_batches.id", ondelete="SET NULL"), index=True
+    )
 
     order = relationship("Order", back_populates="payout")
+    batch = relationship("PayoutBatch", back_populates="payouts")

@@ -9,36 +9,48 @@ from app.payments.service import handle_invoice_paid
 from app.security import encrypt_bot_token
 
 
-async def make_order(db, product_type="digital", digital_url="https://guide.example/x"):
+async def make_order(
+    db,
+    product_type="digital",
+    digital_url="https://guide.example/x",
+    total=Decimal("100"),
+    invoice_id=555001,
+):
+    """Заказ в ожидании оплаты. Повторный вызов вешает заказ на того же продавца."""
     async with db() as session:
-        seller = Seller(telegram_id=111, cryptobot_connected=True)
-        session.add(seller)
-        await session.flush()
-        bot = SellerBot(
-            seller_id=seller.id,
-            bot_token_encrypted=encrypt_bot_token("111:token-for-tests-aaaaaaaaaaaaaaaaaaaaaa"),
-            bot_username="shop_bot",
-            telegram_bot_id=42,
-        )
-        session.add(bot)
-        await session.flush()
-        customer = Customer(telegram_id=777, seller_id=seller.id, bot_id=bot.id)
+        seller = (await session.execute(select(Seller).where(Seller.telegram_id == 111))).scalar_one_or_none()
+        if seller is None:
+            seller = Seller(telegram_id=111, cryptobot_connected=True)
+            session.add(seller)
+            await session.flush()
+            bot = SellerBot(
+                seller_id=seller.id,
+                bot_token_encrypted=encrypt_bot_token("111:token-for-tests-aaaaaaaaaaaaaaaaaaaaaa"),
+                bot_username="shop_bot",
+                telegram_bot_id=42,
+            )
+            session.add(bot)
+            await session.flush()
+            session.add(Customer(telegram_id=777, seller_id=seller.id, bot_id=bot.id))
+            await session.flush()
+        bot = (await session.execute(select(SellerBot).where(SellerBot.seller_id == seller.id))).scalars().first()
+        customer = (await session.execute(select(Customer).where(Customer.bot_id == bot.id))).scalars().first()
         product = Product(
             seller_id=seller.id,
             bot_id=bot.id,
             type=product_type,
             title="Гайд",
-            price=Decimal("100"),
+            price=total,
             digital_content={"url": digital_url} if digital_url else None,
         )
-        session.add_all([customer, product])
+        session.add(product)
         await session.flush()
         order = Order(
             seller_id=seller.id,
             bot_id=bot.id,
             customer_id=customer.id,
-            total=Decimal("100"),
-            invoice_id=555001,
+            total=total,
+            invoice_id=invoice_id,
         )
         session.add(order)
         await session.flush()
