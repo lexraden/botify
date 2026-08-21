@@ -281,7 +281,7 @@ async function submitMailing() {
             <b class="num">{{ stats.purchases }}</b><span>покупок</span>
           </div>
           <div class="card metric green">
-            <b class="num">{{ Number(stats.total_sales).toFixed(0) }}</b><span>USDT оборот</span>
+            <b class="num">{{ Number(stats.total_sales).toFixed(2) }}</b><span>USDT оборот</span>
           </div>
           <div class="card metric">
             <b class="num">{{ stats.repeat_customers }}</b><span>повторных покупателей</span>
@@ -324,10 +324,8 @@ async function submitMailing() {
           </div>
 
           <p class="hint">
-            Комиссия Botify {{ Number(summary.commission_pct) }}% и комиссия @CryptoBot
-            ~{{ Number(summary.provider_fee_pct) }}% уже вычтены. Деньги уходят сами, когда
-            наберётся <span class="num">{{ minPayout.toFixed(2) }}</span> USDT — кнопка нужна,
-            чтобы не ждать.
+            Комиссия {{ Number(summary.commission_pct) }}%. Минимальный порог вывода —
+            <span class="num">{{ minPayout.toFixed(2) }}</span> USDT.
           </p>
         </div>
 
