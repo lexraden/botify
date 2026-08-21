@@ -35,7 +35,7 @@ export const trackEvent = (type, productId = null) =>
 export const fetchMe = () => api.get('/seller/me').then((r) => r.data)
 export const confirmPayment = () => api.post('/seller/onboarding/payment-done').then((r) => r.data)
 export const connectBot = (token) => api.post('/seller/bots', { token }).then((r) => r.data)
-export const withdrawPayout = () => api.post('/seller/payouts/withdraw').then((r) => r.data)
+
 
 // --- всё ниже — в контексте конкретного магазина (bot_id) ---
 export const fetchShopSummary = (botId) =>
@@ -53,6 +53,8 @@ export const deleteProduct = (botId, id) =>
 export const fetchShopOrders = (botId) => api.get(`/seller/bots/${botId}/orders`).then((r) => r.data)
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
+export const withdrawPayout = (botId) =>
+  api.post(`/seller/bots/${botId}/payouts/withdraw`).then((r) => r.data)
 export const fetchMailings = (botId) => api.get(`/seller/bots/${botId}/mailings`).then((r) => r.data)
 export const createMailing = (botId, data) =>
   api.post(`/seller/bots/${botId}/mailings`, data).then((r) => r.data)

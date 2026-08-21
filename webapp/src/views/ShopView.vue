@@ -44,6 +44,7 @@ const withdrawLabel = computed(() => {
 const WITHDRAW_ERROR = {
   no_funds: 'Пока нечего выводить.',
   below_min: 'Накопленного ещё не хватает для перевода.',
+  no_token: 'Выплаты временно недоступны — уже разбираемся.',
   failed: 'Перевод не прошёл — подробности пришли в чат с ботом.',
 }
 
@@ -52,7 +53,7 @@ async function onWithdraw() {
   withdrawing.value = true
   withdrawNote.value = ''
   try {
-    const res = await withdrawPayout()
+    const res = await withdrawPayout(botId.value)
     withdrawNote.value = res.ok
       ? `✅ ${Number(res.sent).toFixed(2)} USDT отправлены в @CryptoBot`
       : WITHDRAW_ERROR[res.reason] || 'Не получилось вывести.'
@@ -288,7 +289,7 @@ async function submitMailing() {
         <div class="card plan">
           <div class="plan-head"><b>Выплаты</b></div>
           <div class="plan-row">
-            <span>Накоплено к выплате</span>
+            <span>Накоплено в этом магазине</span>
             <span class="num">{{ pending.toFixed(2) }} USDT</span>
           </div>
           <div class="plan-row">
@@ -304,9 +305,9 @@ async function submitMailing() {
           </button>
           <p v-if="withdrawNote" class="hint note">{{ withdrawNote }}</p>
           <p class="hint">
-            Деньги уходят в @CryptoBot сами, когда накопится
-            <span class="num">{{ minPayout.toFixed(2) }}</span> USDT — кнопка нужна,
-            только если не хочешь ждать.
+            У каждого бота своя касса. Деньги уходят в @CryptoBot сами, когда в этом
+            магазине накопится <span class="num">{{ minPayout.toFixed(2) }}</span> USDT —
+            кнопка нужна, только если не хочешь ждать.
           </p>
         </div>
 

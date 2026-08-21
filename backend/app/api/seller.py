@@ -186,7 +186,7 @@ class ShopSummaryOut(BaseModel):
     orders_count: int
     revenue: Decimal
     commission_pct: Decimal
-    payout_pending: Decimal   # накоплено к выплате (по всем магазинам продавца)
+    payout_pending: Decimal   # накоплено к выплате в этом магазине
     payout_min: Decimal       # минимум, с которого уходит перевод
     provider_fee_pct: Decimal  # комиссия Crypto Pay, идёт сверх нашей
     limits: LimitsOut
@@ -260,7 +260,7 @@ async def shop_summary(
         orders_count=orders_count,
         revenue=revenue,
         commission_pct=seller.commission_pct,
-        payout_pending=await pending_total(session, seller.id),
+        payout_pending=await pending_total(session, shop.id),
         payout_min=Decimal(str(get_settings().min_payout_usdt)),
         provider_fee_pct=Decimal(str(get_settings().crypto_pay_fee_pct)),
         limits=await _limits_payload(session, seller, shop.id),
@@ -272,24 +272,25 @@ class WithdrawOut(BaseModel):
     sent: Decimal            # сколько ушло (0, если не ушло)
     pending: Decimal         # сколько осталось накоплено после попытки
     minimum: Decimal
-    reason: str | None       # no_funds | below_min | failed
+    reason: str | None       # no_funds | below_min | no_token | failed
 
 
-@router.post("/payouts/withdraw", response_model=WithdrawOut)
+@router.post("/bots/{bot_id}/payouts/withdraw", response_model=WithdrawOut)
 async def withdraw(
-    seller: Seller = Depends(get_seller),
+    shop: SellerBot = Depends(get_shop),
     session: AsyncSession = Depends(get_api_session),
 ) -> WithdrawOut:
-    """Забрать накопленное в @CryptoBot по кнопке, не дожидаясь часового ретрая.
+    """Забрать накопленное этим магазином, не дожидаясь часового ретрая.
 
-    Сама отправка идёт тем же путём, что и автоматическая (одна пачка на
-    продавца, идемпотентный spend_id), поэтому повторное нажатие не может
-    отправить деньги дважды.
+    Касса у каждого бота своя, поэтому кнопка выводит деньги только своего
+    магазина. Отправка идёт тем же путём, что и автоматическая (одна пачка,
+    идемпотентный spend_id), поэтому повторное нажатие не задваивает перевод.
     """
-    from app.payments.payouts import flush_seller_payouts
+    from app.payments.client import get_crypto_pay
+    from app.payments.payouts import flush_shop_payouts
 
     minimum = Decimal(str(get_settings().min_payout_usdt))
-    before = await pending_total(session, seller.id)
+    before = await pending_total(session, shop.id)
     if before <= 0:
         return WithdrawOut(
             ok=False, sent=Decimal(0), pending=before, minimum=minimum, reason="no_funds"
@@ -298,9 +299,14 @@ async def withdraw(
         return WithdrawOut(
             ok=False, sent=Decimal(0), pending=before, minimum=minimum, reason="below_min"
         )
+    if get_crypto_pay() is None:
+        # оплата не настроена на стороне платформы — это не вина продавца
+        return WithdrawOut(
+            ok=False, sent=Decimal(0), pending=before, minimum=minimum, reason="no_token"
+        )
 
-    ok = await flush_seller_payouts(seller.id)
-    after = await pending_total(session, seller.id)
+    ok = await flush_shop_payouts(shop.id)
+    after = await pending_total(session, shop.id)
     return WithdrawOut(
         ok=ok,
         sent=before - after if ok else Decimal(0),

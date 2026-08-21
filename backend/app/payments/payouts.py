@@ -1,7 +1,11 @@
 """Выплаты продавцам через Crypto Pay transfer.
 
+Деньги копятся и выводятся **по магазину**, а не по продавцу целиком: один
+подключённый бот — один магазин со своей кассой. У продавца с тремя ботами
+три отдельных накопления, и каждое ждёт своего минимума.
+
 Доля продавца по каждому заказу пишется в `payouts`, но переводом уходит не
-она сама, а `PayoutBatch` — сумма всех накопленных долей. Так сделано из-за
+она сама, а `PayoutBatch` — сумма накопленных долей одного магазина. Так сделано из-за
 минимальной суммы перевода в Crypto Pay: одна продажа на пару долларов её не
 набирает, и transfer отбивается с AMOUNT_TOO_SMALL. Пачка создаётся только
 когда накопленное уже проходит минимум (MIN_PAYOUT_USDT), поэтому заведомо
@@ -22,7 +26,7 @@ from sqlalchemy.sql import func
 from app.config import get_settings
 from app.db import get_session
 from app.money import fmt
-from app.models import Payout, PayoutBatch, Seller
+from app.models import Payout, PayoutBatch, Seller, SellerBot
 from app.payments.client import get_crypto_pay
 
 logger = logging.getLogger(__name__)
@@ -50,24 +54,19 @@ def _failure_message(amount: Decimal | float, error: str | None) -> str:
     return f"⚠️ Выплата {fmt(amount)} USDT пока не ушла.\n{hint}{detail}"
 
 
-async def pending_payout_total(seller_id: int) -> Decimal:
-    """Сколько у продавца накоплено и ещё не выплачено."""
-    async with get_session() as session:
-        return await pending_total(session, seller_id)
-
-
-async def pending_total(session, seller_id: int) -> Decimal:
+async def pending_total(session, bot_id: int) -> Decimal:
+    """Сколько в этом магазине накоплено и ещё не выплачено."""
     total = (
         await session.execute(
             select(func.coalesce(func.sum(Payout.amount), 0)).where(
-                Payout.seller_id == seller_id, Payout.status.in_(UNSENT)
+                Payout.bot_id == bot_id, Payout.status.in_(UNSENT)
             )
         )
     ).scalar_one()
     return Decimal(total)
 
 
-async def _claim_batch(session, seller_id: int, minimum: Decimal) -> PayoutBatch | None:
+async def _claim_batch(session, bot_id: int, minimum: Decimal) -> PayoutBatch | None:
     """Пачка к отправке: незавершённая существующая или новая, если набралось.
 
     Возвращает None, если отправлять нечего — тогда доли просто копятся дальше
@@ -78,7 +77,7 @@ async def _claim_batch(session, seller_id: int, minimum: Decimal) -> PayoutBatch
     batch = (
         await session.execute(
             select(PayoutBatch)
-            .where(PayoutBatch.seller_id == seller_id, PayoutBatch.status.in_(UNSENT))
+            .where(PayoutBatch.bot_id == bot_id, PayoutBatch.status.in_(UNSENT))
             .order_by(PayoutBatch.id)
             .limit(1)
         )
@@ -91,7 +90,7 @@ async def _claim_batch(session, seller_id: int, minimum: Decimal) -> PayoutBatch
             await session.execute(
                 select(Payout)
                 .where(
-                    Payout.seller_id == seller_id,
+                    Payout.bot_id == bot_id,
                     Payout.status.in_(UNSENT),
                     Payout.batch_id.is_(None),
                 )
@@ -105,7 +104,7 @@ async def _claim_batch(session, seller_id: int, minimum: Decimal) -> PayoutBatch
     if not payouts or total < minimum:
         return None
 
-    batch = PayoutBatch(seller_id=seller_id, amount=total)
+    batch = PayoutBatch(seller_id=payouts[0].seller_id, bot_id=bot_id, amount=total)
     session.add(batch)
     await session.flush()
     for payout in payouts:
@@ -113,8 +112,8 @@ async def _claim_batch(session, seller_id: int, minimum: Decimal) -> PayoutBatch
     return batch
 
 
-async def flush_seller_payouts(seller_id: int) -> bool:
-    """Отправить накопленное продавцу. True — перевод ушёл этим вызовом."""
+async def flush_shop_payouts(bot_id: int) -> bool:
+    """Отправить накопленное по магазину. True — перевод ушёл этим вызовом."""
     crypto = get_crypto_pay()
     if crypto is None:
         return False  # нет токена (локальная разработка) — выплаты остаются pending
@@ -122,12 +121,14 @@ async def flush_seller_payouts(seller_id: int) -> bool:
     minimum = Decimal(str(get_settings().min_payout_usdt))
 
     async with get_session() as session:
-        batch = await _claim_batch(session, seller_id, minimum)
+        batch = await _claim_batch(session, bot_id, minimum)
         if batch is None:
             await session.commit()
             return False
-        seller = await session.get(Seller, seller_id)
-        batch_id, amount, seller_tg = batch.id, Decimal(batch.amount), seller.telegram_id
+        seller = await session.get(Seller, batch.seller_id)
+        shop = await session.get(SellerBot, bot_id)
+        batch_id, amount = batch.id, Decimal(batch.amount)
+        seller_tg, shop_name = seller.telegram_id, shop.bot_username
         await session.commit()
 
     try:
@@ -179,7 +180,9 @@ async def flush_seller_payouts(seller_id: int) -> bool:
 
     if ok:
         await _notify_seller(
-            seller_tg, f"💸 Выплата <b>{fmt(amount)} USDT</b> отправлена в @CryptoBot."
+            seller_tg,
+            f"💸 Выплата <b>{fmt(amount)} USDT</b> по магазину @{shop_name} "
+            "отправлена в @CryptoBot.",
         )
     elif not too_small:
         await _notify_seller(seller_tg, _failure_message(amount, error))
@@ -196,31 +199,31 @@ async def _notify_seller(seller_tg: int, text: str) -> None:
 
 
 async def send_payout(payout_id: int) -> bool:
-    """Попытка выплаты после конкретного заказа: уйдёт всё накопленное сразу."""
+    """Попытка выплаты после конкретного заказа: уйдёт всё накопленное магазином."""
     async with get_session() as session:
         payout = await session.get(Payout, payout_id)
         if payout is None:
             return False
         if payout.status == "sent":
             return True
-        seller_id = payout.seller_id
-    return await flush_seller_payouts(seller_id)
+        bot_id = payout.bot_id
+    return await flush_shop_payouts(bot_id)
 
 
 async def process_unsent_payouts() -> None:
-    """Ежечасный ретрай: по одному переводу на продавца, а не на заказ."""
+    """Ежечасный ретрай: по одному переводу на магазин, а не на заказ."""
     async with get_session() as session:
-        sellers = [
+        shops = [
             row[0]
             for row in (
                 await session.execute(
-                    select(Payout.seller_id).where(Payout.status.in_(UNSENT)).distinct()
+                    select(Payout.bot_id).where(Payout.status.in_(UNSENT)).distinct()
                 )
             ).all()
         ]
 
-    for seller_id in sellers:
+    for bot_id in shops:
         try:
-            await flush_seller_payouts(seller_id)
+            await flush_shop_payouts(bot_id)
         except Exception:
-            logger.exception("Ошибка при ретрае выплат продавца %s", seller_id)
+            logger.exception("Ошибка при ретрае выплат магазина %s", bot_id)

@@ -61,6 +61,11 @@ class PayoutBatch(Base, CreatedAtMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="RESTRICT"), index=True)
+    # Выплаты копятся по магазину, а не по продавцу целиком: один бот —
+    # один магазин со своими деньгами (docs/project-brief.md, п. 8.3)
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="RESTRICT"), index=True
+    )
 
     amount: Mapped[float] = mapped_column(Numeric(18, 6))
     # pending | sent | failed | too_small (минимум оказался выше нашего — копим дальше)
@@ -81,6 +86,10 @@ class Payout(Base, CreatedAtMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="RESTRICT"), unique=True)
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="RESTRICT"), index=True)
+    # Магазин, в котором прошла продажа — по нему копится и выводится выплата
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="RESTRICT"), index=True
+    )
 
     amount: Mapped[float] = mapped_column(Numeric(18, 6))
     commission: Mapped[float] = mapped_column(Numeric(18, 6))  # наша комиссия

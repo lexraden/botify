@@ -135,9 +135,10 @@ cd backend && DATABASE_URL=postgresql+asyncpg://botify:botify@localhost:5432/bot
 - **Схема БД меняется только миграцией.** Alembic-autogenerate тут не
   используется (нужна живая БД с историей) — миграции пишутся руками, с
   `downgrade` и, если надо, с бэкфиллом данных.
-- **Выплаты копятся, а не уходят по заказу** (`app/payments/payouts.py`):
-  у Crypto Pay свой минимум на transfer, ниже него — `AMOUNT_TOO_SMALL`.
-  Порог — `MIN_PAYOUT_USDT`.
+- **Выплаты копятся по магазину, а не по заказу и не по продавцу**
+  (`app/payments/payouts.py`): у каждого бота своя касса, у Crypto Pay свой
+  минимум на transfer (ниже него — `AMOUNT_TOO_SMALL`). Порог —
+  `MIN_PAYOUT_USDT`; сам transfer комиссии не берёт (проверено переводом).
 - **Две комиссии, и обе с продавца.** Наши `commission_pct` считаются от суммы
   заказа, комиссия Crypto Pay (`payouts.provider_fee`) идёт сверх неё; берётся
   фактическая из вебхука, при её отсутствии — `CRYPTO_PAY_FEE_PCT`.

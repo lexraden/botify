@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy import select
 
-from app.models import Payout, PayoutBatch, Seller
+from app.models import Payout, PayoutBatch, SellerBot
 from app.payments.payouts import send_payout
 from tests.test_api import buyer_headers, client, seller_headers, setup_shop
 from tests.test_payments import make_order, patched_notifications
@@ -181,7 +181,7 @@ async def test_payouts_of_several_orders_go_in_one_transfer(db):
         db, product_type="physical", digital_url=None, total=Decimal("1"), invoice_id=555002
     )
 
-    from app.payments.payouts import flush_seller_payouts
+    from app.payments.payouts import flush_shop_payouts
 
     p1, p2 = patched_notifications()
     with p1, p2:
@@ -198,8 +198,8 @@ async def test_payouts_of_several_orders_go_in_one_transfer(db):
         patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as hub_mock,
     ):
         async with db() as session:
-            seller_id = (await session.execute(select(Seller))).scalars().first().id
-        assert await flush_seller_payouts(seller_id) is True
+            bot_id = (await session.execute(select(SellerBot))).scalars().first().id
+        assert await flush_shop_payouts(bot_id) is True
 
     assert fake_crypto.transfer.await_count == 1
     assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(1.84)  # 2 × 0.92
@@ -301,9 +301,12 @@ async def test_withdraw_button_flow(db):
 
         await handle_invoice_paid(555001, None)
 
+    async with db() as session:
+        bot_id = (await session.execute(select(SellerBot))).scalars().first().id
+
     # 1 USDT − 5% − 3% = 0.92, до минимума в 2 USDT не хватает
     async with client() as c:
-        r = await c.post("/api/seller/payouts/withdraw", headers=seller_headers())
+        r = await c.post(f"/api/seller/bots/{bot_id}/payouts/withdraw", headers=seller_headers())
         body = r.json()
     assert body["ok"] is False and body["reason"] == "below_min"
     assert float(body["pending"]) == pytest.approx(0.92)
@@ -319,12 +322,17 @@ async def test_withdraw_button_flow(db):
     fake_crypto = SimpleNamespace(
         transfer=AsyncMock(return_value=SimpleNamespace(transfer_id=99001))
     )
+    # эндпоинт проверяет наличие клиента отдельно от payouts.py, поэтому
+    # подменяем оба места: иначе кнопка честно ответит «оплата не настроена»
     with (
+        patch("app.payments.client.get_crypto_pay", return_value=fake_crypto),
         patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
         patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
     ):
         async with client() as c:
-            r = await c.post("/api/seller/payouts/withdraw", headers=seller_headers())
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/payouts/withdraw", headers=seller_headers()
+            )
             body = r.json()
 
     assert body["ok"] is True
@@ -333,8 +341,54 @@ async def test_withdraw_button_flow(db):
     assert fake_crypto.transfer.await_count == 1
 
     # повторное нажатие уже ничего не отправляет
-    with patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto):
+    with (
+        patch("app.payments.client.get_crypto_pay", return_value=fake_crypto),
+        patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
+    ):
         async with client() as c:
-            r = await c.post("/api/seller/payouts/withdraw", headers=seller_headers())
+            r = await c.post(f"/api/seller/bots/{bot_id}/payouts/withdraw", headers=seller_headers())
     assert r.json()["reason"] == "no_funds"
     assert fake_crypto.transfer.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_each_shop_has_its_own_till(db):
+    """У двух ботов одного продавца кассы раздельные и не смешиваются."""
+    from app.payments.payouts import flush_shop_payouts, pending_total
+    from app.security import encrypt_bot_token
+
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
+    await _paid_order_payout(db)  # выплата 92 в первом магазине
+
+    async with db() as session:
+        shop_a = (await session.execute(select(SellerBot))).scalars().first()
+        shop_b = SellerBot(
+            seller_id=shop_a.seller_id,
+            bot_token_encrypted=encrypt_bot_token("222:second-shop-token-aaaaaaaaaaaaaaaa"),
+            bot_username="second_shop_bot",
+            telegram_bot_id=222333444,
+        )
+        session.add(shop_b)
+        await session.commit()
+        a_id, b_id = shop_a.id, shop_b.id
+
+    async with db() as session:
+        assert await pending_total(session, a_id) == Decimal("92.000000")
+        assert await pending_total(session, b_id) == Decimal("0")  # чужие деньги не видны
+
+    fake_crypto = SimpleNamespace(
+        transfer=AsyncMock(return_value=SimpleNamespace(transfer_id=7001))
+    )
+    with (
+        patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as hub_mock,
+    ):
+        # во втором магазине выводить нечего — перевода нет
+        assert await flush_shop_payouts(b_id) is False
+        assert fake_crypto.transfer.await_count == 0
+        # в первом — уходит только его сумма
+        assert await flush_shop_payouts(a_id) is True
+
+    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(92.0)
+    # в уведомлении названо, по какому именно магазину пришли деньги
+    assert "@shop_bot" in hub_mock.call_args.args[1]

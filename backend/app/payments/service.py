@@ -85,6 +85,7 @@ async def handle_invoice_paid(
         payout = Payout(
             order_id=order.id,
             seller_id=seller.id,
+            bot_id=order.bot_id,
             amount=max(order.total - commission - provider_fee, Decimal(0)),
             commission=commission,
             provider_fee=provider_fee,

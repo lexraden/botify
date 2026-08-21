@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.db import get_session
-from app.models import Payout, PayoutBatch, Seller
+from app.models import Payout, PayoutBatch, Seller, SellerBot
 from app.money import fmt
 
 router = Router()
@@ -89,14 +89,15 @@ async def payouts(message: types.Message) -> None:
         accrued = (
             await session.execute(
                 select(
-                    Payout.seller_id,
+                    SellerBot.bot_username,
                     func.sum(Payout.amount),
                     func.count(),
                     Seller.telegram_id,
                 )
                 .join(Seller, Seller.id == Payout.seller_id)
+                .join(SellerBot, SellerBot.id == Payout.bot_id)
                 .where(Payout.status.in_(("pending", "failed")))
-                .group_by(Payout.seller_id, Seller.telegram_id)
+                .group_by(SellerBot.bot_username, Seller.telegram_id)
                 .order_by(func.sum(Payout.amount).desc())
                 .limit(10)
             )
@@ -121,10 +122,10 @@ async def payouts(message: types.Message) -> None:
     lines = []
     if accrued:
         lines.append("<b>Накоплено к выплате</b>")
-        for seller_id, total, count, telegram_id in accrued:
+        for bot_username, total, count, telegram_id in accrued:
             icon = "🟢" if Decimal(total) >= minimum else "🟡"
             lines.append(
-                f"{icon} продавец #{seller_id} (tg <code>{telegram_id}</code>) — "
+                f"{icon} @{bot_username} (продавец <code>{telegram_id}</code>) — "
                 f"{fmt(total)} USDT за {count} зак."
             )
         lines.append(f"\n🟡 = меньше минимума ({fmt(minimum)} USDT), ждёт следующих продаж")
