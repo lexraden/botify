@@ -42,9 +42,9 @@ async def create_invoice_for_order(order_id: int, total: Decimal) -> str | None:
 def _provider_fee(total: Decimal, fee_amount: Decimal | None) -> Decimal:
     """Сколько Crypto Pay удержал с этого платежа.
 
-    Точное значение приходит в вебхуке (fee_amount) — его и берём. Если поле
-    не пришло, считаем по ставке из настроек, чтобы доля продавца всё равно
-    не уехала в минус за счёт платформы.
+    На долю продавца не влияет — это расход платформы из её же комиссии.
+    Пишем в БД, чтобы маржа была видна: наша комиссия минус эта сумма.
+    Точное значение приходит в вебхуке (fee_amount), иначе — по ставке.
     """
     if fee_amount is not None and fee_amount >= 0:
         return Decimal(fee_amount).quantize(Decimal("0.000001"))
@@ -78,15 +78,16 @@ async def handle_invoice_paid(
         seller = await session.get(Seller, order.seller_id)
         customer = await session.get(Customer, order.customer_id)
 
-        # Наша комиссия считается от суммы заказа и достаётся нам целиком;
-        # комиссия Crypto Pay идёт сверх неё и тоже уменьшает долю продавца
+        # С продавца берём только нашу комиссию. Комиссию Crypto Pay платформа
+        # платит из неё же, поэтому доля продавца от неё не зависит; сама
+        # комиссия сервиса пишется в provider_fee, чтобы видеть реальную маржу.
         commission = (order.total * seller.commission_pct / 100).quantize(Decimal("0.000001"))
         provider_fee = _provider_fee(order.total, fee_amount)
         payout = Payout(
             order_id=order.id,
             seller_id=seller.id,
             bot_id=order.bot_id,
-            amount=max(order.total - commission - provider_fee, Decimal(0)),
+            amount=order.total - commission,
             commission=commission,
             provider_fee=provider_fee,
         )

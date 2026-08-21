@@ -78,10 +78,10 @@ async def test_invoice_paid_delivers_digital_and_creates_payout(db):
         assert order.status == "delivered"  # digital выдан сразу
         assert order.paid_at is not None
         payout = (await session.execute(select(Payout))).scalar_one()
-        # наши 5% + 3% Crypto Pay: 100 − 5 − 3
+        # с продавца только наши 5%; комиссию сервиса платим из них
         assert payout.commission == Decimal("5")
         assert payout.provider_fee == Decimal("3")
-        assert payout.amount == Decimal("92")
+        assert payout.amount == Decimal("95")
         assert payout.status == "pending"
 
     # покупатель получил ссылку, продавец — уведомление

@@ -324,8 +324,8 @@ async function submitMailing() {
           </div>
 
           <p class="hint">
-            Комиссия {{ Number(summary.commission_pct) }}%. Минимальный порог вывода —
-            <span class="num">{{ minPayout.toFixed(2) }}</span> USDT.
+            Комиссия {{ Number(summary.commission_pct) }}% · вывод от
+            <span class="num">{{ minPayout.toFixed(2) }}</span> USDT
           </p>
         </div>
 

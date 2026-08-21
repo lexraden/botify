@@ -98,7 +98,7 @@ async def test_send_payout_success_and_idempotent(db):
         assert await send_payout(payout_id) is True
     assert fake_crypto.transfer.await_count == 1
     assert fake_crypto.transfer.call_args.kwargs["spend_id"].startswith("batch-")
-    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(92.0)
+    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(95.0)
 
     async with db() as session:
         payout = await session.get(Payout, payout_id)
@@ -202,8 +202,8 @@ async def test_payouts_of_several_orders_go_in_one_transfer(db):
         assert await flush_shop_payouts(bot_id) is True
 
     assert fake_crypto.transfer.await_count == 1
-    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(1.84)  # 2 × 0.92
-    assert "1.84" in hub_mock.call_args.args[1]
+    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(1.90)  # 2 × 0.95
+    assert "1.90" in hub_mock.call_args.args[1]
 
     async with db() as session:
         payouts = (await session.execute(select(Payout))).scalars().all()
@@ -237,8 +237,8 @@ async def test_amount_too_small_releases_batch_for_later(db):
 
 
 @pytest.mark.asyncio
-async def test_provider_fee_comes_off_the_seller_share(db):
-    """Комиссия Crypto Pay идёт сверх нашей и уменьшает долю продавца."""
+async def test_provider_fee_is_paid_by_the_platform(db):
+    """С продавца берём только наши 5%; комиссию сервиса платим из них."""
     await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
 
     from app.payments.service import handle_invoice_paid
@@ -250,14 +250,15 @@ async def test_provider_fee_comes_off_the_seller_share(db):
 
     async with db() as session:
         payout = (await session.execute(select(Payout))).scalar_one()
-        assert Decimal(payout.commission) == Decimal("5.000000")   # наши 5% целиком
+        assert Decimal(payout.commission) == Decimal("5.000000")
+        assert Decimal(payout.amount) == Decimal("95.000000")      # 100 − 5, и только
+        # комиссия сервиса записана, но долю продавца не трогает: маржа 5 − 3 = 2
         assert Decimal(payout.provider_fee) == Decimal("3.000000")
-        assert Decimal(payout.amount) == Decimal("92.000000")      # 100 − 5 − 3
 
 
 @pytest.mark.asyncio
 async def test_provider_fee_falls_back_to_configured_rate(db):
-    """Если вебхук не прислал комиссию — считаем по ставке, а не в ноль."""
+    """Если вебхук не прислал комиссию сервиса — оцениваем её по ставке."""
     await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
 
     from app.payments.service import handle_invoice_paid
@@ -269,7 +270,7 @@ async def test_provider_fee_falls_back_to_configured_rate(db):
     async with db() as session:
         payout = (await session.execute(select(Payout))).scalar_one()
         assert Decimal(payout.provider_fee) == Decimal("3.000000")  # 3% по умолчанию
-        assert Decimal(payout.amount) == Decimal("92.000000")
+        assert Decimal(payout.amount) == Decimal("95.000000")  # на выплату не влияет
 
 
 @pytest.mark.asyncio
@@ -304,12 +305,12 @@ async def test_withdraw_button_flow(db):
     async with db() as session:
         bot_id = (await session.execute(select(SellerBot))).scalars().first().id
 
-    # 1 USDT − 5% − 3% = 0.92, до минимума в 2 USDT не хватает
+    # 1 USDT − 5% = 0.95, до минимума в 2 USDT не хватает
     async with client() as c:
         r = await c.post(f"/api/seller/bots/{bot_id}/payouts/withdraw", headers=seller_headers())
         body = r.json()
     assert body["ok"] is False and body["reason"] == "below_min"
-    assert float(body["pending"]) == pytest.approx(0.92)
+    assert float(body["pending"]) == pytest.approx(0.95)
 
     # добираем вторую продажу — теперь накоплено больше минимума
     await make_order(
@@ -336,7 +337,7 @@ async def test_withdraw_button_flow(db):
             body = r.json()
 
     assert body["ok"] is True
-    assert float(body["sent"]) == pytest.approx(5.52)  # 0.92 + 4.60
+    assert float(body["sent"]) == pytest.approx(5.70)  # 0.95 + 4.75
     assert float(body["pending"]) == 0
     assert fake_crypto.transfer.await_count == 1
 
@@ -358,7 +359,7 @@ async def test_each_shop_has_its_own_till(db):
     from app.security import encrypt_bot_token
 
     await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
-    await _paid_order_payout(db)  # выплата 92 в первом магазине
+    await _paid_order_payout(db)  # выплата 95 в первом магазине
 
     async with db() as session:
         shop_a = (await session.execute(select(SellerBot))).scalars().first()
@@ -373,7 +374,7 @@ async def test_each_shop_has_its_own_till(db):
         a_id, b_id = shop_a.id, shop_b.id
 
     async with db() as session:
-        assert await pending_total(session, a_id) == Decimal("92.000000")
+        assert await pending_total(session, a_id) == Decimal("95.000000")
         assert await pending_total(session, b_id) == Decimal("0")  # чужие деньги не видны
 
     fake_crypto = SimpleNamespace(
@@ -389,7 +390,7 @@ async def test_each_shop_has_its_own_till(db):
         # в первом — уходит только его сумма
         assert await flush_shop_payouts(a_id) is True
 
-    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(92.0)
+    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(95.0)
     # в уведомлении названо, по какому именно магазину пришли деньги
     assert "@shop_bot" in hub_mock.call_args.args[1]
 
@@ -409,7 +410,7 @@ async def test_summary_splits_balance_and_paid_out(db):
         summary = (
             await c.get(f"/api/seller/bots/{bot_id}/summary", headers=seller_headers())
         ).json()
-    assert float(summary["payout_pending"]) == pytest.approx(92.0)  # баланс
+    assert float(summary["payout_pending"]) == pytest.approx(95.0)  # баланс
     assert float(summary["payout_paid"]) == 0  # ещё ничего не уходило
 
     fake_crypto = SimpleNamespace(
@@ -429,4 +430,4 @@ async def test_summary_splits_balance_and_paid_out(db):
         ).json()
     # деньги переехали из баланса в выплаченное, «всего заработано» не изменилось
     assert float(summary["payout_pending"]) == 0
-    assert float(summary["payout_paid"]) == pytest.approx(92.0)
+    assert float(summary["payout_paid"]) == pytest.approx(95.0)

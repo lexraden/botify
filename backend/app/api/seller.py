@@ -189,7 +189,6 @@ class ShopSummaryOut(BaseModel):
     payout_pending: Decimal   # накоплено к выплате в этом магазине (баланс)
     payout_paid: Decimal      # уже выплачено этому магазину
     payout_min: Decimal       # минимум, с которого уходит перевод
-    provider_fee_pct: Decimal  # комиссия Crypto Pay, идёт сверх нашей
     limits: LimitsOut
 
 
@@ -264,7 +263,6 @@ async def shop_summary(
         payout_pending=await pending_total(session, shop.id),
         payout_paid=await paid_total(session, shop.id),
         payout_min=Decimal(str(get_settings().min_payout_usdt)),
-        provider_fee_pct=Decimal(str(get_settings().crypto_pay_fee_pct)),
         limits=await _limits_payload(session, seller, shop.id),
     )
 
