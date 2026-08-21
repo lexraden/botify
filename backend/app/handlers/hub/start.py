@@ -84,6 +84,9 @@ async def cmd_start(message: types.Message, state: FSMContext) -> None:
             # обновляем то, что могло поменяться
             seller.username = tg_user.username
             seller.first_name = tg_user.first_name
+            # права админа пересчитываем каждый раз: ADMIN_TELEGRAM_IDS могли
+            # заполнить уже после первого /start этого аккаунта
+            seller.is_admin = tg_user.id in get_settings().admin_ids
             bots = list(
                 (
                     await session.execute(
