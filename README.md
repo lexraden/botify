@@ -3,7 +3,8 @@
 Telegram Bot + Mini App маркетплейс: hub-бот для продавцов, seller-боты для их
 покупателей, витрина-Mini App, оплата в USDT через Crypto Pay (@CryptoBot).
 
-Бриф: `docs/project-brief.md` · Аудит и план: `docs/AUDIT.md`
+Бриф: `docs/project-brief.md` · Аудит и план: `docs/AUDIT.md` · Правила работы
+с Claude Code и команды проекта: `CLAUDE.md`
 
 ## Структура
 
