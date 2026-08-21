@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from app.config import get_settings
 from app.db import get_session
 from app.models import Payout, PayoutBatch, Seller
+from app.money import fmt
 
 router = Router()
 
@@ -34,7 +35,7 @@ async def health(message: types.Message) -> None:
     lines = [
         "<b>Платежи</b>",
         f"Сеть: <b>{settings.crypto_pay_network}</b>",
-        f"Минимум для выплаты: <b>{settings.min_payout_usdt} USDT</b>",
+        f"Минимум для выплаты: <b>{fmt(settings.min_payout_usdt)} USDT</b>",
     ]
 
     from app.payments.client import get_crypto_pay
@@ -54,7 +55,9 @@ async def health(message: types.Message) -> None:
             if non_zero:
                 lines.append("\n<b>Баланс приложения</b>")
                 for b in non_zero:
-                    lines.append(f"• {b.currency_code}: {b.available} (в холде {b.onhold})")
+                    lines.append(
+                        f"• {b.currency_code}: {fmt(b.available)} (в холде {fmt(b.onhold)})"
+                    )
             else:
                 lines.append("\n⚠️ Баланс приложения пуст — выплатам не из чего уходить")
         except Exception as exc:
@@ -122,15 +125,15 @@ async def payouts(message: types.Message) -> None:
             icon = "🟢" if Decimal(total) >= minimum else "🟡"
             lines.append(
                 f"{icon} продавец #{seller_id} (tg <code>{telegram_id}</code>) — "
-                f"{total} USDT за {count} зак."
+                f"{fmt(total)} USDT за {count} зак."
             )
-        lines.append(f"\n🟡 = меньше минимума ({minimum} USDT), ждёт следующих продаж")
+        lines.append(f"\n🟡 = меньше минимума ({fmt(minimum)} USDT), ждёт следующих продаж")
 
     if batches:
         lines.append("\n<b>Пачки, которые не ушли</b>")
         for batch in batches:
             icon = {"failed": "🔴", "too_small": "🟡"}.get(batch.status, "⏳")
-            lines.append(f"\n{icon} #{batch.id} — {batch.amount} USDT ({batch.status})")
+            lines.append(f"\n{icon} #{batch.id} — {fmt(batch.amount)} USDT ({batch.status})")
             if batch.last_error:
                 lines.append(f"<code>{batch.last_error}</code>")
 
@@ -153,7 +156,7 @@ async def testpayout(message: types.Message, command: CommandObject) -> None:
         await message.answer(
             "Формат: <code>/testpayout telegram_id сумма</code>\n"
             "Например: <code>/testpayout 123456789 1</code>\n"
-            f"Это настоящий перевод, максимум {TEST_PAYOUT_MAX} USDT."
+            f"Это настоящий перевод, максимум {fmt(TEST_PAYOUT_MAX)} USDT."
         )
         return
     try:
@@ -162,7 +165,7 @@ async def testpayout(message: types.Message, command: CommandObject) -> None:
         await message.answer("Не разобрал аргументы: нужен telegram_id и сумма числом.")
         return
     if amount <= 0 or amount > TEST_PAYOUT_MAX:
-        await message.answer(f"Сумма должна быть от 0 до {TEST_PAYOUT_MAX} USDT.")
+        await message.answer(f"Сумма должна быть от 0 до {fmt(TEST_PAYOUT_MAX)} USDT.")
         return
 
     from app.payments.client import get_crypto_pay
@@ -181,7 +184,7 @@ async def testpayout(message: types.Message, command: CommandObject) -> None:
         )
     except Exception as exc:
         await message.answer(
-            f"❌ Перевод {amount} USDT на <code>{user_id}</code> не прошёл:\n"
+            f"❌ Перевод {fmt(amount)} USDT на <code>{user_id}</code> не прошёл:\n"
             f"<code>{type(exc).__name__}: {exc}</code>\n\n"
             "AMOUNT_TOO_SMALL — сумма ниже минимума Crypto Pay, попробуй больше.\n"
             "USER_NOT_FOUND — получатель ни разу не открывал @CryptoBot.\n"
@@ -189,6 +192,6 @@ async def testpayout(message: types.Message, command: CommandObject) -> None:
         )
         return
     await message.answer(
-        f"✅ Перевод прошёл: {amount} USDT на <code>{user_id}</code>, "
+        f"✅ Перевод прошёл: {fmt(amount)} USDT на <code>{user_id}</code>, "
         f"transfer_id <code>{transfer.transfer_id}</code>."
     )

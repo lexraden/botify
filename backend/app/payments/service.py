@@ -7,7 +7,9 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from app.bots.runner import make_seller_bot
+from app.config import get_settings
 from app.db import get_session
+from app.money import fmt
 from app.models import Customer, Order, OrderItem, Payout, Product, Seller
 from app.payments.client import get_crypto_pay
 from app.security import decrypt_bot_token
@@ -37,7 +39,22 @@ async def create_invoice_for_order(order_id: int, total: Decimal) -> str | None:
     return invoice.bot_invoice_url
 
 
-async def handle_invoice_paid(invoice_id: int, payload: str | None) -> bool:
+def _provider_fee(total: Decimal, fee_amount: Decimal | None) -> Decimal:
+    """Сколько Crypto Pay удержал с этого платежа.
+
+    Точное значение приходит в вебхуке (fee_amount) — его и берём. Если поле
+    не пришло, считаем по ставке из настроек, чтобы доля продавца всё равно
+    не уехала в минус за счёт платформы.
+    """
+    if fee_amount is not None and fee_amount >= 0:
+        return Decimal(fee_amount).quantize(Decimal("0.000001"))
+    rate = Decimal(str(get_settings().crypto_pay_fee_pct))
+    return (total * rate / 100).quantize(Decimal("0.000001"))
+
+
+async def handle_invoice_paid(
+    invoice_id: int, payload: str | None, fee_amount: Decimal | None = None
+) -> bool:
     """Обработка вебхука invoice_paid. Идемпотентна: повторный вызов — no-op.
     Возвращает True, если заказ был переведён в оплаченные этим вызовом."""
     from sqlalchemy.sql import func
@@ -61,12 +78,16 @@ async def handle_invoice_paid(invoice_id: int, payload: str | None) -> bool:
         seller = await session.get(Seller, order.seller_id)
         customer = await session.get(Customer, order.customer_id)
 
+        # Наша комиссия считается от суммы заказа и достаётся нам целиком;
+        # комиссия Crypto Pay идёт сверх неё и тоже уменьшает долю продавца
         commission = (order.total * seller.commission_pct / 100).quantize(Decimal("0.000001"))
+        provider_fee = _provider_fee(order.total, fee_amount)
         payout = Payout(
             order_id=order.id,
             seller_id=seller.id,
-            amount=order.total - commission,
+            amount=max(order.total - commission - provider_fee, Decimal(0)),
             commission=commission,
+            provider_fee=provider_fee,
         )
         session.add(payout)
         await session.flush()
@@ -121,7 +142,7 @@ async def handle_invoice_paid(invoice_id: int, payload: str | None) -> bool:
     try:
         await hub_bot.send_message(
             seller_tg,
-            f"💰 Твой товар купили! Заказ #{order_id} на {order_total} USDT оплачен.\n"
+            f"💰 Твой товар купили! Заказ #{order_id} на {fmt(order_total)} USDT оплачен.\n"
             + (
                 "Digital-контент выдан автоматически."
                 if digital_lines and all_digital

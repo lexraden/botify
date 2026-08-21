@@ -188,6 +188,7 @@ class ShopSummaryOut(BaseModel):
     commission_pct: Decimal
     payout_pending: Decimal   # накоплено к выплате (по всем магазинам продавца)
     payout_min: Decimal       # минимум, с которого уходит перевод
+    provider_fee_pct: Decimal  # комиссия Crypto Pay, идёт сверх нашей
     limits: LimitsOut
 
 
@@ -261,7 +262,51 @@ async def shop_summary(
         commission_pct=seller.commission_pct,
         payout_pending=await pending_total(session, seller.id),
         payout_min=Decimal(str(get_settings().min_payout_usdt)),
+        provider_fee_pct=Decimal(str(get_settings().crypto_pay_fee_pct)),
         limits=await _limits_payload(session, seller, shop.id),
+    )
+
+
+class WithdrawOut(BaseModel):
+    ok: bool                 # ушёл ли перевод этим вызовом
+    sent: Decimal            # сколько ушло (0, если не ушло)
+    pending: Decimal         # сколько осталось накоплено после попытки
+    minimum: Decimal
+    reason: str | None       # no_funds | below_min | failed
+
+
+@router.post("/payouts/withdraw", response_model=WithdrawOut)
+async def withdraw(
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> WithdrawOut:
+    """Забрать накопленное в @CryptoBot по кнопке, не дожидаясь часового ретрая.
+
+    Сама отправка идёт тем же путём, что и автоматическая (одна пачка на
+    продавца, идемпотентный spend_id), поэтому повторное нажатие не может
+    отправить деньги дважды.
+    """
+    from app.payments.payouts import flush_seller_payouts
+
+    minimum = Decimal(str(get_settings().min_payout_usdt))
+    before = await pending_total(session, seller.id)
+    if before <= 0:
+        return WithdrawOut(
+            ok=False, sent=Decimal(0), pending=before, minimum=minimum, reason="no_funds"
+        )
+    if before < minimum:
+        return WithdrawOut(
+            ok=False, sent=Decimal(0), pending=before, minimum=minimum, reason="below_min"
+        )
+
+    ok = await flush_seller_payouts(seller.id)
+    after = await pending_total(session, seller.id)
+    return WithdrawOut(
+        ok=ok,
+        sent=before - after if ok else Decimal(0),
+        pending=after,
+        minimum=minimum,
+        reason=None if ok else "failed",
     )
 
 

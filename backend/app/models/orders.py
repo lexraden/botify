@@ -83,7 +83,10 @@ class Payout(Base, CreatedAtMixin):
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="RESTRICT"), index=True)
 
     amount: Mapped[float] = mapped_column(Numeric(18, 6))
-    commission: Mapped[float] = mapped_column(Numeric(18, 6))
+    commission: Mapped[float] = mapped_column(Numeric(18, 6))  # наша комиссия
+    # Комиссия Crypto Pay за приём платежа: она удерживается сервисом с
+    # поступления, поэтому вычитается из доли продавца, а не из нашей
+    provider_fee: Mapped[float] = mapped_column(Numeric(18, 6), default=0)
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending | sent | failed
     # Причина последнего отказа от Crypto Pay — чтобы не искать её в логах
     last_error: Mapped[str | None] = mapped_column(String(512))

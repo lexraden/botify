@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from decimal import Decimal
 from pathlib import Path
 
 from aiogram import types
@@ -102,9 +103,15 @@ async def cryptopay_webhook(request: Request) -> dict:
         update = await request.json()
         if update.get("update_type") == "invoice_paid":
             invoice = update.get("payload", {})
+            # Crypto Pay сообщает удержанную им комиссию — она вычитается из
+            # доли продавца, поэтому берём фактическое значение, а не оценку
+            fee = invoice.get("fee_amount")
+            if fee is not None and invoice.get("fee_asset") not in (None, "USDT"):
+                fee = None  # комиссия в другой валюте — считаем по ставке
             await handle_invoice_paid(
                 invoice_id=invoice.get("invoice_id"),
                 payload=invoice.get("payload"),
+                fee_amount=Decimal(str(fee)) if fee is not None else None,
             )
     except Exception:
         logger.exception("Ошибка обработки вебхука Crypto Pay")

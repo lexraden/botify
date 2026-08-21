@@ -21,6 +21,7 @@ from sqlalchemy.sql import func
 
 from app.config import get_settings
 from app.db import get_session
+from app.money import fmt
 from app.models import Payout, PayoutBatch, Seller
 from app.payments.client import get_crypto_pay
 
@@ -46,7 +47,7 @@ def _failure_message(amount: Decimal | float, error: str | None) -> str:
     else:
         hint = "Мы повторим выплату автоматически в течение часа."
     detail = f"\n\n<code>{error}</code>" if error else ""
-    return f"⚠️ Выплата {amount} USDT пока не ушла.\n{hint}{detail}"
+    return f"⚠️ Выплата {fmt(amount)} USDT пока не ушла.\n{hint}{detail}"
 
 
 async def pending_payout_total(seller_id: int) -> Decimal:
@@ -70,7 +71,9 @@ async def _claim_batch(session, seller_id: int, minimum: Decimal) -> PayoutBatch
     """Пачка к отправке: незавершённая существующая или новая, если набралось.
 
     Возвращает None, если отправлять нечего — тогда доли просто копятся дальше
-    и продавца мы не тревожим.
+    и продавца мы не тревожим. Выплаты выбираются с FOR UPDATE: кнопка
+    «Вывести» и часовой ретрай могут прийти одновременно, и без блокировки
+    получилось бы два перевода по одним и тем же деньгам.
     """
     batch = (
         await session.execute(
@@ -86,11 +89,13 @@ async def _claim_batch(session, seller_id: int, minimum: Decimal) -> PayoutBatch
     payouts = list(
         (
             await session.execute(
-                select(Payout).where(
+                select(Payout)
+                .where(
                     Payout.seller_id == seller_id,
                     Payout.status.in_(UNSENT),
                     Payout.batch_id.is_(None),
                 )
+                .with_for_update()
             )
         )
         .scalars()
@@ -173,7 +178,9 @@ async def flush_seller_payouts(seller_id: int) -> bool:
         await session.commit()
 
     if ok:
-        await _notify_seller(seller_tg, f"💸 Выплата <b>{amount} USDT</b> отправлена в @CryptoBot.")
+        await _notify_seller(
+            seller_tg, f"💸 Выплата <b>{fmt(amount)} USDT</b> отправлена в @CryptoBot."
+        )
     elif not too_small:
         await _notify_seller(seller_tg, _failure_message(amount, error))
     return ok

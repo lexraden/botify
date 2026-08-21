@@ -11,6 +11,7 @@ import {
   fetchShopStats,
   fetchShopSummary,
   fulfillOrder,
+  withdrawPayout,
 } from '../api'
 
 const route = useRoute()
@@ -25,6 +26,43 @@ const mailings = ref([])
 const shopsCount = ref(0)
 const error = ref('')
 const tab = ref('products')
+
+const withdrawing = ref(false)
+const withdrawNote = ref('')
+
+const pending = computed(() => Number(summary.value?.payout_pending ?? 0))
+const minPayout = computed(() => Number(summary.value?.payout_min ?? 0))
+const canWithdraw = computed(() => pending.value >= minPayout.value && pending.value > 0)
+
+const withdrawLabel = computed(() => {
+  if (withdrawing.value) return 'Отправляем…'
+  if (pending.value <= 0) return 'Пока нечего выводить'
+  if (!canWithdraw.value) return `Ещё ${(minPayout.value - pending.value).toFixed(2)} USDT до вывода`
+  return `Вывести ${pending.value.toFixed(2)} USDT`
+})
+
+const WITHDRAW_ERROR = {
+  no_funds: 'Пока нечего выводить.',
+  below_min: 'Накопленного ещё не хватает для перевода.',
+  failed: 'Перевод не прошёл — подробности пришли в чат с ботом.',
+}
+
+async function onWithdraw() {
+  if (!canWithdraw.value || withdrawing.value) return
+  withdrawing.value = true
+  withdrawNote.value = ''
+  try {
+    const res = await withdrawPayout()
+    withdrawNote.value = res.ok
+      ? `✅ ${Number(res.sent).toFixed(2)} USDT отправлены в @CryptoBot`
+      : WITHDRAW_ERROR[res.reason] || 'Не получилось вывести.'
+    summary.value = await fetchShopSummary(botId.value)
+  } catch {
+    withdrawNote.value = 'Не получилось вывести — попробуй ещё раз.'
+  } finally {
+    withdrawing.value = false
+  }
+}
 
 const STATUS = {
   pending_payment: '⏳ Ждёт оплаты',
@@ -248,17 +286,27 @@ async function submitMailing() {
         </div>
 
         <div class="card plan">
-          <div class="plan-head">
-            <b>Выплаты</b>
-            <span class="muted">комиссия {{ Number(summary.commission_pct) }}%</span>
-          </div>
+          <div class="plan-head"><b>Выплаты</b></div>
           <div class="plan-row">
             <span>Накоплено к выплате</span>
-            <span class="num">{{ Number(summary.payout_pending).toFixed(2) }} USDT</span>
+            <span class="num">{{ pending.toFixed(2) }} USDT</span>
           </div>
+          <div class="plan-row">
+            <span>Комиссия Botify</span>
+            <span class="num">{{ Number(summary.commission_pct) }}%</span>
+          </div>
+          <div class="plan-row">
+            <span>Комиссия @CryptoBot</span>
+            <span class="num">~{{ Number(summary.provider_fee_pct) }}%</span>
+          </div>
+          <button class="btn withdraw" :disabled="!canWithdraw || withdrawing" @click="onWithdraw">
+            {{ withdrawLabel }}
+          </button>
+          <p v-if="withdrawNote" class="hint note">{{ withdrawNote }}</p>
           <p class="hint">
-            Деньги уходят в @CryptoBot автоматически, когда накопится
-            <span class="num">{{ Number(summary.payout_min).toFixed(2) }}</span> USDT.
+            Деньги уходят в @CryptoBot сами, когда накопится
+            <span class="num">{{ minPayout.toFixed(2) }}</span> USDT — кнопка нужна,
+            только если не хочешь ждать.
           </p>
         </div>
 
@@ -339,6 +387,9 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .plan-row { display: flex; justify-content: space-between; font-size: 14px; }
 .plan-row span:first-child { color: var(--sub); font-weight: 700; }
 .plan .hint { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--sub); }
+.plan .note { color: var(--text); font-weight: 700; }
+.btn.withdraw { margin-top: 4px; width: 100%; }
+.btn.withdraw:disabled { opacity: .5; }
 .empty { text-align: center; color: var(--sub); margin-top: 24px; }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
 </style>

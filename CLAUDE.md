@@ -138,4 +138,9 @@ cd backend && DATABASE_URL=postgresql+asyncpg://botify:botify@localhost:5432/bot
 - **Выплаты копятся, а не уходят по заказу** (`app/payments/payouts.py`):
   у Crypto Pay свой минимум на transfer, ниже него — `AMOUNT_TOO_SMALL`.
   Порог — `MIN_PAYOUT_USDT`.
+- **Две комиссии, и обе с продавца.** Наши `commission_pct` считаются от суммы
+  заказа, комиссия Crypto Pay (`payouts.provider_fee`) идёт сверх неё; берётся
+  фактическая из вебхука, при её отсутствии — `CRYPTO_PAY_FEE_PCT`.
+- **Суммы наружу — только через `app/money.py:fmt()`.** В БД `Numeric(18, 6)`,
+  в тексте это «1.000000».
 - Тексты бота и Mini App — на «ты», по-русски.

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # /testpayout — ниже 2 USDT перевод отбивается с AMOUNT_TOO_SMALL.
     # Меньше этого выплаты копятся и уходят пачкой (app/payments/payouts.py).
     min_payout_usdt: float = 2.0
+    # Комиссия самого Crypto Pay за приём платежа. Точное значение приходит
+    # в вебхуке (fee_amount) — это оценка на случай, если его там нет.
+    crypto_pay_fee_pct: float = 3.0
 
     # Ключ Fernet: токены seller-ботов никогда не хранятся в БД открытым текстом
     bot_token_encryption_key: str

@@ -98,7 +98,7 @@ async def test_send_payout_success_and_idempotent(db):
         assert await send_payout(payout_id) is True
     assert fake_crypto.transfer.await_count == 1
     assert fake_crypto.transfer.call_args.kwargs["spend_id"].startswith("batch-")
-    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(95.0)
+    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(92.0)
 
     async with db() as session:
         payout = await session.get(Payout, payout_id)
@@ -202,8 +202,8 @@ async def test_payouts_of_several_orders_go_in_one_transfer(db):
         assert await flush_seller_payouts(seller_id) is True
 
     assert fake_crypto.transfer.await_count == 1
-    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(1.9)  # 2 × 0.95
-    assert "1.9" in hub_mock.call_args.args[1]
+    assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(1.84)  # 2 × 0.92
+    assert "1.84" in hub_mock.call_args.args[1]
 
     async with db() as session:
         payouts = (await session.execute(select(Payout))).scalars().all()
@@ -234,3 +234,107 @@ async def test_amount_too_small_releases_batch_for_later(db):
         assert payout.batch_id is None  # пачка распущена, сумма растёт дальше
         batch = (await session.execute(select(PayoutBatch))).scalar_one()
         assert batch.status == "too_small" and "AMOUNT_TOO_SMALL" in batch.last_error
+
+
+@pytest.mark.asyncio
+async def test_provider_fee_comes_off_the_seller_share(db):
+    """Комиссия Crypto Pay идёт сверх нашей и уменьшает долю продавца."""
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
+
+    from app.payments.service import handle_invoice_paid
+
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        # Crypto Pay сообщил, что удержал 3 USDT со стодолларового платежа
+        await handle_invoice_paid(555001, None, fee_amount=Decimal("3"))
+
+    async with db() as session:
+        payout = (await session.execute(select(Payout))).scalar_one()
+        assert Decimal(payout.commission) == Decimal("5.000000")   # наши 5% целиком
+        assert Decimal(payout.provider_fee) == Decimal("3.000000")
+        assert Decimal(payout.amount) == Decimal("92.000000")      # 100 − 5 − 3
+
+
+@pytest.mark.asyncio
+async def test_provider_fee_falls_back_to_configured_rate(db):
+    """Если вебхук не прислал комиссию — считаем по ставке, а не в ноль."""
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
+
+    from app.payments.service import handle_invoice_paid
+
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        await handle_invoice_paid(555001, None)
+
+    async with db() as session:
+        payout = (await session.execute(select(Payout))).scalar_one()
+        assert Decimal(payout.provider_fee) == Decimal("3.000000")  # 3% по умолчанию
+        assert Decimal(payout.amount) == Decimal("92.000000")
+
+
+@pytest.mark.asyncio
+async def test_seller_message_shows_two_decimals(db):
+    """В чат уходит «1.00 USDT», а не «1.000000»."""
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("1"))
+
+    from app.payments.service import handle_invoice_paid
+
+    with (
+        patch("app.payments.service._notify", new=AsyncMock()),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as hub_mock,
+    ):
+        await handle_invoice_paid(555001, None)
+
+    text = hub_mock.call_args.args[1]
+    assert "1.00 USDT" in text and "1.000000" not in text
+
+
+@pytest.mark.asyncio
+async def test_withdraw_button_flow(db):
+    """Кнопка «Вывести»: копится — отказ, набралось — перевод уходит."""
+    from tests.test_api import client, seller_headers
+
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("1"))
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        from app.payments.service import handle_invoice_paid
+
+        await handle_invoice_paid(555001, None)
+
+    # 1 USDT − 5% − 3% = 0.92, до минимума в 2 USDT не хватает
+    async with client() as c:
+        r = await c.post("/api/seller/payouts/withdraw", headers=seller_headers())
+        body = r.json()
+    assert body["ok"] is False and body["reason"] == "below_min"
+    assert float(body["pending"]) == pytest.approx(0.92)
+
+    # добираем вторую продажу — теперь накоплено больше минимума
+    await make_order(
+        db, product_type="physical", digital_url=None, total=Decimal("5"), invoice_id=555002
+    )
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        await handle_invoice_paid(555002, None)
+
+    fake_crypto = SimpleNamespace(
+        transfer=AsyncMock(return_value=SimpleNamespace(transfer_id=99001))
+    )
+    with (
+        patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        async with client() as c:
+            r = await c.post("/api/seller/payouts/withdraw", headers=seller_headers())
+            body = r.json()
+
+    assert body["ok"] is True
+    assert float(body["sent"]) == pytest.approx(5.52)  # 0.92 + 4.60
+    assert float(body["pending"]) == 0
+    assert fake_crypto.transfer.await_count == 1
+
+    # повторное нажатие уже ничего не отправляет
+    with patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto):
+        async with client() as c:
+            r = await c.post("/api/seller/payouts/withdraw", headers=seller_headers())
+    assert r.json()["reason"] == "no_funds"
+    assert fake_crypto.transfer.await_count == 1
