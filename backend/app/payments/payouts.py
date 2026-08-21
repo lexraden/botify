@@ -66,6 +66,18 @@ async def pending_total(session, bot_id: int) -> Decimal:
     return Decimal(total)
 
 
+async def paid_total(session, bot_id: int) -> Decimal:
+    """Сколько этот магазин уже получил на руки."""
+    total = (
+        await session.execute(
+            select(func.coalesce(func.sum(Payout.amount), 0)).where(
+                Payout.bot_id == bot_id, Payout.status == "sent"
+            )
+        )
+    ).scalar_one()
+    return Decimal(total)
+
+
 async def _claim_batch(session, bot_id: int, minimum: Decimal) -> PayoutBatch | None:
     """Пачка к отправке: незавершённая существующая или новая, если набралось.
 

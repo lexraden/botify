@@ -27,19 +27,18 @@ const shopsCount = ref(0)
 const error = ref('')
 const tab = ref('products')
 
+// --- кошелёк магазина ---
 const withdrawing = ref(false)
 const withdrawNote = ref('')
+const withdrawFailed = ref(false)
 
-const pending = computed(() => Number(summary.value?.payout_pending ?? 0))
-const minPayout = computed(() => Number(summary.value?.payout_min ?? 0))
-const canWithdraw = computed(() => pending.value >= minPayout.value && pending.value > 0)
-
-const withdrawLabel = computed(() => {
-  if (withdrawing.value) return 'Отправляем…'
-  if (pending.value <= 0) return 'Пока нечего выводить'
-  if (!canWithdraw.value) return `Ещё ${(minPayout.value - pending.value).toFixed(2)} USDT до вывода`
-  return `Вывести ${pending.value.toFixed(2)} USDT`
-})
+const money = (v) => Number(v ?? 0)
+const balance = computed(() => money(summary.value?.payout_pending))
+const paidOut = computed(() => money(summary.value?.payout_paid))
+const earned = computed(() => balance.value + paidOut.value)
+const minPayout = computed(() => money(summary.value?.payout_min))
+const canWithdraw = computed(() => balance.value > 0 && balance.value >= minPayout.value)
+const leftToMin = computed(() => Math.max(0, minPayout.value - balance.value))
 
 const WITHDRAW_ERROR = {
   no_funds: 'Пока нечего выводить.',
@@ -52,13 +51,16 @@ async function onWithdraw() {
   if (!canWithdraw.value || withdrawing.value) return
   withdrawing.value = true
   withdrawNote.value = ''
+  withdrawFailed.value = false
   try {
     const res = await withdrawPayout(botId.value)
+    withdrawFailed.value = !res.ok
     withdrawNote.value = res.ok
-      ? `✅ ${Number(res.sent).toFixed(2)} USDT отправлены в @CryptoBot`
+      ? `${Number(res.sent).toFixed(2)} USDT отправлены в @CryptoBot`
       : WITHDRAW_ERROR[res.reason] || 'Не получилось вывести.'
     summary.value = await fetchShopSummary(botId.value)
   } catch {
+    withdrawFailed.value = true
     withdrawNote.value = 'Не получилось вывести — попробуй ещё раз.'
   } finally {
     withdrawing.value = false
@@ -171,7 +173,7 @@ async function submitMailing() {
           <b class="num">{{ summary.orders_count }}</b><span>заказов</span>
         </div>
         <div class="card stat green">
-          <b class="num">{{ Number(summary.revenue).toFixed(0) }}</b><span>USDT</span>
+          <b class="num">{{ balance.toFixed(2) }}</b><span>USDT баланс</span>
         </div>
       </div>
 
@@ -279,35 +281,53 @@ async function submitMailing() {
             <b class="num">{{ stats.purchases }}</b><span>покупок</span>
           </div>
           <div class="card metric green">
-            <b class="num">{{ Number(stats.total_sales).toFixed(0) }}</b><span>USDT продаж</span>
+            <b class="num">{{ Number(stats.total_sales).toFixed(0) }}</b><span>USDT оборот</span>
           </div>
           <div class="card metric">
             <b class="num">{{ stats.repeat_customers }}</b><span>повторных покупателей</span>
           </div>
         </div>
 
-        <div class="card plan">
-          <div class="plan-head"><b>Выплаты</b></div>
-          <div class="plan-row">
-            <span>Накоплено в этом магазине</span>
-            <span class="num">{{ pending.toFixed(2) }} USDT</span>
+        <div class="card wallet">
+          <span class="wallet-label">Баланс магазина</span>
+          <div class="wallet-sum">
+            <b class="num">{{ balance.toFixed(2) }}</b><span>USDT</span>
           </div>
-          <div class="plan-row">
-            <span>Комиссия Botify</span>
-            <span class="num">{{ Number(summary.commission_pct) }}%</span>
-          </div>
-          <div class="plan-row">
-            <span>Комиссия @CryptoBot</span>
-            <span class="num">~{{ Number(summary.provider_fee_pct) }}%</span>
-          </div>
-          <button class="btn withdraw" :disabled="!canWithdraw || withdrawing" @click="onWithdraw">
-            {{ withdrawLabel }}
+          <p class="wallet-state" :class="canWithdraw ? 'ready' : 'wait'">
+            <template v-if="canWithdraw">Готово к выводу</template>
+            <template v-else-if="balance > 0">
+              Ещё <span class="num">{{ leftToMin.toFixed(2) }}</span> USDT до вывода
+            </template>
+            <template v-else>Здесь копятся деньги с продаж</template>
+          </p>
+
+          <button
+            class="btn btn-green wallet-btn"
+            :disabled="!canWithdraw || withdrawing"
+            @click="onWithdraw"
+          >
+            {{ withdrawing ? 'Отправляем…' : 'Вывести' }}
           </button>
-          <p v-if="withdrawNote" class="hint note">{{ withdrawNote }}</p>
+          <p v-if="withdrawNote" class="wallet-note" :class="{ err: withdrawFailed }">
+            {{ withdrawNote }}
+          </p>
+
+          <div class="wallet-rows">
+            <div class="plan-row">
+              <span>Всего заработано</span>
+              <span class="num">{{ earned.toFixed(2) }} USDT</span>
+            </div>
+            <div class="plan-row">
+              <span>Уже выплачено</span>
+              <span class="num">{{ paidOut.toFixed(2) }} USDT</span>
+            </div>
+          </div>
+
           <p class="hint">
-            У каждого бота своя касса. Деньги уходят в @CryptoBot сами, когда в этом
-            магазине накопится <span class="num">{{ minPayout.toFixed(2) }}</span> USDT —
-            кнопка нужна, только если не хочешь ждать.
+            Комиссия Botify {{ Number(summary.commission_pct) }}% и комиссия @CryptoBot
+            ~{{ Number(summary.provider_fee_pct) }}% уже вычтены. Деньги уходят сами, когда
+            наберётся <span class="num">{{ minPayout.toFixed(2) }}</span> USDT — кнопка нужна,
+            чтобы не ждать.
           </p>
         </div>
 
@@ -388,9 +408,24 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .plan-row { display: flex; justify-content: space-between; font-size: 14px; }
 .plan-row span:first-child { color: var(--sub); font-weight: 700; }
 .plan .hint { margin: 2px 0 0; font-size: 12px; line-height: 1.45; color: var(--sub); }
-.plan .note { color: var(--text); font-weight: 700; }
-.btn.withdraw { margin-top: 4px; width: 100%; }
-.btn.withdraw:disabled { opacity: .5; }
+
+/* Кошелёк: крупная сумма, под ней статус, потом действие */
+.wallet { margin-top: 12px; display: flex; flex-direction: column; gap: 0; }
+.wallet-label { font-size: 13px; font-weight: 700; color: var(--sub); }
+.wallet-sum { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; }
+.wallet-sum b { font-size: 34px; line-height: 1.1; letter-spacing: -0.5px; }
+.wallet-sum span { font-size: 15px; font-weight: 700; color: var(--sub); }
+.wallet-state { margin: 4px 0 0; font-size: 13px; font-weight: 700; }
+.wallet-state.ready { color: var(--green-text); }
+.wallet-state.wait { color: var(--sub); }
+.wallet-btn { width: 100%; height: 46px; margin-top: 14px; font-size: 15px; }
+.wallet-note { margin: 8px 0 0; font-size: 13px; font-weight: 700; color: var(--green-text); }
+.wallet-note.err { color: var(--red); }
+.wallet-rows {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+}
+.wallet .hint { margin: 10px 0 0; font-size: 12px; line-height: 1.45; color: var(--sub); }
 .empty { text-align: center; color: var(--sub); margin-top: 24px; }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
 </style>

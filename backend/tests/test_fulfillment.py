@@ -392,3 +392,41 @@ async def test_each_shop_has_its_own_till(db):
     assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(92.0)
     # в уведомлении названо, по какому именно магазину пришли деньги
     assert "@shop_bot" in hub_mock.call_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_summary_splits_balance_and_paid_out(db):
+    """Кабинет различает баланс (ещё у нас) и выплаченное (уже у продавца)."""
+    from tests.test_api import client, seller_headers
+
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
+    await _paid_order_payout(db)
+
+    async with db() as session:
+        bot_id = (await session.execute(select(SellerBot))).scalars().first().id
+
+    async with client() as c:
+        summary = (
+            await c.get(f"/api/seller/bots/{bot_id}/summary", headers=seller_headers())
+        ).json()
+    assert float(summary["payout_pending"]) == pytest.approx(92.0)  # баланс
+    assert float(summary["payout_paid"]) == 0  # ещё ничего не уходило
+
+    fake_crypto = SimpleNamespace(
+        transfer=AsyncMock(return_value=SimpleNamespace(transfer_id=8100))
+    )
+    with (
+        patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        from app.payments.payouts import flush_shop_payouts
+
+        assert await flush_shop_payouts(bot_id) is True
+
+    async with client() as c:
+        summary = (
+            await c.get(f"/api/seller/bots/{bot_id}/summary", headers=seller_headers())
+        ).json()
+    # деньги переехали из баланса в выплаченное, «всего заработано» не изменилось
+    assert float(summary["payout_pending"]) == 0
+    assert float(summary["payout_paid"]) == pytest.approx(92.0)
