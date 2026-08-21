@@ -15,9 +15,10 @@ class Settings(BaseSettings):
 
     crypto_pay_token: str = ""
     crypto_pay_network: str = "mainnet"  # mainnet | testnet (@CryptoTestnetBot)
-    # Минимальная сумма одного transfer в Crypto Pay. Меньше этого выплаты
-    # копятся и уходят пачкой (см. app/payments/payouts.py).
-    min_payout_usdt: float = 1.0
+    # Минимальная сумма одного transfer в Crypto Pay: замерена через
+    # /testpayout — ниже 2 USDT перевод отбивается с AMOUNT_TOO_SMALL.
+    # Меньше этого выплаты копятся и уходят пачкой (app/payments/payouts.py).
+    min_payout_usdt: float = 2.0
 
     # Ключ Fernet: токены seller-ботов никогда не хранятся в БД открытым текстом
     bot_token_encryption_key: str
