@@ -431,3 +431,36 @@ async def test_summary_splits_balance_and_paid_out(db):
     # деньги переехали из баланса в выплаченное, «всего заработано» не изменилось
     assert float(summary["payout_pending"]) == 0
     assert float(summary["payout_paid"]) == pytest.approx(95.0)
+
+
+@pytest.mark.asyncio
+async def test_platform_margin_is_commission_minus_provider_fee(db):
+    """Маржа платформы: наши 5% минус то, что забрал Crypto Pay."""
+    from app.payments.service import handle_invoice_paid
+    from app.payments.stats import platform_margin
+
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        await handle_invoice_paid(555001, None, fee_amount=Decimal("2.9"))
+
+    async with db() as session:
+        margin = await platform_margin(session)
+
+    assert margin.commission == Decimal("5.000000")
+    assert margin.provider_fee == Decimal("2.900000")
+    assert margin.net == Decimal("2.100000")  # столько реально осталось
+    assert margin.volume_30d == Decimal("100.000000")
+
+    # до первого порога скидки (10 000) не хватает оборота
+    left, rate = margin.next_tier
+    assert left == Decimal("9900.000000") and rate == Decimal("2.9")
+
+
+def test_fee_tier_hint_stops_at_the_cheapest_rate():
+    """Оборот выше верхнего порога — дальше снижать нечего."""
+    from app.payments.stats import _next_tier
+
+    assert _next_tier(Decimal(0)) == (Decimal(10_000), Decimal("2.9"))
+    assert _next_tier(Decimal(30_000)) == (Decimal(20_000), Decimal("2.7"))
+    assert _next_tier(Decimal(100_000)) is None

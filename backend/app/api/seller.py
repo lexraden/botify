@@ -27,6 +27,7 @@ from app.models import (
     SellerBot,
     ShopEvent,
 )
+from app.models.orders import PAID_STATUSES
 from app.payments.payouts import paid_total, pending_total
 from app.plans import SERVICE_TYPES, is_pro, limits_for, over_limit
 
@@ -319,8 +320,6 @@ async def withdraw(
 # --------------------------------------------------------------------------
 # Статистика магазина
 # --------------------------------------------------------------------------
-
-PAID_STATUSES = ("paid", "fulfilled", "delivered")
 
 
 class ShopStatsOut(BaseModel):

@@ -7,6 +7,11 @@ from app.models.base import Base, CreatedAtMixin
 from app.models.catalog import JsonB
 
 
+# Заказ считается состоявшимся с момента оплаты; дальше меняется только
+# стадия доставки, поэтому во всех денежных выборках статусы одни и те же
+PAID_STATUSES = ("paid", "fulfilled", "delivered")
+
+
 class Order(Base, CreatedAtMixin):
     __tablename__ = "orders"
 

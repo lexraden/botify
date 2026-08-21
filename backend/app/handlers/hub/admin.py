@@ -71,11 +71,38 @@ async def health(message: types.Message) -> None:
     else:
         lines.append("\n⚠️ WEBHOOK_BASE_URL не задан")
 
+    lines += await _margin_lines()
+
     lines.append(
         "\nНе забудь включить <b>Security → Transfers</b> в приложении Crypto Pay — "
         "без этого выплаты продавцам не пройдут."
     )
     await message.answer("\n".join(lines))
+
+
+async def _margin_lines() -> list[str]:
+    """Сколько платформа заработала и сколько из этого забрал Crypto Pay."""
+    from app.payments.stats import platform_margin
+
+    async with get_session() as session:
+        margin = await platform_margin(session)
+
+    if not margin.commission:
+        return ["\n<b>Маржа платформы</b>\nПродаж с комиссией пока не было."]
+
+    lines = [
+        "\n<b>Маржа платформы</b>",
+        f"• Комиссий начислено: <b>{fmt(margin.commission)} USDT</b>",
+        f"• Уплачено Crypto Pay: {fmt(margin.provider_fee)} USDT",
+        f"• Чистыми: <b>{fmt(margin.net)} USDT</b>",
+        f"\nОборот за 30 дней: {fmt(margin.volume_30d)} USDT",
+    ]
+    if margin.next_tier is None:
+        lines.append("Ставка Crypto Pay уже минимальная — 2.5%")
+    else:
+        left, rate = margin.next_tier
+        lines.append(f"До ставки {rate}% ещё {fmt(left)} USDT оборота")
+    return lines
 
 
 @router.message(Command("payouts"))
