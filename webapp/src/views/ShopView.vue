@@ -74,6 +74,7 @@ const STATUS = {
   cancelled: '✖️ Отменён',
 }
 const TYPE_LABEL = { physical: 'товар', digital: 'digital', service: 'услуга' }
+const TYPE_EMOJI = { physical: '📦', digital: '📕', service: '🛎' }
 
 async function reload() {
   const id = botId.value
@@ -188,12 +189,16 @@ async function submitMailing() {
           + Добавить товар или услугу
         </button>
         <div v-for="p in products" :key="p.id" class="card row" :class="{ inactive: !p.is_active }">
-          <div class="info">
-            <b>{{ p.title }}</b>
-            <span class="muted">
-              {{ Number(p.price) }} USDT · {{ TYPE_LABEL[p.type] }}
-              <template v-if="!p.is_active"> · скрыт</template>
-            </span>
+          <div class="row-left">
+            <img v-if="p.image_url" class="prod-img" :src="p.image_url" :alt="p.title" />
+            <span v-else class="prod-img prod-ph">{{ TYPE_EMOJI[p.type] }}</span>
+            <div class="info">
+              <b>{{ p.title }}</b>
+              <span class="muted">
+                {{ Number(p.price) }} USDT · {{ TYPE_LABEL[p.type] }}
+                <template v-if="!p.is_active"> · скрыт</template>
+              </span>
+            </div>
           </div>
           <div class="row-actions">
             <button @click="router.push(`/shop/${botId}/product/${p.id}`)">✏️</button>
@@ -376,6 +381,14 @@ nav button {
 nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .add { background: var(--accent-soft); color: var(--accent); margin-bottom: 10px; }
 .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.row-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.prod-img {
+  width: 46px; height: 46px; border-radius: 12px; object-fit: cover;
+  background: var(--surface2); flex-shrink: 0;
+}
+.prod-ph {
+  display: inline-flex; align-items: center; justify-content: center; font-size: 24px;
+}
 .row.inactive { opacity: 0.5; }
 .info { display: flex; flex-direction: column; gap: 3px; }
 .info span { font-size: 12px; }

@@ -4,6 +4,7 @@ import { fetchMe } from './api'
 import { isIntroSeen } from './services/intro'
 
 import StoreView from './views/StoreView.vue'
+import ProductDetailView from './views/ProductDetailView.vue'
 import CheckoutView from './views/CheckoutView.vue'
 import MyOrdersView from './views/MyOrdersView.vue'
 import WelcomeView from './views/WelcomeView.vue'
@@ -18,6 +19,7 @@ const router = createRouter({
   routes: [
     // покупатель — Mini App открыт из seller-бота (есть ?bot_id=)
     { path: '/', name: 'store', component: StoreView },
+    { path: '/product/:id', name: 'product', component: ProductDetailView },
     { path: '/checkout', component: CheckoutView },
     { path: '/my-orders', name: 'my-orders', component: MyOrdersView },
     // продавец — Mini App открыт из hub-бота

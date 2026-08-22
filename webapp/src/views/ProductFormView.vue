@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchProducts, saveProduct, uploadProductImage } from '../api'
 
@@ -33,7 +33,16 @@ const stockInvalid = computed(
 const fileInput = ref(null)
 const uploadingImage = ref(false)
 const imageError = ref('')
+// спиннер в маленьком окне: и пока файл грузится, и пока картинка не отрисовалась
+const imgLoading = ref(false)
 const MAX_IMAGE_MB = 5
+
+watch(
+  () => form.value.image_url,
+  (v) => {
+    imgLoading.value = !!v && !uploadingImage.value
+  },
+)
 
 async function onPickImage(e) {
   const file = e.target.files?.[0]
@@ -45,6 +54,7 @@ async function onPickImage(e) {
     return
   }
   uploadingImage.value = true
+  imgLoading.value = false // старую картинку убираем — место занимает спиннер
   try {
     const res = await uploadProductImage(botId.value, file)
     form.value.image_url = res.url
@@ -155,7 +165,16 @@ async function submit() {
     </button>
 
     <div v-else class="image-box">
-      <img :src="form.image_url" alt="Фото товара" />
+      <div class="thumb">
+        <span v-if="uploadingImage || imgLoading" class="spinner" />
+        <img
+          v-show="!uploadingImage && !imgLoading"
+          :src="form.image_url"
+          alt="Фото товара"
+          @load="imgLoading = false"
+          @error="imgLoading = false"
+        />
+      </div>
       <div class="image-actions">
         <button class="btn btn-soft act" type="button" :disabled="uploadingImage" @click="fileInput.click()">
           {{ uploadingImage ? '…' : 'Заменить' }}
@@ -204,10 +223,18 @@ textarea { resize: none; }
 .types button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .hint { font-size: 12px; color: var(--sub); margin: -2px 0 10px; }
 .image-box { display: flex; align-items: center; gap: 10px; }
-.image-box img {
-  width: 64px; height: 64px; object-fit: cover; border-radius: 13px;
-  border: 1px solid var(--border); flex-shrink: 0;
+.thumb {
+  position: relative; width: 64px; height: 64px; border-radius: 13px;
+  background: var(--surface2); overflow: hidden; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
 }
+.thumb img { width: 100%; height: 100%; object-fit: cover; }
+.spinner {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 /* замена и удаление — рядом друг с другом справа от превью,
    чуть ниже самой картинки */
 .image-actions { display: flex; flex: 1; gap: 8px; }

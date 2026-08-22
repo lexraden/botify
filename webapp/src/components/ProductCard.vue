@@ -1,9 +1,11 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useCartStore } from '../stores/cart'
 
 const props = defineProps({ product: { type: Object, required: true } })
 const emit = defineEmits(['seen'])
+const router = useRouter()
 
 // Просмотром считаем первое реальное появление карточки на экране,
 // а не отрисовку списка — иначе метрика раздувается
@@ -37,7 +39,7 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
 </script>
 
 <template>
-  <div ref="root" class="card product">
+  <div ref="root" class="card product" @click="router.push(`/product/${product.id}`)">
     <div v-if="qty" class="badge">{{ qty }}</div>
     <div class="image">
       <img v-if="product.image_url" :src="product.image_url" :alt="product.title" />
@@ -48,10 +50,10 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
       <div class="price">{{ Number(product.price) }} USDT</div>
     </div>
     <div v-if="qty" class="stepper">
-      <button class="minus" @click="cart.remove(product)">−</button>
-      <button class="plus" :disabled="maxed" @click="cart.add(product)">+</button>
+      <button class="minus" @click.stop="cart.remove(product)">−</button>
+      <button class="plus" :disabled="maxed" @click.stop="cart.add(product)">+</button>
     </div>
-    <button v-else-if="!soldOut" class="add" @click="cart.add(product)">Добавить</button>
+    <button v-else-if="!soldOut" class="add" @click.stop="cart.add(product)">В корзину</button>
     <button v-else class="add soldout" disabled>Нет в наличии</button>
   </div>
 </template>
@@ -64,10 +66,11 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
   justify-content: center; font-size: 12px; font-weight: 800;
 }
 .image {
-  height: 64px; border-radius: 13px; background: var(--surface2);
-  display: flex; align-items: center; justify-content: center; font-size: 40px;
+  width: 100%; aspect-ratio: 1; border-radius: 14px; background: var(--surface2);
+  display: flex; align-items: center; justify-content: center; font-size: 48px;
+  overflow: hidden;
 }
-.image img { max-height: 64px; max-width: 100%; border-radius: 12px; }
+.image img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .meta { display: flex; flex-direction: column; gap: 2px; }
 .title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .price { font-size: 14px; font-weight: 800; }
