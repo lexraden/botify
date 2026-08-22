@@ -21,8 +21,13 @@ const form = ref({
   is_active: true,
 })
 
-// остаток — целое число от 0; пустое поле значит «не учитывать»
-const stockInvalid = computed(() => form.value.stock !== '' && !/^\d+$/.test(form.value.stock))
+// кол-во на складе — целое от 0; пустое поле значит «не учитывать» (только у товаров)
+const stockInvalid = computed(
+  () =>
+    form.value.type === 'physical' &&
+    form.value.stock !== '' &&
+    !/^\d+$/.test(form.value.stock),
+)
 
 onMounted(async () => {
   if (!route.params.id) return
@@ -57,7 +62,8 @@ async function submit() {
       image_url: f.image_url || null,
       price: f.price,
       digital_content: f.type !== 'physical' && f.digital_url ? { url: f.digital_url } : null,
-      stock: f.stock === '' ? null : Number(f.stock),
+      // сток считаем только у товаров; у digital/услуг его нет
+      stock: f.type === 'physical' && f.stock !== '' ? Number(f.stock) : null,
       is_active: f.is_active,
     })
     router.push(`/shop/${botId.value}`)
@@ -92,9 +98,11 @@ async function submit() {
     <label>Цена, USDT</label>
     <input v-model="form.price" inputmode="decimal" placeholder="9.99" />
 
-    <label>Остаток на складе</label>
-    <input v-model="form.stock" inputmode="numeric" placeholder="пусто — без ограничения" />
-    <p v-if="stockInvalid" class="error">Остаток — целое число или пустое поле.</p>
+    <template v-if="form.type === 'physical'">
+      <label>Кол-во на складе</label>
+      <input v-model="form.stock" inputmode="numeric" placeholder="пусто — без ограничения" />
+      <p v-if="stockInvalid" class="error">Кол-во — целое число или пустое поле.</p>
+    </template>
 
     <label>Ссылка на изображение (опционально)</label>
     <input v-model="form.image_url" placeholder="https://…" />

@@ -74,5 +74,10 @@ async def cmd_start(
 @router.message(F.text.func(is_robot_confirm))
 async def robot_confirm(message: types.Message, bot_record: SellerBot) -> None:
     """«Я не робот» после заявки в канал — тот же ответ, что и на /start:
-    приветствие и кнопка витрины берутся из одних и тех же настроек бота."""
+    приветствие и кнопка витрины берутся из одних и тех же настроек бота.
+    Верификационная reply-клавиатура после нажатия убирается; отдельным
+    сообщением потому, что ReplyKeyboardRemove не живёт рядом с inline-кнопкой."""
+    await message.answer(
+        "✅ Проверка пройдена", reply_markup=types.ReplyKeyboardRemove()
+    )
     await send_welcome(message, bot_record)

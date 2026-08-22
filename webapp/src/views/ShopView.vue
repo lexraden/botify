@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   createMailing,
   deleteProduct,
-  fetchChannels,
   fetchMailings,
   fetchMe,
   fetchProducts,
@@ -12,7 +11,6 @@ import {
   fetchShopStats,
   fetchShopSummary,
   fulfillOrder,
-  removeChannel,
   withdrawPayout,
 } from '../api'
 
@@ -25,7 +23,6 @@ const stats = ref(null)
 const products = ref([])
 const orders = ref([])
 const mailings = ref([])
-const channels = ref([])
 const error = ref('')
 const tab = ref('products')
 
@@ -80,14 +77,13 @@ const TYPE_LABEL = { physical: 'товар', digital: 'digital', service: 'ус�
 
 async function reload() {
   const id = botId.value
-  ;[summary.value, stats.value, products.value, orders.value, mailings.value, channels.value] =
+  ;[summary.value, stats.value, products.value, orders.value, mailings.value] =
     await Promise.all([
       fetchShopSummary(id),
       fetchShopStats(id),
       fetchProducts(id),
       fetchShopOrders(id),
       fetchMailings(id),
-      fetchChannels(id),
     ])
 }
 
@@ -105,20 +101,6 @@ watch(botId, reload)
 async function removeProduct(p) {
   await deleteProduct(botId.value, p.id)
   await reload()
-}
-
-// --- каналы магазина ---
-const channelConfirmId = ref(null)
-
-async function onRemoveChannel(ch) {
-  // удаление в два тапа: первый — «Точно?», второй — отключаем
-  if (channelConfirmId.value !== ch.id) {
-    channelConfirmId.value = ch.id
-    return
-  }
-  channelConfirmId.value = null
-  await removeChannel(botId.value, ch.id)
-  channels.value = await fetchChannels(botId.value)
 }
 
 const fulfillForm = ref({ orderId: null, tracking: '', url: '', note: '', sending: false })
@@ -198,7 +180,6 @@ async function submitMailing() {
         <button :class="{ active: tab === 'products' }" @click="tab = 'products'">Товары</button>
         <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">Заказы</button>
         <button :class="{ active: tab === 'mailings' }" @click="tab = 'mailings'">Рассылки</button>
-        <button :class="{ active: tab === 'channels' }" @click="tab = 'channels'">Каналы</button>
         <button :class="{ active: tab === 'stats' }" @click="tab = 'stats'">Статистика</button>
       </nav>
 
@@ -282,29 +263,6 @@ async function submitMailing() {
           </div>
         </div>
         <p v-if="!mailings.length" class="empty">Рассылок пока не было.</p>
-      </template>
-
-      <template v-else-if="tab === 'channels'">
-        <p class="hint">
-          Канал подключается сам: добавь бота администратором в свой Telegram-канал
-          и отметь право «Приглашать пользователей». Заявки будут приниматься автоматически,
-          вступивший подтвердит себя кнопкой «Я не робот» и попадёт в базу покупателей.
-          Тонкая настройка — команда /settings в самом боте.
-        </p>
-        <div v-for="ch in channels" :key="ch.id" class="card row" :class="{ inactive: !ch.is_active }">
-          <div class="info">
-            <b>📢 {{ ch.title }}</b>
-            <span class="muted">
-              {{ ch.is_active ? (ch.auto_accept ? 'авто-приём включён' : 'заявки вручную') : 'отключён' }}
-            </span>
-          </div>
-          <div v-if="ch.is_active" class="row-actions">
-            <button @click="onRemoveChannel(ch)">
-              {{ channelConfirmId === ch.id ? 'Точно?' : '🗑' }}
-            </button>
-          </div>
-        </div>
-        <p v-if="!channels.length" class="empty">Каналов пока нет.</p>
       </template>
 
       <template v-else>

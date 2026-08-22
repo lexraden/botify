@@ -176,8 +176,12 @@ async def test_robot_confirm_answers_like_start(db):
     with patch("app.handlers.seller.start.get_settings", return_value=FAKE_SETTINGS):
         await seller_start.robot_confirm(msg, await load_bot(db, bot_id))
 
-    assert msg.answer.await_args.args[0] == "<b>Привет!</b>"
-    kb = msg.answer.await_args.kwargs["reply_markup"]
+    # первым сообщением уходит верификационная reply-клавиатура…
+    remover = msg.answer.await_args_list[0].kwargs["reply_markup"]
+    assert isinstance(remover, types.ReplyKeyboardRemove)
+    # …затем то же приветствие, что и на /start
+    assert msg.answer.await_args_list[1].args[0] == "<b>Привет!</b>"
+    kb = msg.answer.await_args_list[1].kwargs["reply_markup"]
     assert kb.inline_keyboard[0][0].text == "🛒 В магазин"
 
 
