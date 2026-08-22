@@ -1,19 +1,18 @@
 """Seller-бот в каналах продавца: регистрация канала, авто-приём заявок,
-верификация вступившего («Я не робот») перед приветствием."""
+верификация вступившего через reply-кнопку «Я не робот 🤖»."""
 
 import logging
 
-from aiogram import Bot, F, Router, types
+from aiogram import Bot, Router, types
 from aiogram.filters import JOIN_TRANSITION, LEAVE_TRANSITION, ChatMemberUpdatedFilter
 from aiogram.types import ChatJoinRequest, ChatMemberUpdated
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.db import get_session
 from app.models import Seller, SellerBot
+from app.handlers.seller.start import ROBOT_BUTTON_TEXT
 from app.services.channels import (
     TgUserInfo,
     deactivate_channel,
-    get_bot_channel,
     get_channel_for_bot,
     register_channel,
     upsert_customer,
@@ -22,8 +21,6 @@ from app.services.channels import (
 logger = logging.getLogger(__name__)
 
 router = Router(name=__name__)
-
-VERIFY_BUTTON_TEXT = "✅ Я не робот"
 
 
 def _can_invite_users(event: ChatMemberUpdated) -> bool:
@@ -127,61 +124,20 @@ async def on_join_request(event: ChatJoinRequest, bot: Bot, bot_record: SellerBo
         )
         return
 
-    # Вместо приветствия сразу — верификация: юзер жмёт кнопку в боте,
-    # его telegram_id подтверждается, и только потом приходит приветствие
-    kb = InlineKeyboardBuilder()
-    kb.button(text=VERIFY_BUTTON_TEXT, callback_data=f"verify:{channel.id}")
-    kb.adjust(1)
+    # Верификация через reply-клавиатуру: нажатие шлёт обычное сообщение
+    # «Я не робот», которое обрабатывается как /start (handlers/seller/start.py)
+    kb = types.ReplyKeyboardMarkup(
+        keyboard=[[types.KeyboardButton(text=ROBOT_BUTTON_TEXT)]],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
     try:
         await bot.send_message(
             event.from_user.id,
             f"Заявка в «{channel.title}» принята ✅\n\n"
-            "Нажми кнопку ниже, чтобы подтвердить, что ты не робот 👇",
-            reply_markup=kb.as_markup(),
+            f"Нажми кнопку «{ROBOT_BUTTON_TEXT}» внизу экрана 👇",
+            reply_markup=kb,
         )
     except Exception:
         logger.info("ЛС для %s недоступна (юзер не стартовал бота)", event.from_user.id)
 
-
-def _greeting_for(channel) -> str:
-    return channel.greeting_text or f"Добро пожаловать в «{channel.title}»!"
-
-
-@router.callback_query(F.data.startswith("verify:"))
-async def on_verify(
-    callback: types.CallbackQuery, bot: Bot, bot_record: SellerBot
-) -> None:
-    try:
-        channel_id = int(callback.data.split(":")[1])
-    except (IndexError, ValueError):
-        await callback.answer("Ссылка устарела", show_alert=True)
-        return
-    # изоляция: кнопка сработает только для канала ЭТОГО бота
-    channel = await get_bot_channel(bot_record.id, channel_id)
-    if channel is None or not channel.is_active:
-        await callback.answer("Канал больше не активен", show_alert=True)
-        return
-
-    user = callback.from_user
-    # колбэки не проходят CustomerTrackerMiddleware — пишем сами
-    await upsert_customer(
-        bot_record,
-        TgUserInfo(
-            telegram_id=user.id,
-            username=user.username,
-            first_name=user.first_name,
-            language_code=user.language_code,
-        ),
-        source=f"channel:{channel.telegram_chat_id}",
-    )
-
-    await callback.answer("Спасибо! ✅")
-    greeting = _greeting_for(channel)
-    try:
-        # правкой убираем кнопку — повторное нажатие невозможно
-        await callback.message.edit_text(greeting)
-    except Exception:
-        try:
-            await bot.send_message(user.id, greeting)
-        except Exception:
-            logger.info("Приветствие для %s не доставлено", user.id)

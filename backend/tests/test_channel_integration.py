@@ -6,18 +6,20 @@ from itertools import count
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from aiogram import types
 from sqlalchemy import select
 
 from app.bots.dedupe import duplicate_update
 from app.bots.hub import hub_bot
 from app.handlers.seller import channels as ch
 from app.handlers.seller import settings as st
+from app.handlers.seller import start as seller_start
 from app.models import Channel, Customer, SellerBot
 from app.services.channels import deactivate_channel_by_id, list_channels
 from tests.test_api import client, seller_headers, setup_shop
 from tests.test_bot_connect import make_seller
 from tests.test_bot_settings import fake_fsm_state, load_bot
-from tests.test_hub_menus import fake_callback, make_bot
+from tests.test_hub_menus import FAKE_SETTINGS, fake_callback, make_bot
 
 _chats = count(-100_900_500_001)
 
@@ -120,14 +122,14 @@ async def test_reconnect_same_channel_notifies_once(db):
 
 
 # --------------------------------------------------------------------------
-# Заявка на вступление: одобрение + верификация вместо мгновенного приветствия
+# Заявка на вступление: одобрение + reply-кнопка «Я не робот 🤖» вместо inline
 # --------------------------------------------------------------------------
 
 
-async def test_join_request_approves_and_asks_verification(db):
+async def test_join_request_sends_reply_keyboard_not_inline(db):
     seller_id = await make_seller(db)
     bot_id = await make_bot(db, seller_id, username="funnel_bot")
-    channel_id, chat_id = await seed_channel(db, seller_id, bot_id)
+    _channel_id, chat_id = await seed_channel(db, seller_id, bot_id)
     bot_record = await load_bot(db, bot_id)
 
     tg = fake_tg_bot()
@@ -135,10 +137,11 @@ async def test_join_request_approves_and_asks_verification(db):
 
     tg.approve_chat_join_request.assert_awaited_once_with(chat_id=chat_id, user_id=555)
     kb = tg.send_message.await_args.kwargs["reply_markup"]
-    btn = kb.inline_keyboard[0][0]
-    assert btn.text == "✅ Я не робот"
-    assert btn.callback_data == f"verify:{channel_id}"
-    assert "не робот" in tg.send_message.await_args.args[1]
+    assert isinstance(kb, types.ReplyKeyboardMarkup)
+    btn = kb.keyboard[0][0]
+    assert isinstance(btn, types.KeyboardButton)
+    assert not isinstance(btn, types.InlineKeyboardButton)
+    assert btn.text == "Я не робот 🤖"
 
     # лид уже сохранён в базу этого магазина с источником-каналом
     async with db() as session:
@@ -149,6 +152,49 @@ async def test_join_request_approves_and_asks_verification(db):
         )
     assert customer.telegram_id == 555
     assert customer.source == f"channel:{chat_id}"
+
+
+def test_robot_text_matcher():
+    """Нажатие reply-кнопки присылает текст кнопки; принимаем оба варианта."""
+    assert seller_start.is_robot_confirm("Я не робот")
+    assert seller_start.is_robot_confirm("Я не робот 🤖")
+    assert seller_start.is_robot_confirm("  Я не робот  ")
+    assert not seller_start.is_robot_confirm("не робот")
+    assert not seller_start.is_robot_confirm("/start")
+    assert not seller_start.is_robot_confirm(None)
+
+
+async def test_robot_confirm_answers_like_start(db):
+    """«Я не робот» отвечает тем же приветствием из настроек, что и /start."""
+    seller_id = await make_seller(db)
+    bot_id = await make_bot(db, seller_id, username="verify_bot")
+    await st._update_bot(
+        bot_id, welcome_text="<b>Привет!</b>", catalog_button_text="🛒 В магазин"
+    )
+
+    msg = SimpleNamespace(answer=AsyncMock(), text="Я не робот")
+    with patch("app.handlers.seller.start.get_settings", return_value=FAKE_SETTINGS):
+        await seller_start.robot_confirm(msg, await load_bot(db, bot_id))
+
+    assert msg.answer.await_args.args[0] == "<b>Привет!</b>"
+    kb = msg.answer.await_args.kwargs["reply_markup"]
+    assert kb.inline_keyboard[0][0].text == "🛒 В магазин"
+
+
+async def test_robot_confirm_isolated_per_bot(db):
+    seller_id = await make_seller(db)
+    bot_a = await make_bot(db, seller_id, username="bot_a")
+    bot_b = await make_bot(db, seller_id, username="bot_b")
+    await st._update_bot(bot_a, welcome_text="Магазин А")
+
+    with patch("app.handlers.seller.start.get_settings", return_value=FAKE_SETTINGS):
+        msg = SimpleNamespace(answer=AsyncMock(), text="Я не робот 🤖")
+        await seller_start.robot_confirm(msg, await load_bot(db, bot_a))
+        assert msg.answer.await_args.args[0] == "Магазин А"
+
+        msg = SimpleNamespace(answer=AsyncMock(), text="Я не робот 🤖")
+        await seller_start.robot_confirm(msg, await load_bot(db, bot_b))
+        assert msg.answer.await_args.args[0] == "Добро пожаловать в магазин <b>@bot_b</b>!"
 
 
 async def test_join_request_without_auto_accept_stays_pending(db):
@@ -184,58 +230,6 @@ async def test_join_request_for_other_bots_channel_ignored(db):
             .all()
         )
     assert customers == []
-
-
-# --------------------------------------------------------------------------
-# Кнопка «Я не робот»: подтверждение и приветствие
-# --------------------------------------------------------------------------
-
-
-async def test_verify_button_confirms_and_greets(db):
-    seller_id = await make_seller(db)
-    bot_id = await make_bot(db, seller_id, username="verify_bot")
-    channel_id, _ = await seed_channel(
-        db, seller_id, bot_id, greeting_text="Секретное приветствие"
-    )
-    bot_record = await load_bot(db, bot_id)
-
-    message = SimpleNamespace(edit_text=AsyncMock())
-    callback = verify_callback(channel_id, message=message)
-    await ch.on_verify(callback, fake_tg_bot(), bot_record)
-
-    callback.answer.assert_awaited_once_with("Спасибо! ✅")
-    # приветствие приходит правкой сообщения с кнопкой — кнопка исчезает
-    message.edit_text.assert_awaited_once_with("Секретное приветствие")
-
-
-async def test_verify_isolated_between_bots(db):
-    seller_id = await make_seller(db)
-    bot_a = await make_bot(db, seller_id, username="bot_a")
-    bot_b = await make_bot(db, seller_id, username="bot_b")
-    channel_id, _ = await seed_channel(db, seller_id, bot_a)
-    record_b = await load_bot(db, bot_b)
-
-    message = SimpleNamespace(edit_text=AsyncMock())
-    callback = verify_callback(channel_id, message=message)
-    await ch.on_verify(callback, fake_tg_bot(), record_b)
-
-    callback.answer.assert_awaited_once_with("Канал больше не активен", show_alert=True)
-    message.edit_text.assert_not_awaited()
-
-
-async def test_verify_inactive_channel_refused(db):
-    seller_id = await make_seller(db)
-    bot_id = await make_bot(db, seller_id, username="off_bot")
-    channel_id, _ = await seed_channel(db, seller_id, bot_id)
-    await deactivate_channel_by_id(bot_id, channel_id)
-    bot_record = await load_bot(db, bot_id)
-
-    message = SimpleNamespace(edit_text=AsyncMock())
-    callback = verify_callback(channel_id, message=message)
-    await ch.on_verify(callback, fake_tg_bot(), bot_record)
-
-    callback.answer.assert_awaited_once_with("Канал больше не активен", show_alert=True)
-    message.edit_text.assert_not_awaited()
 
 
 # --------------------------------------------------------------------------
