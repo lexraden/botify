@@ -1,6 +1,7 @@
 """Seller-бот в каналах продавца: регистрация канала, авто-приём заявок,
 верификация вступившего через reply-кнопку «Я не робот 🤖»."""
 
+import html
 import logging
 
 from aiogram import Bot, Router, types
@@ -31,20 +32,23 @@ def _can_invite_users(event: ChatMemberUpdated) -> bool:
 
 def _channel_texts(channel, bot_record: SellerBot, invite_ok: bool) -> tuple[str, str]:
     """(текст в hub-бот, текст в собственный бот продавца)."""
+    # название канала задаёт третья сторона: без экранирования «<» в нём
+    # ломает parse_mode=HTML, и уведомление до продавца не доходит
+    title = html.escape(channel.title)
     hub_text = (
-        f"✅ Бот @{bot_record.bot_username} добавлен в «{channel.title}».\n"
+        f"✅ Бот @{bot_record.bot_username} добавлен в «{title}».\n"
         "Заявки на вступление будут приниматься автоматически, а каждый "
         "вступивший — попадать в твою базу."
     )
     if invite_ok:
         own_text = (
-            f"📢 Канал «{channel.title}» подключён к магазину @{bot_record.bot_username}!\n\n"
+            f"📢 Канал «{title}» подключён к магазину @{bot_record.bot_username}!\n\n"
             "Заявки принимаю автоматически, каждого вступившего приветствую "
             "и записываю в твою базу покупателей."
         )
     else:
         own_text = (
-            f"📢 Канал «{channel.title}» подключён к магазину @{bot_record.bot_username}.\n\n"
+            f"📢 Канал «{title}» подключён к магазину @{bot_record.bot_username}.\n\n"
             "⚠️ Но без права «Приглашать пользователей» я не вижу заявки на вступление. "
             "Открой настройки канала → Администраторы → отметь это право — "
             "и канал заработает полностью."
@@ -134,7 +138,7 @@ async def on_join_request(event: ChatJoinRequest, bot: Bot, bot_record: SellerBo
     try:
         await bot.send_message(
             event.from_user.id,
-            f"Заявка в «{channel.title}» принята ✅\n\n"
+            f"Заявка в «{html.escape(channel.title)}» принята ✅\n\n"
             f"Нажми кнопку «{ROBOT_BUTTON_TEXT}» внизу экрана 👇",
             reply_markup=kb,
         )

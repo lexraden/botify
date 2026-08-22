@@ -8,6 +8,8 @@
 на bot_record.id — чужие магазины из этого хендлера не видны в принципе.
 """
 
+import html
+
 from aiogram import F, Router, types
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -86,11 +88,14 @@ async def _update_channel(bot_id: int, channel_id: int, **fields) -> Channel | N
 
 def settings_text(bot_record: SellerBot, channels_count: int) -> str:
     button = "включена" if bot_record.show_catalog_button else "выключена"
-    btn_text = bot_record.catalog_button_text or DEFAULT_BUTTON_TEXT
-    welcome = bot_record.welcome_text or "стандартное приветствие"
+    # текст продавца идёт в сообщение с parse_mode=HTML: один «<» — и меню
+    # перестаёт отправляться, а починить его из бота уже нельзя
+    btn_text = html.escape(bot_record.catalog_button_text or DEFAULT_BUTTON_TEXT)
+    # обрезаем до экранирования: иначе срез может разрубить «&amp;» пополам
+    welcome = html.escape((bot_record.welcome_text or "стандартное приветствие")[:120])
     return (
         f"⚙️ <b>Настройки бота @{bot_record.bot_username}</b>\n\n"
-        f"👋 Приветствие на /start:\n<i>{welcome[:120]}</i>\n\n"
+        f"👋 Приветствие на /start:\n<i>{welcome}</i>\n\n"
         f"🔘 Кнопка «{btn_text}»: {button}\n"
         f"📢 Каналы для приёма заявок: {channels_count}"
     )
@@ -184,7 +189,7 @@ async def ask_welcome(
         kb.button(text="Сбросить на стандартное", callback_data="set:welcome_reset")
         kb.button(text="⬅️ Назад", callback_data="set:menu")
         kb.adjust(1)
-        current = bot_record.welcome_text or "— стандартное приветствие —"
+        current = html.escape(bot_record.welcome_text or "— стандартное приветствие —")
         await callback.message.edit_text(
             "Пришли новый текст приветствия — его увидит покупатель на /start.\n"
             'Можно использовать HTML: <b>&lt;b&gt;</b>, <b>&lt;i&gt;</b>, <b>&lt;a href="…"&gt;</b>\n\n'
@@ -256,7 +261,7 @@ async def ask_button_text(
         kb.button(text="Сбросить на стандартный", callback_data="set:btn_text_reset")
         kb.button(text="⬅️ Назад", callback_data="set:menu")
         kb.adjust(1)
-        current = bot_record.catalog_button_text or DEFAULT_BUTTON_TEXT
+        current = html.escape(bot_record.catalog_button_text or DEFAULT_BUTTON_TEXT)
         await callback.message.edit_text(
             "Пришли новый текст кнопки открытия магазина (до 64 символов).\n\n"
             f"Сейчас: {current}",
@@ -361,11 +366,12 @@ async def channels_help(
 
 def channel_text(channel: Channel) -> str:
     auto = "включён 🟢" if channel.auto_accept else "выключен ⚪"
-    greeting = channel.greeting_text or "— стандартное приветствие канала —"
+    # название канала приходит из Telegram и тоже может содержать «<»
+    greeting = html.escape((channel.greeting_text or "— стандартное приветствие канала —")[:200])
     return (
-        f"📢 <b>{channel.title}</b>\n\n"
+        f"📢 <b>{html.escape(channel.title)}</b>\n\n"
         f"Авто-приём заявок: {auto}\n"
-        f"Приветствие вступившим:\n<i>{greeting[:200]}</i>"
+        f"Приветствие вступившим:\n<i>{greeting}</i>"
     )
 
 
@@ -466,7 +472,7 @@ async def confirm_remove_channel(
         kb.button(text="Отмена", callback_data=f"set:ch:{channel.id}")
         kb.adjust(1)
         await callback.message.edit_text(
-            f"Отключить канал «{channel.title}»?\n\n"
+            f"Отключить канал «{html.escape(channel.title)}»?\n\n"
             "Бот перестанет принимать заявки из него и приветствовать вступивших. "
             "Канал вернётся в список, только если заново добавить бота в канал.",
             reply_markup=kb.as_markup(),
@@ -520,7 +526,7 @@ async def ask_greeting(
         kb.button(text="Сбросить на стандартное", callback_data=f"set:ch_greet_reset:{channel.id}")
         kb.button(text="⬅️ Назад", callback_data=f"set:ch:{channel.id}")
         kb.adjust(1)
-        current = channel.greeting_text or "— стандартное приветствие канала —"
+        current = html.escape(channel.greeting_text or "— стандартное приветствие канала —")
         await callback.message.edit_text(
             "Пришли приветствие, которое бот отправит вступившему в ЛС.\n"
             "/reset — вернуть стандартное.\n\n"
