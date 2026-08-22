@@ -209,9 +209,9 @@ textarea { resize: none; }
   border: 1px solid var(--border); flex-shrink: 0;
 }
 /* замена и удаление — рядом друг с другом справа от превью,
-   той же высоты, что картинка */
+   чуть ниже самой картинки */
 .image-actions { display: flex; flex: 1; gap: 8px; }
-.image-actions .act { width: auto; height: 64px; padding: 0 18px; font-size: 15px; }
+.image-actions .act { width: auto; height: 52px; padding: 0 18px; font-size: 15px; }
 .error { color: var(--red); }
 .actions { display: flex; gap: 8px; margin-top: 22px; }
 </style>

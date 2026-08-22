@@ -51,7 +51,7 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
       <button class="minus" @click="cart.remove(product)">−</button>
       <button class="plus" :disabled="maxed" @click="cart.add(product)">+</button>
     </div>
-    <button v-else-if="!soldOut" class="add" @click="cart.add(product)">В корзину</button>
+    <button v-else-if="!soldOut" class="add" @click="cart.add(product)">Добавить</button>
     <button v-else class="add soldout" disabled>Нет в наличии</button>
   </div>
 </template>

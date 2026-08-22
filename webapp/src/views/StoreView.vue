@@ -73,7 +73,7 @@ h2 { font-size: 15px; margin: 0; }
   width: 38px; height: 38px; border-radius: 13px; border: 0; background: var(--surface2);
   color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .empty { text-align: center; color: var(--sub); margin-top: 40px; }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
 .cart-bar {
