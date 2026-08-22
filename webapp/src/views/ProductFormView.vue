@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchProducts, saveProduct } from '../api'
+import { fetchProducts, saveProduct, uploadProductImage } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +28,36 @@ const stockInvalid = computed(
     form.value.stock !== '' &&
     !/^\d+$/.test(form.value.stock),
 )
+
+// --- фото товара: выбор с устройства, превью, замена и удаление ---
+const fileInput = ref(null)
+const uploadingImage = ref(false)
+const imageError = ref('')
+const MAX_IMAGE_MB = 5
+
+async function onPickImage(e) {
+  const file = e.target.files?.[0]
+  e.target.value = '' // повторный выбор того же файла должен срабатывать
+  if (!file) return
+  imageError.value = ''
+  if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+    imageError.value = `Файл больше ${MAX_IMAGE_MB} МБ`
+    return
+  }
+  uploadingImage.value = true
+  try {
+    const res = await uploadProductImage(botId.value, file)
+    form.value.image_url = res.url
+  } catch (err) {
+    imageError.value = err.response?.data?.detail || 'Не удалось загрузить фото'
+  } finally {
+    uploadingImage.value = false
+  }
+}
+
+function dropImage() {
+  form.value.image_url = ''
+}
 
 onMounted(async () => {
   if (!route.params.id) return
@@ -104,8 +134,26 @@ async function submit() {
       <p v-if="stockInvalid" class="error">Кол-во — целое число или пустое поле.</p>
     </template>
 
-    <label>Ссылка на изображение (опционально)</label>
-    <input v-model="form.image_url" placeholder="https://…" />
+    <label>Фото (опционально)</label>
+    <div class="image-box">
+      <img v-if="form.image_url" :src="form.image_url" alt="Фото товара" />
+      <input
+        ref="fileInput"
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        hidden
+        @change="onPickImage"
+      />
+      <div class="image-actions">
+        <button class="btn btn-soft" type="button" :disabled="uploadingImage" @click="fileInput.click()">
+          {{ uploadingImage ? 'Загружаем…' : form.image_url ? 'Заменить фото' : 'Выбрать фото' }}
+        </button>
+        <button v-if="form.image_url && !uploadingImage" class="btn btn-soft" type="button" @click="dropImage">
+          Убрать
+        </button>
+      </div>
+    </div>
+    <p v-if="imageError" class="error">{{ imageError }}</p>
 
     <template v-if="form.type !== 'physical'">
       <label>Ссылка для выдачи после оплаты</label>
@@ -144,6 +192,12 @@ textarea { resize: none; }
   border-radius: 13px; padding: 11px 4px; cursor: pointer; font-weight: 700; font-size: 14px;
 }
 .types button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.image-box { display: flex; align-items: center; gap: 10px; }
+.image-box img {
+  width: 64px; height: 64px; object-fit: cover; border-radius: 13px;
+  border: 1px solid var(--border); flex-shrink: 0;
+}
+.image-actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
 .error { color: var(--red); }
 .actions { display: flex; gap: 8px; margin-top: 22px; }
 </style>

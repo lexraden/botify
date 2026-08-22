@@ -9,7 +9,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import admin, health, seller, store
+from app.api import admin, health, images, seller, store
 from app.bots.dedupe import duplicate_update
 from app.bots.hub import HUB_WEBHOOK_PATH, hub_bot, hub_dp, setup_hub_webhook
 from app.bots.runner import feed_seller_update, setup_all_seller_webhooks
@@ -68,6 +68,7 @@ app = FastAPI(title="Botify", lifespan=lifespan)
 app.include_router(health.router, prefix="/api")
 app.include_router(store.router, prefix="/api")
 app.include_router(seller.router, prefix="/api")
+app.include_router(images.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 
 

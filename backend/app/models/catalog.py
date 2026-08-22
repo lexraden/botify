@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, LargeBinary, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -51,3 +51,22 @@ class Product(Base, CreatedAtMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     seller = relationship("Seller", back_populates="products")
+
+
+class ProductImage(Base, CreatedAtMixin):
+    """Загруженные фото товаров лежат в БД: файловая система контейнера
+    эфемерна (Railway), отдельного S3 у проекта нет. Байты не больше
+    MAX_IMAGE_BYTES (app/services/images.py), тип — только из белого списка."""
+
+    __tablename__ = "product_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # фото принадлежит конкретному магазину — как и весь его каталог
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="CASCADE"), index=True
+    )
+    # определяется по содержимому при загрузке (сниффер магических байтов),
+    # присланному клиентом content-type доверия нет
+    mime: Mapped[str] = mapped_column(String(32))
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)

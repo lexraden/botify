@@ -8,7 +8,7 @@
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ from app.models import (
     OrderItem,
     Payout,
     Product,
+    ProductImage,
     Seller,
     SellerBot,
     ShopEvent,
@@ -30,6 +31,7 @@ from app.models import (
 from app.models.orders import PAID_STATUSES
 from app.payments.payouts import paid_total, pending_total
 from app.plans import SERVICE_TYPES, is_pro, limits_for, over_limit
+from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 
 router = APIRouter(prefix="/seller")
 
@@ -517,6 +519,32 @@ async def shop_stats(
 # --------------------------------------------------------------------------
 # Каталог магазина
 # --------------------------------------------------------------------------
+
+
+@router.post("/bots/{bot_id}/product-image")
+async def upload_product_image(
+    request: Request,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> dict:
+    """Фото товара грузится сырыми байтами, без multipart. Тип определяем
+    по содержимому (сниффер магических байтов) — content-type и имя файла
+    от клиента не учитываются."""
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="фото больше 5 МБ")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="пустой файл")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="фото больше 5 МБ")
+    mime = sniff_image_mime(data)
+    if mime is None:
+        raise HTTPException(status_code=400, detail="только JPEG, PNG, WebP или GIF")
+    image = ProductImage(bot_id=shop.id, mime=mime, size=len(data), data=data)
+    session.add(image)
+    await session.commit()
+    return {"id": image.id, "url": f"/api/images/{image.id}"}
 
 
 class ProductIn(BaseModel):

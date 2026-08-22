@@ -56,6 +56,13 @@ export const saveProduct = (botId, product) =>
   ).then((r) => r.data)
 export const deleteProduct = (botId, id) =>
   api.delete(`/seller/bots/${botId}/products/${id}`).then((r) => r.data)
+// фото товара: сырые байты файла, тип сервер определяет по содержимому
+export const uploadProductImage = (botId, file) =>
+  api
+    .post(`/seller/bots/${botId}/product-image`, file, {
+      headers: { 'Content-Type': 'application/octet-stream' },
+    })
+    .then((r) => r.data)
 export const fetchShopOrders = (botId) => api.get(`/seller/bots/${botId}/orders`).then((r) => r.data)
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)

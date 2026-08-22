@@ -1,6 +1,6 @@
 from app.models.base import Base
 from app.models.bots import SellerBot
-from app.models.catalog import Category, Product
+from app.models.catalog import Category, Product, ProductImage
 from app.models.channels import Channel
 from app.models.customers import Customer
 from app.models.events import ShopEvent
@@ -18,6 +18,7 @@ __all__ = [
     "ShopEvent",
     "Category",
     "Product",
+    "ProductImage",
     "Order",
     "OrderItem",
     "Payout",
