@@ -30,7 +30,7 @@ async def setup_hub_webhook() -> None:
     await hub_bot.set_my_commands(
         [
             BotCommand(command="start", description="Начать / настройка"),
-            BotCommand(command="mybots", description="Мои подключённые боты"),
+            BotCommand(command="mybots", description="Мои магазины"),
         ]
     )
     url = f"{settings.webhook_base_url}{HUB_WEBHOOK_PATH}"

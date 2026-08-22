@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import get_session
+from app.handlers.hub.mybots import send_shops_menu
 from app.models import Seller, SellerBot
 
 router = Router()
@@ -43,19 +44,19 @@ def open_app_keyboard(with_bots: bool = False) -> types.InlineKeyboardMarkup | N
     kb = InlineKeyboardBuilder()
     kb.button(text="🚀 Открыть приложение", web_app=types.WebAppInfo(url=webapp_url))
     if with_bots:
-        kb.button(text="🤖 Мои боты", callback_data="mybots:list")
+        kb.button(text="🏪 Мои магазины", callback_data="mybots:list")
     kb.adjust(1)
     return kb.as_markup()
 
 
 def welcome_back_text(bots: list[SellerBot]) -> str:
+    # случай «все магазины отключены» в cmd_start уходит сразу в меню
+    # магазинов, поэтому здесь всегда есть хоть один включённый
     active = [b for b in bots if b.is_active]
     if len(active) == 1:
-        status = f"Твой бот <b>@{active[0].bot_username}</b> работает 🟢"
-    elif active:
-        status = f"Подключено ботов: <b>{len(active)}</b> 🟢"
+        status = f"Твой магазин <b>@{active[0].bot_username}</b> работает 🟢"
     else:
-        status = "Все твои боты сейчас отключены ⚪"
+        status = f"Работает магазинов: <b>{len(active)}</b> 🟢"
     return WELCOME_BACK.format(status=status)
 
 
@@ -102,6 +103,11 @@ async def cmd_start(message: types.Message, state: FSMContext) -> None:
     if keyboard is None:
         await message.answer(NO_WEBAPP)
         return
-    # У продавца с подключёнными ботами вместо вводного текста — короткий статус
+    if bots and all(not b.is_active for b in bots):
+        # все магазины отключены: открывать витрину нечего — сразу в меню
+        # магазинов (включить этот или подключить ещё один)
+        await send_shops_menu(message, seller)
+        return
+    # У продавца с подключёнными магазинами вместо вводного текста — короткий статус
     text = welcome_back_text(bots) if bots else WELCOME
     await message.answer(text, reply_markup=keyboard)
