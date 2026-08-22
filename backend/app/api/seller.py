@@ -111,6 +111,21 @@ class ConnectBotOut(BaseModel):
     bot: BotOut | None = None
 
 
+async def _notify_seller(seller: Seller, text: str, reply_markup=None) -> None:
+    """Дубликат действия или события в чат с hub-ботом: Mini App может
+    закрыться, а сообщение останется историей о магазине."""
+    import logging
+
+    from app.bots.hub import hub_bot
+
+    try:
+        await hub_bot.send_message(seller.telegram_id, text, reply_markup=reply_markup)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Не удалось отправить уведомление продавцу %s", seller.id
+        )
+
+
 @router.post("/bots", response_model=ConnectBotOut)
 async def connect_bot(
     payload: ConnectBotIn,
@@ -125,25 +140,31 @@ async def connect_bot(
     if not result.ok or result.bot_record is None:
         return ConnectBotOut(ok=False, error=result.error)
 
-    # Подтверждение приходит в чат с hub-ботом: Mini App может закрыться,
-    # а сообщение останется историей о подключённом магазине
-    import logging
+    # Кнопка ведёт сразу в кабинет этого магазина; без настроенного адреса
+    # подтверждение уходит без неё
+    kb = None
+    webapp_url = get_settings().effective_webapp_url
+    if webapp_url:
+        from aiogram.types import WebAppInfo
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-    from app.bots.hub import hub_bot
+        ikb = InlineKeyboardBuilder()
+        ikb.button(
+            text="🏪 Открыть магазин",
+            web_app=WebAppInfo(url=f"{webapp_url.rstrip('/')}/shop/{result.bot_record.id}"),
+        )
+        ikb.adjust(1)
+        kb = ikb.as_markup()
 
-    try:
-        await hub_bot.send_message(
-            seller.telegram_id,
-            f"🎉 Бот <b>@{result.bot_username}</b> подключён!\n\n"
-            "Что дальше:\n"
-            "• добавь первый товар или услугу в приложении\n"
-            "• поделись ссылкой на бота с покупателями — каждый, кто напишет ему, "
-            "попадёт в твою базу",
-        )
-    except Exception:
-        logging.getLogger(__name__).exception(
-            "Не удалось отправить подтверждение о подключении бота %s", result.bot_record.id
-        )
+    await _notify_seller(
+        seller,
+        f"🎉 Бот <b>@{result.bot_username}</b> подключён!\n\n"
+        "Что дальше:\n"
+        "• добавь первый товар или услугу в приложении\n"
+        "• поделись ссылкой на бота с покупателями — каждый, кто напишет ему, "
+        "попадёт в твою базу",
+        reply_markup=kb,
+    )
 
     return ConnectBotOut(ok=True, bot=BotOut.model_validate(result.bot_record))
 
@@ -162,6 +183,77 @@ async def get_shop(
     if bot is None or bot.seller_id != seller.id:
         raise HTTPException(status_code=404, detail="shop not found")
     return bot
+
+
+# --------------------------------------------------------------------------
+# Управление магазином из приложения; каждое действие дублируется
+# сообщением в hub-бот (см. _notify_seller)
+# --------------------------------------------------------------------------
+
+
+class ShopStateOut(BaseModel):
+    id: int
+    bot_username: str
+    is_active: bool
+
+
+@router.post("/bots/{bot_id}/disable", response_model=ShopStateOut)
+async def disable_shop(
+    shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
+) -> ShopStateOut:
+    from app.services.bot_connect import disconnect_bot
+
+    bot = await disconnect_bot(shop.id, seller.id)
+    if bot is None:
+        raise HTTPException(status_code=404, detail="shop not found")
+    await _notify_seller(
+        seller,
+        f"⚪ Магазин <b>@{bot.bot_username}</b> отключён через приложение.\n"
+        "Бот не отвечает покупателям, база, товары и заказы сохранены.",
+    )
+    return ShopStateOut(id=bot.id, bot_username=bot.bot_username, is_active=False)
+
+
+@router.post("/bots/{bot_id}/enable", response_model=ShopStateOut)
+async def enable_shop(
+    shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
+) -> ShopStateOut:
+    from app.services.bot_connect import enable_bot
+
+    bot = await enable_bot(shop.id, seller.id)
+    if bot is None:
+        raise HTTPException(status_code=404, detail="shop not found")
+    await _notify_seller(
+        seller,
+        f"🟢 Магазин <b>@{bot.bot_username}</b> включён — бот снова работает.",
+    )
+    return ShopStateOut(id=bot.id, bot_username=bot.bot_username, is_active=True)
+
+
+@router.delete("/bots/{bot_id}")
+async def delete_shop(
+    shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
+) -> dict:
+    from app.services.bot_connect import delete_bot
+
+    result = await delete_bot(shop.id, seller.id)
+    if result == "deleted":
+        await _notify_seller(
+            seller,
+            f"🗑 Магазин <b>@{shop.bot_username}</b> удалён вместе с базой покупателей.",
+        )
+        return {"status": "deleted"}
+    if result == "has_orders":
+        await _notify_seller(
+            seller,
+            f"У покупателей <b>@{shop.bot_username}</b> есть заказы — историю продаж "
+            "удалять нельзя, поэтому магазин просто отключён.",
+        )
+        return {"status": "has_orders"}
+    raise HTTPException(status_code=404, detail="shop not found")
 
 
 class LimitsOut(BaseModel):

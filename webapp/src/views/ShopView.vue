@@ -152,15 +152,15 @@ async function submitMailing() {
     <template v-else-if="summary">
       <header>
         <div class="title">
-          <h2>Кабинет</h2>
+          <h2>Магазин</h2>
           <div class="bot-line">
             <span class="dot" :class="{ off: !summary.is_active }" />
             <span>@{{ summary.bot_username }}</span>
           </div>
         </div>
-        <!-- выход в список магазинов есть всегда: оттуда видно статусы и можно добавить ещё бота -->
+        <!-- выход в кабинет есть всегда: оттуда видно статусы всех магазинов -->
         <button class="switch" @click="router.push('/shops')">
-          Магазины
+          Кабинет
         </button>
       </header>
 

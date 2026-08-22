@@ -35,6 +35,12 @@ export const trackEvent = (type, productId = null) =>
 export const fetchMe = () => api.get('/seller/me').then((r) => r.data)
 export const confirmPayment = () => api.post('/seller/onboarding/payment-done').then((r) => r.data)
 export const connectBot = (token) => api.post('/seller/bots', { token }).then((r) => r.data)
+// управление магазином прямо из кабинета; каждое действие дублируется в hub-бот
+export const disableShop = (botId) =>
+  api.post(`/seller/bots/${botId}/disable`).then((r) => r.data)
+export const enableShop = (botId) =>
+  api.post(`/seller/bots/${botId}/enable`).then((r) => r.data)
+export const deleteShop = (botId) => api.delete(`/seller/bots/${botId}`).then((r) => r.data)
 
 
 // --- всё ниже — в контексте конкретного магазина (bot_id) ---
