@@ -84,12 +84,19 @@ async def test_delete_with_orders_only_disconnects(db):
 @pytest.mark.asyncio
 async def test_other_seller_cannot_manage_shop(db):
     bot_id = await setup_shop(db)
-    other_headers = {
+    init_for = lambda: {  # noqa: E731
         "X-Init-Data": init_data_for(
             {"id": 222, "first_name": "Чужой"}, os.environ["HUB_BOT_TOKEN"]
         )
     }
     async with client() as c:
+        # незарегистрированный пользователь отсекается ещё на авторизации
+        r = await c.post(f"/api/seller/bots/{bot_id}/disable", headers=init_for())
+        assert r.status_code == 403
+
+        # зарегистрированный, но чужой продавец — 404 по владению магазином
+        await make_seller(db, telegram_id=222)
+        other_headers = init_for()
         r1 = await c.post(f"/api/seller/bots/{bot_id}/disable", headers=other_headers)
         r2 = await c.post(f"/api/seller/bots/{bot_id}/enable", headers=other_headers)
         r3 = await c.delete(f"/api/seller/bots/{bot_id}", headers=other_headers)

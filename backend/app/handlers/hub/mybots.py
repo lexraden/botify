@@ -72,6 +72,11 @@ def bot_card_keyboard(bot: SellerBot) -> types.InlineKeyboardMarkup:
     else:
         kb.button(text="🔁 Включить", callback_data=f"mybots:on:{bot.id}")
         kb.button(text="🗑 Удалить", callback_data=f"mybots:del:{bot.id}")
+    # настройки живут в самом seller-боте: диплинк открывает там /settings
+    kb.button(
+        text="⚙️ Настройки бота",
+        url=f"https://t.me/{bot.bot_username}?start=settings",
+    )
     kb.button(text="⬅️ Все магазины", callback_data="mybots:menu")
     kb.adjust(2)
     return kb.as_markup()

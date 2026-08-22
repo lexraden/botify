@@ -17,6 +17,7 @@ from app.bots.middleware import CustomerTrackerMiddleware
 from app.config import get_settings
 from app.db import get_session
 from app.handlers.seller import channels as seller_channels
+from app.handlers.seller import settings as seller_settings
 from app.handlers.seller import start as seller_start
 from app.models import SellerBot
 from app.security import decrypt_bot_token
@@ -27,6 +28,8 @@ logger = logging.getLogger(__name__)
 seller_dp = Dispatcher()
 seller_dp.message.outer_middleware(CustomerTrackerMiddleware())
 seller_dp.include_router(seller_channels.router)
+# настройки раньше start: их /settings перехватывает команду до приветствия
+seller_dp.include_router(seller_settings.router)
 seller_dp.include_router(seller_start.router)
 
 SELLER_ALLOWED_UPDATES = [
