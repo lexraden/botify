@@ -208,9 +208,10 @@ textarea { resize: none; }
   width: 64px; height: 64px; object-fit: cover; border-radius: 13px;
   border: 1px solid var(--border); flex-shrink: 0;
 }
-/* замена и удаление — в одну строку справа от превью */
-.image-actions { display: flex; flex: 1; justify-content: space-between; gap: 8px; }
-.image-actions .act { width: auto; height: 40px; padding: 0 14px; font-size: 13px; }
+/* замена и удаление — рядом друг с другом справа от превью,
+   той же высоты, что картинка */
+.image-actions { display: flex; flex: 1; gap: 8px; }
+.image-actions .act { width: auto; height: 64px; padding: 0 18px; font-size: 15px; }
 .error { color: var(--red); }
 .actions { display: flex; gap: 8px; margin-top: 22px; }
 </style>
