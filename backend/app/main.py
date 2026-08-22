@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import admin, health, seller, store
+from app.bots.dedupe import duplicate_update
 from app.bots.hub import HUB_WEBHOOK_PATH, hub_bot, hub_dp, setup_hub_webhook
 from app.bots.runner import feed_seller_update, setup_all_seller_webhooks
 from app.config import get_settings
@@ -82,7 +83,10 @@ async def hub_webhook(
 ) -> dict:
     check_telegram_secret(x_telegram_bot_api_secret_token)
     try:
-        update = types.Update(**await request.json())
+        data = await request.json()
+        if duplicate_update("hub", data.get("update_id")):
+            return {"status": "ok"}  # ретрай уже обработанного — молча пропускаем
+        update = types.Update(**data)
         await hub_dp.feed_update(hub_bot, update)
     except Exception:
         # Telegram ретраит не-200; ошибки обрабатываем сами, наружу всегда 200
@@ -126,7 +130,10 @@ async def seller_webhook(
 ) -> dict:
     check_telegram_secret(x_telegram_bot_api_secret_token)
     try:
-        await feed_seller_update(bot_id, await request.json())
+        data = await request.json()
+        if duplicate_update(f"seller:{bot_id}", data.get("update_id")):
+            return {"status": "ok"}  # ретрай уже обработанного — молча пропускаем
+        await feed_seller_update(bot_id, data)
     except Exception:
         logger.exception("Ошибка обработки апдейта seller-бота id=%s", bot_id)
     return {"status": "ok"}

@@ -256,6 +256,40 @@ async def delete_shop(
     raise HTTPException(status_code=404, detail="shop not found")
 
 
+# --------------------------------------------------------------------------
+# Каналы магазина: список и отключение из кабинета.
+# Подключение происходит в Telegram (бота добавляют админом), кабинет
+# показывает картину и даёт отключить; владение проверяет get_shop.
+# --------------------------------------------------------------------------
+
+
+class ChannelOut(BaseModel):
+    id: int
+    title: str
+    auto_accept: bool
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/bots/{bot_id}/channels", response_model=list[ChannelOut])
+async def list_shop_channels(shop: SellerBot = Depends(get_shop)) -> list[ChannelOut]:
+    from app.services.channels import list_channels
+
+    return [ChannelOut.model_validate(ch) for ch in await list_channels(shop.id)]
+
+
+@router.delete("/bots/{bot_id}/channels/{channel_id}")
+async def remove_shop_channel(
+    channel_id: int, shop: SellerBot = Depends(get_shop)
+) -> dict:
+    from app.services.channels import deactivate_channel_by_id
+
+    if not await deactivate_channel_by_id(shop.id, channel_id):
+        raise HTTPException(status_code=404, detail="channel not found")
+    return {"status": "removed"}
+
+
 class LimitsOut(BaseModel):
     """Использование против лимитов тарифа. Пока enforced=False лимиты
     только показываются; при включении они блокируют рост, но ничего

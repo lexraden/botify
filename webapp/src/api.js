@@ -41,6 +41,12 @@ export const disableShop = (botId) =>
 export const enableShop = (botId) =>
   api.post(`/seller/bots/${botId}/enable`).then((r) => r.data)
 export const deleteShop = (botId) => api.delete(`/seller/bots/${botId}`).then((r) => r.data)
+// каналы магазина: подключаются в Telegram (бота добавляют админом),
+// кабинет показывает список и даёт отключить
+export const fetchChannels = (botId) =>
+  api.get(`/seller/bots/${botId}/channels`).then((r) => r.data)
+export const removeChannel = (botId, channelId) =>
+  api.delete(`/seller/bots/${botId}/channels/${channelId}`).then((r) => r.data)
 
 
 // --- всё ниже — в контексте конкретного магазина (bot_id) ---

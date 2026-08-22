@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 from app.db import get_session
 from app.models import Channel, Seller, SellerBot
+from app.services.channels import deactivate_channel_by_id
 
 router = Router(name="seller_settings")
 
@@ -394,19 +395,22 @@ async def channel_menu(
         return
     await callback.answer()
     if callback.message:
-        kb = InlineKeyboardBuilder()
-        kb.button(
-            text=(
-                "Выключить авто-приём" if channel.auto_accept else "Включить авто-приём"
-            ),
-            callback_data=f"set:ch_auto:{channel.id}",
-        )
-        kb.button(text="✍️ Приветствие вступившим", callback_data=f"set:ch_greet:{channel.id}")
-        kb.button(text="⬅️ Назад", callback_data="set:channels")
-        kb.adjust(1)
         await callback.message.edit_text(
-            channel_text(channel), reply_markup=kb.as_markup()
+            channel_text(channel), reply_markup=channel_keyboard(channel)
         )
+
+
+def channel_keyboard(channel: Channel) -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(
+        text="Выключить авто-приём" if channel.auto_accept else "Включить авто-приём",
+        callback_data=f"set:ch_auto:{channel.id}",
+    )
+    kb.button(text="✍️ Приветствие вступившим", callback_data=f"set:ch_greet:{channel.id}")
+    kb.button(text="🗑 Отключить канал", callback_data=f"set:ch_del:{channel.id}")
+    kb.button(text="⬅️ Назад", callback_data="set:channels")
+    kb.adjust(1)
+    return kb.as_markup()
 
 
 @router.callback_query(F.data.startswith("set:ch_auto:"))
@@ -434,17 +438,62 @@ async def toggle_auto_accept(
     await callback.answer("Выключено" if not channel.auto_accept else "Включено")
     if callback.message and channel is not None:
         # перерисовываем подменю канала с новым состоянием
-        kb = InlineKeyboardBuilder()
-        kb.button(
-            text=(
-                "Выключить авто-приём" if channel.auto_accept else "Включить авто-приём"
-            ),
-            callback_data=f"set:ch_auto:{channel.id}",
+        await callback.message.edit_text(
+            channel_text(channel), reply_markup=channel_keyboard(channel)
         )
-        kb.button(text="✍️ Приветствие вступившим", callback_data=f"set:ch_greet:{channel.id}")
-        kb.button(text="⬅️ Назад", callback_data="set:channels")
+
+
+@router.callback_query(F.data.startswith("set:ch_del:"))
+async def confirm_remove_channel(
+    callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+) -> None:
+    if not await is_owner(bot_record, callback.from_user):
+        await callback.answer(OWNER_ONLY, show_alert=True)
+        return
+    try:
+        channel_id = int(callback.data.split(":")[-1])
+    except ValueError:
+        await callback.answer("Канал не найден", show_alert=True)
+        return
+    channel = await _own_channel(bot_record, channel_id)
+    if channel is None:
+        await callback.answer("Канал не найден", show_alert=True)
+        return
+    await callback.answer()
+    if callback.message:
+        kb = InlineKeyboardBuilder()
+        kb.button(text="Да, отключить", callback_data=f"set:ch_del_yes:{channel.id}")
+        kb.button(text="Отмена", callback_data=f"set:ch:{channel.id}")
         kb.adjust(1)
-        await callback.message.edit_text(channel_text(channel), reply_markup=kb.as_markup())
+        await callback.message.edit_text(
+            f"Отключить канал «{channel.title}»?\n\n"
+            "Бот перестанет принимать заявки из него и приветствовать вступивших. "
+            "Канал вернётся в список, только если заново добавить бота в канал.",
+            reply_markup=kb.as_markup(),
+        )
+
+
+@router.callback_query(F.data.startswith("set:ch_del_yes:"))
+async def do_remove_channel(
+    callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+) -> None:
+    if not await is_owner(bot_record, callback.from_user):
+        await callback.answer(OWNER_ONLY, show_alert=True)
+        return
+    try:
+        channel_id = int(callback.data.split(":")[-1])
+    except ValueError:
+        await callback.answer("Канал не найден", show_alert=True)
+        return
+    if not await deactivate_channel_by_id(bot_record.id, channel_id):
+        await callback.answer("Канал не найден", show_alert=True)
+        return
+    await callback.answer("Канал отключён")
+    if callback.message:
+        channels = await _bot_channels(bot_record.id)
+        await callback.message.edit_text(
+            channels_text(channels), reply_markup=channels_keyboard(channels)
+        )
 
 
 @router.callback_query(F.data.startswith("set:ch_greet:"))
