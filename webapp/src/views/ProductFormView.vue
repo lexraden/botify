@@ -135,22 +135,32 @@ async function submit() {
     </template>
 
     <label>Фото (опционально)</label>
-    <div class="image-box">
-      <img v-if="form.image_url" :src="form.image_url" alt="Фото товара" />
-      <input
-        ref="fileInput"
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
-        hidden
-        @change="onPickImage"
-      />
+    <p class="hint">Лучше всего смотрится квадратный PNG с прозрачным фоном.</p>
+    <input
+      ref="fileInput"
+      type="file"
+      accept="image/jpeg,image/png,image/webp,image/gif"
+      hidden
+      @change="onPickImage"
+    />
+
+    <button
+      v-if="!form.image_url"
+      class="btn btn-soft"
+      type="button"
+      :disabled="uploadingImage"
+      @click="fileInput.click()"
+    >
+      {{ uploadingImage ? 'Загружаем…' : 'Выбрать фото' }}
+    </button>
+
+    <div v-else class="image-box">
+      <img :src="form.image_url" alt="Фото товара" />
       <div class="image-actions">
-        <button class="btn btn-soft" type="button" :disabled="uploadingImage" @click="fileInput.click()">
-          {{ uploadingImage ? 'Загружаем…' : form.image_url ? 'Заменить фото' : 'Выбрать фото' }}
+        <button class="btn btn-soft act" type="button" :disabled="uploadingImage" @click="fileInput.click()">
+          {{ uploadingImage ? '…' : 'Заменить' }}
         </button>
-        <button v-if="form.image_url && !uploadingImage" class="btn btn-soft" type="button" @click="dropImage">
-          Убрать
-        </button>
+        <button class="btn btn-soft act" type="button" @click="dropImage">Убрать</button>
       </div>
     </div>
     <p v-if="imageError" class="error">{{ imageError }}</p>
@@ -192,12 +202,15 @@ textarea { resize: none; }
   border-radius: 13px; padding: 11px 4px; cursor: pointer; font-weight: 700; font-size: 14px;
 }
 .types button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.hint { font-size: 12px; color: var(--sub); margin: -2px 0 10px; }
 .image-box { display: flex; align-items: center; gap: 10px; }
 .image-box img {
   width: 64px; height: 64px; object-fit: cover; border-radius: 13px;
   border: 1px solid var(--border); flex-shrink: 0;
 }
-.image-actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+/* замена и удаление — в одну строку справа от превью */
+.image-actions { display: flex; flex: 1; justify-content: space-between; gap: 8px; }
+.image-actions .act { width: auto; height: 40px; padding: 0 14px; font-size: 13px; }
 .error { color: var(--red); }
 .actions { display: flex; gap: 8px; margin-top: 22px; }
 </style>
