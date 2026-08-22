@@ -31,6 +31,9 @@ const qty = computed(() => cart.qtyOf(props.product.id))
 const emoji = computed(
   () => ({ physical: '📦', digital: '📕', service: '🛎' })[props.product.type] ?? '📦',
 )
+// stock: null — не ограничен, 0 — распродано
+const soldOut = computed(() => props.product.stock === 0)
+const maxed = computed(() => props.product.stock != null && qty.value >= props.product.stock)
 </script>
 
 <template>
@@ -46,9 +49,10 @@ const emoji = computed(
     </div>
     <div v-if="qty" class="stepper">
       <button class="minus" @click="cart.remove(product)">−</button>
-      <button class="plus" @click="cart.add(product)">+</button>
+      <button class="plus" :disabled="maxed" @click="cart.add(product)">+</button>
     </div>
-    <button v-else class="add" @click="cart.add(product)">В корзину</button>
+    <button v-else-if="!soldOut" class="add" @click="cart.add(product)">В корзину</button>
+    <button v-else class="add soldout" disabled>Нет в наличии</button>
   </div>
 </template>
 
@@ -75,4 +79,6 @@ const emoji = computed(
 .stepper button { flex: 1; font-size: 18px; }
 .stepper .minus { background: var(--surface2); color: var(--text); }
 .stepper .plus { background: var(--accent); color: #fff; }
+.plus:disabled { opacity: 0.35; }
+.add.soldout { background: var(--surface2); color: var(--sub); }
 </style>

@@ -14,6 +14,8 @@ export const useCartStore = defineStore('cart', {
   actions: {
     add(product) {
       const entry = this.items[product.id]
+      // stock: null — без ограничения; иначе в корзину не положить больше остатка
+      if (product.stock != null && (entry?.qty ?? 0) >= product.stock) return
       if (entry) entry.qty += 1
       else this.items[product.id] = { product, qty: 1 }
     },

@@ -525,6 +525,8 @@ class ProductIn(BaseModel):
     description: str | None = Field(default=None, max_length=4000)
     image_url: str | None = Field(default=None, max_length=512)
     price: Decimal = Field(gt=0)
+    # остаток на складе; None — не ограничен (услуги/digital без учёта штук)
+    stock: int | None = Field(default=None, ge=0, le=1_000_000)
     digital_content: dict | None = None
     is_active: bool = True
 

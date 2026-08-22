@@ -17,8 +17,12 @@ const form = ref({
   image_url: '',
   price: '',
   digital_url: '',
+  stock: '', // пусто — без ограничения
   is_active: true,
 })
+
+// остаток — целое число от 0; пустое поле значит «не учитывать»
+const stockInvalid = computed(() => form.value.stock !== '' && !/^\d+$/.test(form.value.stock))
 
 onMounted(async () => {
   if (!route.params.id) return
@@ -33,6 +37,7 @@ onMounted(async () => {
       image_url: p.image_url || '',
       price: String(p.price),
       digital_url: p.digital_content?.url || '',
+      stock: p.stock == null ? '' : String(p.stock),
       is_active: p.is_active,
     }
   }
@@ -52,6 +57,7 @@ async function submit() {
       image_url: f.image_url || null,
       price: f.price,
       digital_content: f.type !== 'physical' && f.digital_url ? { url: f.digital_url } : null,
+      stock: f.stock === '' ? null : Number(f.stock),
       is_active: f.is_active,
     })
     router.push(`/shop/${botId.value}`)
@@ -86,6 +92,10 @@ async function submit() {
     <label>Цена, USDT</label>
     <input v-model="form.price" inputmode="decimal" placeholder="9.99" />
 
+    <label>Остаток на складе</label>
+    <input v-model="form.stock" inputmode="numeric" placeholder="пусто — без ограничения" />
+    <p v-if="stockInvalid" class="error">Остаток — целое число или пустое поле.</p>
+
     <label>Ссылка на изображение (опционально)</label>
     <input v-model="form.image_url" placeholder="https://…" />
 
@@ -102,7 +112,11 @@ async function submit() {
 
     <div class="actions">
       <button class="btn btn-soft" @click="router.push(`/shop/${botId}`)">Отмена</button>
-      <button class="btn btn-primary" :disabled="!form.title || !form.price || saving" @click="submit">
+      <button
+        class="btn btn-primary"
+        :disabled="!form.title || !form.price || stockInvalid || saving"
+        @click="submit"
+      >
         {{ saving ? '…' : 'Сохранить' }}
       </button>
     </div>

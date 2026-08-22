@@ -4,7 +4,7 @@
 import logging
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 
 from app.bots.runner import make_seller_bot
 from app.config import get_settings
@@ -114,6 +114,35 @@ async def handle_invoice_paid(
                 .where(OrderItem.order_id == order.id)
             )
         ).all()
+
+        # Списание стока живёт в этой же секции (после гарда статуса): ретрай
+        # вебхука сюда не доходит, поэтому дважды списать невозможно. Условный
+        # UPDATE атомарен — два заказа на последнюю штуку не уведут сток в минус.
+        # Товары со стоком NULL учёту штук не подлежат.
+        qty_by_product: dict[int, int] = {}
+        for item, product in items:
+            if product.stock is None:
+                continue
+            qty_by_product[item.product_id] = qty_by_product.get(item.product_id, 0) + item.qty
+        for product_id, qty in qty_by_product.items():
+            spent = await session.execute(
+                update(Product)
+                .where(
+                    Product.id == product_id,
+                    or_(Product.stock.is_(None), Product.stock >= qty),
+                )
+                .values(stock=Product.stock - qty)
+                .execution_options(synchronize_session=False)
+            )
+            if spent.rowcount == 0:
+                # гонка «чекнулись, пока сток кончился»: деньги уже приняты,
+                # заказ не разворачиваем, но и отрицательный сток не пишем
+                logger.error(
+                    "Недостаточно стока товара id=%s для заказа %s (нужно %s) — сток не списан",
+                    product_id,
+                    order.id,
+                    qty,
+                )
 
         # Digital/услуги с настроенной выдачей доставляются сразу
         digital_lines = [

@@ -23,6 +23,8 @@ class ProductOut(BaseModel):
     image_url: str | None
     price: Decimal
     currency: str
+    # остаток; None — не ограничен, 0 — «нет в наличии»
+    stock: int | None
 
     model_config = {"from_attributes": True}
 
@@ -112,6 +114,19 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     missing = set(product_ids) - set(products)
     if missing:
         raise HTTPException(status_code=400, detail=f"products not available: {sorted(missing)}")
+
+    # Сток проверяем по суммарному qty (товар может прийти двумя строками).
+    # Финальная проверка — в вебхуке оплаты; здесь отсекаем очевидный оверселл
+    qty_by_product: dict[int, int] = {}
+    for item in payload.items:
+        qty_by_product[item.product_id] = qty_by_product.get(item.product_id, 0) + item.qty
+    for product_id, qty in qty_by_product.items():
+        stock = products[product_id].stock
+        if stock is not None and qty > stock:
+            raise HTTPException(
+                status_code=400,
+                detail=f"insufficient stock for «{products[product_id].title}»: {stock} left",
+            )
 
     # Сумма считается только на сервере, по текущим ценам из БД
     total = sum(products[i.product_id].price * i.qty for i in payload.items)

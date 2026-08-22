@@ -43,6 +43,10 @@ class Product(Base, CreatedAtMixin):
     price: Mapped[float] = mapped_column(Numeric(18, 6))
     currency: Mapped[str] = mapped_column(String(8), default="USDT")
 
+    # Остаток на складе; None — не ограничен (услуги/digital без учёта штук).
+    # Списывается при оплате заказа (см. app/payments/service.py), не при чекауте
+    stock: Mapped[int | None] = mapped_column(Integer)
+
     digital_content: Mapped[dict | None] = mapped_column(JsonB)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
