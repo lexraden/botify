@@ -38,7 +38,9 @@ function entryRouteFor(me) {
     return isIntroSeen() ? '/onboarding/payment' : '/onboarding/welcome'
   }
   if (!me.bots.length) return '/onboarding/bot'
-  if (me.bots.length === 1) return `/shop/${me.bots[0].id}`
+  // один активный бот — сразу в магазин; отключён или их несколько — в список:
+  // там видно статусы всех ботов и есть «Добавить магазин»
+  if (me.bots.length === 1 && me.bots[0].is_active) return `/shop/${me.bots[0].id}`
   return '/shops'
 }
 

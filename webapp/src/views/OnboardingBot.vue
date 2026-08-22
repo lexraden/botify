@@ -1,13 +1,25 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { connectBot } from '../api'
+import { connectBot, fetchMe } from '../api'
 import { openTelegramLink } from '../services/telegram'
 
 const router = useRouter()
 const token = ref('')
 const saving = ref(false)
 const error = ref('')
+
+// Повторный вход (оплата уже подключена и есть хотя бы один бот):
+// прячем прогресс онбординга и просим подключить «ещё одного бота».
+const addingMore = ref(false)
+onMounted(async () => {
+  try {
+    const me = await fetchMe()
+    addingMore.value = Boolean(me.cryptobot_connected && me.bots.length)
+  } catch {
+    /* нет данных — показываем обычный онбординг */
+  }
+})
 
 const ERRORS = {
   bad_format: 'Это не похоже на токен. Он выглядит так: 1234567890:AAEhBOweik6ad9r_QXMEN…',
@@ -53,13 +65,15 @@ async function submit() {
 
 <template>
   <div class="step" :class="{ 'kb-open': keyboardOpen }">
-    <div class="progress">
-      <span class="done" title="Вернуться к шагу 1" @click="router.push('/onboarding/payment')" />
-      <span class="filled" />
-    </div>
-    <div class="step-label">Шаг 2 из 2</div>
+    <template v-if="!addingMore">
+      <div class="progress">
+        <span class="done" title="Вернуться к шагу 1" @click="router.push('/onboarding/payment')" />
+        <span class="filled" />
+      </div>
+      <div class="step-label">Шаг 2 из 2</div>
+    </template>
 
-    <h2>Подключи своего бота</h2>
+    <h2>{{ addingMore ? 'Подключи ещё одного бота' : 'Подключи своего бота' }}</h2>
     <p class="lead">Через него покупатели увидят твой каталог</p>
 
     <ol class="steps">

@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.db import get_session
 from app.models import Seller, SellerBot
 from app.services.bot_connect import delete_bot, disconnect_bot, enable_bot, get_own_bot
@@ -32,6 +33,24 @@ def bot_card_keyboard(bot: SellerBot) -> types.InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+def add_bot_keyboard() -> types.InlineKeyboardMarkup | None:
+    """Кнопка «подключить ещё бота» — диплинк сразу на шаг подключения.
+
+    Гард входа в вебаппе перехватывает только «/», поэтому прямой URL
+    /onboarding/bot открывается без редиректа на другие экраны.
+    """
+    webapp_url = get_settings().effective_webapp_url
+    if not webapp_url:
+        return None
+    kb = InlineKeyboardBuilder()
+    kb.button(
+        text="➕ Подключить ещё бота",
+        web_app=types.WebAppInfo(url=f"{webapp_url.rstrip('/')}/onboarding/bot"),
+    )
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 async def _seller_for(telegram_id: int) -> Seller | None:
     async with get_session() as session:
         result = await session.execute(select(Seller).where(Seller.telegram_id == telegram_id))
@@ -50,6 +69,15 @@ async def send_bot_cards(message: types.Message, seller: Seller) -> None:
         return
     for bot in bots:
         await message.answer(bot_card_text(bot), reply_markup=bot_card_keyboard(bot))
+    # отдельным сообщением после карточек: из «Моих ботов» можно сразу
+    # подключить следующего бота — каждый будет отдельным магазином
+    kb = add_bot_keyboard()
+    if kb is not None:
+        await message.answer(
+            "Нужен ещё один магазин? Каждый бот живёт своей жизнью: свой каталог, "
+            "свои покупатели, своя касса.",
+            reply_markup=kb,
+        )
 
 
 @router.message(Command("mybots"))

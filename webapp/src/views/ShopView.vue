@@ -23,7 +23,6 @@ const stats = ref(null)
 const products = ref([])
 const orders = ref([])
 const mailings = ref([])
-const shopsCount = ref(0)
 const error = ref('')
 const tab = ref('products')
 
@@ -90,8 +89,7 @@ async function reload() {
 
 onMounted(async () => {
   try {
-    const me = await fetchMe()
-    shopsCount.value = me.bots.length
+    await fetchMe() // заодно проверяем сессию
     await reload()
   } catch (e) {
     error.value = e.response?.data?.detail || 'Не удалось загрузить магазин'
@@ -160,7 +158,8 @@ async function submitMailing() {
             <span>@{{ summary.bot_username }}</span>
           </div>
         </div>
-        <button v-if="shopsCount > 1" class="switch" @click="router.push('/shops')">
+        <!-- выход в список магазинов есть всегда: оттуда видно статусы и можно добавить ещё бота -->
+        <button class="switch" @click="router.push('/shops')">
           Магазины
         </button>
       </header>
