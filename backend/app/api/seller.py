@@ -55,6 +55,7 @@ class BotOut(BaseModel):
 class MeOut(BaseModel):
     onboarding_step: str  # bot_pending | bot_done; payment_pending — legacy старых строк
     terms_accepted: bool
+    # ставится по факту состоявшейся выплаты, а не со слов продавца
     cryptobot_connected: bool
     commission_pct: Decimal
     plan: str
@@ -88,20 +89,6 @@ async def me(
 ) -> MeOut:
     """Первый запрос при открытии Mini App: по onboarding_step фронт понимает,
     какой экран рендерить, и не начинает онбординг заново после пересоздания webview."""
-    return _me_payload(seller, await _bots_of(session, seller))
-
-
-@router.post("/onboarding/payment-done", response_model=MeOut)
-async def payment_done(
-    seller: Seller = Depends(get_seller),
-    session: AsyncSession = Depends(get_api_session),
-) -> MeOut:
-    """Шаг 1 пройден: продавец нажал /start у @CryptoBot.
-    Реальная проверка — при первой выплате (Crypto Pay не даёт её заранее)."""
-    seller.cryptobot_connected = True
-    if seller.onboarding_step == "payment_pending":
-        seller.onboarding_step = "bot_pending"
-    await session.commit()
     return _me_payload(seller, await _bots_of(session, seller))
 
 
@@ -416,7 +403,8 @@ class WithdrawOut(BaseModel):
     sent: Decimal            # сколько ушло (0, если не ушло)
     pending: Decimal         # сколько осталось накоплено после попытки
     minimum: Decimal
-    reason: str | None       # no_funds | below_min | no_token | failed
+    # no_funds | below_min | no_token | cryptobot_not_started | too_small | failed
+    reason: str | None
 
 
 @router.post("/bots/{bot_id}/payouts/withdraw", response_model=WithdrawOut)
@@ -424,26 +412,17 @@ async def withdraw(
     shop: SellerBot = Depends(get_shop),
     session: AsyncSession = Depends(get_api_session),
 ) -> WithdrawOut:
-    """Забрать накопленное этим магазином, не дожидаясь часового ретрая.
+    """Забрать накопленное этим магазином.
 
     Касса у каждого бота своя, поэтому кнопка выводит деньги только своего
-    магазина. Отправка идёт тем же путём, что и автоматическая (одна пачка,
-    идемпотентный spend_id), поэтому повторное нажатие не задваивает перевод.
+    магазина; повторное нажатие не задваивает перевод (идемпотентный spend_id).
+
+    Готовность @CryptoBot заранее не спрашиваем: API проверить это не умеет,
+    а сама попытка перевода отвечает точно. Если бот не открыт, вернётся
+    reason=cryptobot_not_started, и приложение покажет этот шаг.
     """
     from app.payments.client import get_crypto_pay
     from app.payments.payouts import flush_shop_payouts
-
-    seller = await session.get(Seller, shop.seller_id)
-    if seller is None or not seller.cryptobot_connected:
-        # без /start у @CryptoBot transfer всё равно бы упал с USER_NOT_FOUND;
-        # prerequisite проверяем здесь, а не в момент перевода
-        return WithdrawOut(
-            ok=False,
-            sent=Decimal(0),
-            pending=await pending_total(session, shop.id),
-            minimum=Decimal(str(get_settings().min_payout_usdt)),
-            reason="payment_not_connected",
-        )
 
     minimum = Decimal(str(get_settings().min_payout_usdt))
     before = await pending_total(session, shop.id)
@@ -461,14 +440,14 @@ async def withdraw(
             ok=False, sent=Decimal(0), pending=before, minimum=minimum, reason="no_token"
         )
 
-    ok = await flush_shop_payouts(shop.id)
+    result = await flush_shop_payouts(shop.id)
     after = await pending_total(session, shop.id)
     return WithdrawOut(
-        ok=ok,
-        sent=before - after if ok else Decimal(0),
+        ok=result.ok,
+        sent=before - after if result.ok else Decimal(0),
         pending=after,
         minimum=minimum,
-        reason=None if ok else "failed",
+        reason=result.reason,
     )
 
 
@@ -571,7 +550,7 @@ async def upload_product_image(
     image = ProductImage(bot_id=shop.id, mime=mime, size=len(data), data=data)
     session.add(image)
     await session.commit()
-    return {"id": image.id, "url": f"/api/images/{image.id}"}
+    return {"id": image.id, "url": f"/api/images/{image.token}"}
 
 
 class ProductIn(BaseModel):

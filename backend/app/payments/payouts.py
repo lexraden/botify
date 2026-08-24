@@ -19,6 +19,7 @@ transfer идёт на Telegram user_id продавца (баланс внут�
 """
 
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -35,6 +36,24 @@ logger = logging.getLogger(__name__)
 UNSENT = ("pending", "failed")
 
 
+@dataclass(frozen=True)
+class PayoutResult:
+    """Итог попытки вывода. Причина нужна вызывающему коду: интерфейс
+    показывает разные состояния для «не нажат Start у @CryptoBot» и для
+    остальных отказов."""
+
+    ok: bool
+    # nothing_to_send | cryptobot_not_started | too_small | failed
+    reason: str | None = None
+
+
+def _is_not_started(error: str | None) -> bool:
+    """@CryptoBot ни разу не открывали — единственный отказ, который
+    продавец может исправить сам, поэтому он отделён от прочих."""
+    reason = (error or "").lower()
+    return "user_not_found" in reason or ("user" in reason and "found" in reason)
+
+
 def _is_too_small(error: str | None) -> bool:
     reason = (error or "").lower()
     return "amount_too_small" in reason or "min_amount" in reason
@@ -43,8 +62,8 @@ def _is_too_small(error: str | None) -> bool:
 def _failure_message(amount: Decimal | float, error: str | None) -> str:
     """Понятная причина вместо универсального «нажми /start»."""
     reason = (error or "").lower()
-    if "not_found" in reason or ("user" in reason and "found" in reason):
-        hint = "Похоже, ты ещё не нажимал /start у @CryptoBot — сделай это, и выплата уйдёт сама."
+    if _is_not_started(error):
+        hint = "Открой @CryptoBot и нажми Start — деньги придут туда."
     elif "transfer" in reason and ("disabled" in reason or "not allowed" in reason):
         hint = "Переводы отключены в настройках платформы — я уже разбираюсь."
     elif "not_enough" in reason or "insufficient" in reason:
@@ -125,11 +144,12 @@ async def _claim_batch(session, bot_id: int, minimum: Decimal) -> PayoutBatch | 
     return batch
 
 
-async def flush_shop_payouts(bot_id: int) -> bool:
-    """Отправить накопленное по магазину. True — перевод ушёл этим вызовом."""
+async def flush_shop_payouts(bot_id: int) -> PayoutResult:
+    """Отправить накопленное по магазину."""
     crypto = get_crypto_pay()
     if crypto is None:
-        return False  # нет токена (локальная разработка) — выплаты остаются pending
+        # нет токена (локальная разработка) — выплаты остаются pending
+        return PayoutResult(ok=False, reason="failed")
 
     minimum = Decimal(str(get_settings().min_payout_usdt))
 
@@ -137,10 +157,10 @@ async def flush_shop_payouts(bot_id: int) -> bool:
         batch = await _claim_batch(session, bot_id, minimum)
         if batch is None:
             await session.commit()
-            return False
+            return PayoutResult(ok=False, reason="nothing_to_send")
         seller = await session.get(Seller, batch.seller_id)
         shop = await session.get(SellerBot, bot_id)
-        batch_id, amount = batch.id, Decimal(batch.amount)
+        batch_id, amount, seller_id = batch.id, Decimal(batch.amount), batch.seller_id
         # идемпотентность на стороне Crypto Pay: случайный токен из самой пачки,
         # а не её порядковый id (после сброса базы id начнутся заново)
         spend_token = batch.spend_id
@@ -160,6 +180,7 @@ async def flush_shop_payouts(bot_id: int) -> bool:
         ok, transfer_id, error = False, None, f"{type(exc).__name__}: {exc}"[:512]
 
     too_small = not ok and _is_too_small(error)
+    not_started = not ok and _is_not_started(error)
 
     async with get_session() as session:
         batch = await session.get(PayoutBatch, batch_id)
@@ -195,14 +216,25 @@ async def flush_shop_payouts(bot_id: int) -> bool:
         await session.commit()
 
     if ok:
+        # @CryptoBot открыт — это доказано состоявшимся переводом, а не
+        # словами продавца; больше спрашивать об этом не нужно
+        async with get_session() as session:
+            seller = await session.get(Seller, seller_id)
+            if seller is not None and not seller.cryptobot_connected:
+                seller.cryptobot_connected = True
+                await session.commit()
         await _notify_seller(
             seller_tg,
             f"💸 Выплата <b>{fmt(amount)} USDT</b> по магазину @{shop_name} "
             "отправлена в @CryptoBot.",
         )
-    elif not too_small:
+        return PayoutResult(ok=True)
+
+    if not too_small:
         await _notify_seller(seller_tg, _failure_message(amount, error))
-    return ok
+    if not_started:
+        return PayoutResult(ok=False, reason="cryptobot_not_started")
+    return PayoutResult(ok=False, reason="too_small" if too_small else "failed")
 
 
 async def _notify_seller(seller_tg: int, text: str) -> None:

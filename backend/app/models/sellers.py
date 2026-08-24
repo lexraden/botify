@@ -26,7 +26,9 @@ class Seller(Base, CreatedAtMixin):
     onboarding_step: Mapped[str] = mapped_column(String(32), default="bot_pending")
     # Принятие условий использования на первом экране онбординга; null = ещё не принял
     terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Продавец нажал /start у @CryptoBot — без этого transfer не сработает
+    # Ставится по факту состоявшейся выплаты: API Crypto Pay не умеет отвечать,
+    # открыт ли @CryptoBot, а спрашивать об этом продавца бессмысленно. Ничего
+    # не блокирует — справочный флаг «выплаты до него уже доходили».
     cryptobot_connected: Mapped[bool] = mapped_column(Boolean, default=False)
 
     commission_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=5)
