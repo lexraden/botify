@@ -61,10 +61,12 @@ async function start() {
     </div>
 
     <div class="actions">
-      <a href="#" class="terms-link" @click.prevent="termsOpen = true">{{ copy.linkLabel }}</a>
       <label class="agree">
         <input v-model="accepted" type="checkbox">
-        <span>{{ copy.disclaimer }}</span>
+        <!-- .stop, чтобы клик по ссылке не переключал чекбокс под label'ом -->
+        <span>
+          {{ copy.agreeBefore }}<a href="#" @click.prevent.stop="termsOpen = true">{{ copy.agreeLink }}</a>{{ copy.agreeAfter }}
+        </span>
       </label>
       <button class="btn btn-primary" :disabled="!accepted || saving" @click="start">
         Начать
@@ -118,9 +120,8 @@ h1 {
   position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 20px 26px;
   display: flex; flex-direction: column; gap: 10px; background: var(--bg);
 }
-.terms-link {
-  align-self: center;
-  font-size: 13px;
+/* ссылка внутри дисклеймера: цвет даёт глобальный стиль a */
+.agree a {
   font-weight: 700;
 }
 /* чекбокс согласия; глобальные стили input здесь не подходят — перекрываем */

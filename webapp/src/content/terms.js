@@ -4,8 +4,10 @@
 
 export const TERMS = {
   ru: {
-    linkLabel: 'Условия использования',
-    disclaimer: 'Продолжая, ты принимаешь наши Условия использования.',
+    // Дисклеймер разбит на части, чтобы ссылка была внутри предложения
+    agreeBefore: 'Продолжая, ты принимаешь наши ',
+    agreeLink: 'условия использования',
+    agreeAfter: '.',
     modalTitle: 'Условия использования',
     sections: [
       {
@@ -69,8 +71,9 @@ export const TERMS = {
     ],
   },
   en: {
-    linkLabel: 'Terms and Conditions',
-    disclaimer: 'By continuing, you agree to our Terms and Conditions.',
+    agreeBefore: 'By continuing, you agree to our ',
+    agreeLink: 'Terms and Conditions',
+    agreeAfter: '.',
     modalTitle: 'Terms and Conditions',
     sections: [
       {
