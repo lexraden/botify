@@ -104,8 +104,6 @@ async def handle_invoice_paid(
             provider_fee=provider_fee,
         )
         session.add(payout)
-        await session.flush()
-        payout_id = payout.id
 
         items = (
             await session.execute(
@@ -195,15 +193,8 @@ async def handle_invoice_paid(
     except Exception:
         logger.exception("Не удалось уведомить продавца о заказе %s", order_id)
 
-    # Digital-заказ закрыт — сразу пробуем выплату; физические ждут fulfillment
-    if digital_lines and all_digital:
-        from app.payments.payouts import send_payout
-
-        try:
-            await send_payout(payout_id)
-        except Exception:
-            logger.exception("Выплата по заказу %s не отправлена (будет ретрай)", order_id)
-
+    # Доля продавца остаётся в кассе магазина: перевод запускает только
+    # сам продавец кнопкой «Вывести» (авто-выплат нет по решению владельца).
     return True
 
 

@@ -37,24 +37,12 @@ async def mailing_loop() -> None:
             logger.exception("Ошибка в цикле рассылок")
 
 
-async def payout_retry_loop() -> None:
-    """Ежечасный ретрай незавершённых выплат (пачкой, как в брифе)."""
-    from app.payments.payouts import process_unsent_payouts
-
-    while True:
-        await asyncio.sleep(3600)
-        try:
-            await process_unsent_payouts()
-        except Exception:
-            logger.exception("Ошибка в цикле ретрая выплат")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await setup_hub_webhook()
     await setup_all_seller_webhooks()
+    # Выплаты автоматикой не трогаем вовсе: только продавец жмёт «Вывести»
     background_tasks = [
-        asyncio.create_task(payout_retry_loop()),
         asyncio.create_task(mailing_loop()),
     ]
     yield

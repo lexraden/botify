@@ -22,7 +22,6 @@ from app.models import (
     Mailing,
     Order,
     OrderItem,
-    Payout,
     Product,
     ProductImage,
     Seller,
@@ -737,8 +736,8 @@ async def fulfill_order(
     shop: SellerBot = Depends(get_shop),
     session: AsyncSession = Depends(get_api_session),
 ) -> dict:
-    """Продавец прикрепляет трек/ссылку/примечание -> бот пересылает покупателю,
-    затем платформа отправляет продавцу его долю (Crypto Pay transfer)."""
+    """Продавец прикрепляет трек/ссылку/примечание -> бот пересылает покупателю.
+    Доля продавца остаётся в кассе магазина — вывод только по кнопке «Вывести»."""
     if not (payload.tracking or payload.url or payload.note):
         raise HTTPException(status_code=400, detail="attach tracking, url or note")
 
@@ -772,17 +771,6 @@ async def fulfill_order(
 
     order.status = "delivered"
     await session.commit()
-
-    payout = (
-        await session.execute(select(Payout).where(Payout.order_id == order.id))
-    ).scalar_one_or_none()
-    if payout is not None:
-        from app.payments.payouts import send_payout
-
-        try:
-            await send_payout(payout.id)
-        except Exception:
-            pass  # останется pending — ретрай подберёт
 
     return {"status": order.status}
 

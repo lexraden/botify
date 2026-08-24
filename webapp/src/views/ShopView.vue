@@ -322,6 +322,7 @@ async function submitMailing() {
           <div class="wallet-sum">
             <b class="num">{{ balance.toFixed(2) }}</b><span>USDT</span>
           </div>
+          <!-- статус один на все состояния; ниже — действие по подключению оплаты -->
           <p class="wallet-state" :class="canWithdraw ? 'ready' : 'wait'">
             <template v-if="canWithdraw">Готово к выводу</template>
             <template v-else-if="balance > 0">
@@ -332,24 +333,19 @@ async function submitMailing() {
 
           <!-- без подключённого @CryptoBot перевод не пройдёт: сперва оплата -->
           <template v-if="cryptobotConnected === false">
-            <p class="wallet-state wait">Подключи оплату, чтобы выводить заработанное</p>
-            <button class="btn btn-soft wallet-btn" @click="openTelegramLink('https://t.me/CryptoBot')">
-              Открыть @CryptoBot
+            <button class="btn btn-green wallet-btn" @click="openTelegramLink('https://t.me/CryptoBot')">
+              Подключить оплату
             </button>
-            <button class="btn btn-green wallet-btn" :disabled="connecting" @click="onConfirmPayment">
+            <div class="hint">
+              Вывод денег идёт через @CryptoBot: открой бота и нажми /start,
+              затем вернись сюда и подтверди.
+            </div>
+            <button class="btn btn-soft wallet-btn" :disabled="connecting" @click="onConfirmPayment">
               {{ connecting ? '…' : 'Готово, я нажал /start' }}
             </button>
             <p v-if="connectError" class="wallet-note err">{{ connectError }}</p>
           </template>
-          <template v-else>
-            <p class="wallet-state" :class="canWithdraw ? 'ready' : 'wait'">
-              <template v-if="canWithdraw">Готово к выводу</template>
-              <template v-else-if="balance > 0">
-                Ещё <span class="num">{{ leftToMin.toFixed(2) }}</span> USDT до вывода
-              </template>
-              <template v-else>Здесь копятся деньги с продаж</template>
-            </p>
-
+          <template v-else-if="cryptobotConnected">
             <button
               class="btn btn-green wallet-btn"
               :disabled="!canWithdraw || withdrawing"

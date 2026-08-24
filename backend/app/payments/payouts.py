@@ -12,9 +12,10 @@
 провальных переводов мы не делаем вовсе.
 
 transfer идёт на Telegram user_id продавца (баланс внутри @CryptoBot) —
-продавец должен был хотя бы раз нажать /start у @CryptoBot. Если нет —
-transfer падает, пачка помечается failed и ретраится с тем же spend_id,
-поэтому двойной выплаты не будет.
+продавец должен был хотя бы раз нажать /start у @CryptoBot. Автоматики нет:
+перевод запускает только сам продавец кнопкой «Вывести». Упавшая пачка
+при следующем нажатии уйдёт с тем же spend_id, поэтому двойной выплаты
+не будет.
 """
 
 import logging
@@ -47,9 +48,9 @@ def _failure_message(amount: Decimal | float, error: str | None) -> str:
     elif "transfer" in reason and ("disabled" in reason or "not allowed" in reason):
         hint = "Переводы отключены в настройках платформы — я уже разбираюсь."
     elif "not_enough" in reason or "insufficient" in reason:
-        hint = "На стороне платформы не хватило баланса — выплата уйдёт при следующем ретрае."
+        hint = "На стороне платформы не хватило баланса — попробуй вывести позже."
     else:
-        hint = "Мы повторим выплату автоматически в течение часа."
+        hint = "Деньги на месте: нажми «Вывести» ещё раз, когда проблема уйдёт."
     detail = f"\n\n<code>{error}</code>" if error else ""
     return f"⚠️ Выплата {fmt(amount)} USDT пока не ушла.\n{hint}{detail}"
 
@@ -82,9 +83,9 @@ async def _claim_batch(session, bot_id: int, minimum: Decimal) -> PayoutBatch | 
     """Пачка к отправке: незавершённая существующая или новая, если набралось.
 
     Возвращает None, если отправлять нечего — тогда доли просто копятся дальше
-    и продавца мы не тревожим. Выплаты выбираются с FOR UPDATE: кнопка
-    «Вывести» и часовой ретрай могут прийти одновременно, и без блокировки
-    получилось бы два перевода по одним и тем же деньгам.
+    и продавца мы не тревожим. Выплаты выбираются с FOR UPDATE: продавец может
+    нажать «Вывести» в двух вкладках сразу, и без блокировки получилось бы два
+    перевода по одним и тем же деньгам.
     """
     batch = (
         await session.execute(
@@ -208,34 +209,3 @@ async def _notify_seller(seller_tg: int, text: str) -> None:
         await hub_bot.send_message(seller_tg, text)
     except Exception:
         logger.exception("Не удалось уведомить продавца о выплате")
-
-
-async def send_payout(payout_id: int) -> bool:
-    """Попытка выплаты после конкретного заказа: уйдёт всё накопленное магазином."""
-    async with get_session() as session:
-        payout = await session.get(Payout, payout_id)
-        if payout is None:
-            return False
-        if payout.status == "sent":
-            return True
-        bot_id = payout.bot_id
-    return await flush_shop_payouts(bot_id)
-
-
-async def process_unsent_payouts() -> None:
-    """Ежечасный ретрай: по одному переводу на магазин, а не на заказ."""
-    async with get_session() as session:
-        shops = [
-            row[0]
-            for row in (
-                await session.execute(
-                    select(Payout.bot_id).where(Payout.status.in_(UNSENT)).distinct()
-                )
-            ).all()
-        ]
-
-    for bot_id in shops:
-        try:
-            await flush_shop_payouts(bot_id)
-        except Exception:
-            logger.exception("Ошибка при ретрае выплат магазина %s", bot_id)
