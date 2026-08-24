@@ -571,7 +571,7 @@ async def upload_product_image(
     image = ProductImage(bot_id=shop.id, mime=mime, size=len(data), data=data)
     session.add(image)
     await session.commit()
-    return {"id": image.id, "url": f"/api/images/{image.id}"}
+    return {"id": image.id, "url": f"/api/images/{image.token}"}
 
 
 class ProductIn(BaseModel):

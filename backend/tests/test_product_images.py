@@ -3,6 +3,7 @@
 import os
 
 import pytest
+from sqlalchemy import select
 
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 from tests.test_api import buyer_headers, client, init_data_for, seller_headers, setup_shop
@@ -40,7 +41,10 @@ async def test_upload_valid_image_and_serve(db):
     assert r.status_code == 200, r.text
     body = r.json()
     image_url = body["url"]
-    assert image_url == f"/api/images/{body['id']}"
+    # адрес — случайный токен, а не порядковый id: он уходит в кэш браузера
+    # на год и после сброса базы не должен указать на чужую старую картинку
+    assert image_url.startswith("/api/images/")
+    assert image_url != f"/api/images/{body['id']}"
 
     async with client() as c:
         served = await c.get(image_url)  # покупателю авторизация не нужна
@@ -154,3 +158,31 @@ async def test_upload_requires_shop_owner(db):
     stranger = {"X-Init-Data": init_data_for({"id": 222}, os.environ["HUB_BOT_TOKEN"])}
     r = await _upload(bot_id, PNG_BYTES, headers=stranger)
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_image_addresses_are_never_reused(db):
+    """Адрес картинки не выводится из порядкового номера.
+
+    Ответ отдаётся с Cache-Control: immutable на год. Если бы адрес был
+    id, то после сброса базы нумерация пошла бы заново и браузер отдал бы
+    из кэша старую картинку по совпавшему адресу.
+    """
+    from app.models import ProductImage
+
+    bot_id = await setup_shop(db)
+    urls = set()
+    for _ in range(3):
+        body = (await _upload(bot_id, PNG_BYTES)).json()
+        urls.add(body["url"])
+    assert len(urls) == 3
+
+    async with db() as session:
+        images = (await session.execute(select(ProductImage))).scalars().all()
+        tokens = {i.token for i in images}
+        assert len(tokens) == len(images)  # токены уникальны
+        for image in images:
+            # адрес не выводится из id, поэтому та же нумерация после сброса
+            # базы даст другие адреса, а не совпадёт со старыми
+            assert image.token != str(image.id)
+            assert len(image.token) >= 20

@@ -6,6 +6,7 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_api_session
@@ -14,20 +15,22 @@ from app.models import ProductImage
 router = APIRouter()
 
 
-@router.get("/images/{image_id}")
+@router.get("/images/{token}")
 async def get_image(
-    image_id: int,
+    token: str,
     session: AsyncSession = Depends(get_api_session),
 ) -> Response:
-    image = await session.get(ProductImage, image_id)
+    image = (
+        await session.execute(select(ProductImage).where(ProductImage.token == token))
+    ).scalar_one_or_none()
     if image is None:
         raise HTTPException(status_code=404, detail="image not found")
     return Response(
         content=image.data,
         media_type=image.mime,
         headers={
-            # содержимое картинки по id не меняется — кэшируем навсегда;
-            # замена фото у товара = загрузка новой картинки с новым id
+            # адрес картинки — случайный токен и никогда не переиспользуется,
+            # поэтому кэшировать навсегда безопасно даже после сброса базы
             "Cache-Control": "public, max-age=31536000, immutable",
             "X-Content-Type-Options": "nosniff",
         },

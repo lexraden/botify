@@ -16,6 +16,10 @@ node_modules/
 # Java (reference project)
 target/
 
+# Локальные БД (тестовый прогон на SQLite)
+*.db
+*.sqlite3
+
 # Logs / misc
 *.log
 .DS_Store
