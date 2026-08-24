@@ -22,6 +22,8 @@ class Seller(Base, CreatedAtMixin):
     # webview (уход в @BotFather/@CryptoBot и обратно) не сбрасывало шаг:
     # payment_pending -> payment_done -> bot_pending -> bot_done
     onboarding_step: Mapped[str] = mapped_column(String(32), default="payment_pending")
+    # Принятие условий использования на первом экране онбординга; null = ещё не принял
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Продавец нажал /start у @CryptoBot — без этого transfer не сработает
     cryptobot_connected: Mapped[bool] = mapped_column(Boolean, default=False)
 

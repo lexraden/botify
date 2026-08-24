@@ -6,6 +6,7 @@
 иначе данные магазинов одного продавца протекали бы друг в друга.
 """
 
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
@@ -54,6 +55,7 @@ class BotOut(BaseModel):
 
 class MeOut(BaseModel):
     onboarding_step: str  # payment_pending | payment_done | bot_pending | bot_done
+    terms_accepted: bool
     cryptobot_connected: bool
     commission_pct: Decimal
     plan: str
@@ -71,6 +73,7 @@ async def _bots_of(session: AsyncSession, seller: Seller) -> list[SellerBot]:
 def _me_payload(seller: Seller, bots: list[SellerBot]) -> MeOut:
     return MeOut(
         onboarding_step=seller.onboarding_step,
+        terms_accepted=seller.terms_accepted_at is not None,
         cryptobot_connected=seller.cryptobot_connected,
         commission_pct=seller.commission_pct,
         plan=seller.plan,
@@ -100,6 +103,19 @@ async def payment_done(
     if seller.onboarding_step == "payment_pending":
         seller.onboarding_step = "bot_pending"
     await session.commit()
+    return _me_payload(seller, await _bots_of(session, seller))
+
+
+@router.post("/onboarding/terms-accept", response_model=MeOut)
+async def terms_accept(
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> MeOut:
+    """Продавец отметил принятие условий на первом экране онбординга.
+    Фиксируем время один раз: повторный вызов не перетирает таймстамп."""
+    if seller.terms_accepted_at is None:
+        seller.terms_accepted_at = datetime.now(timezone.utc)
+        await session.commit()
     return _me_payload(seller, await _bots_of(session, seller))
 
 

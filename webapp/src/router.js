@@ -37,6 +37,9 @@ const router = createRouter({
 // возвращает ровно на тот шаг, где он остановился.
 function entryRouteFor(me) {
   if (!me.cryptobot_connected) {
+    // Согласие с условиями хранится только на бэкенде, поэтому без него
+    // продавец остаётся на первом экране даже если intro_seen стоит локально
+    if (!me.terms_accepted) return '/onboarding/welcome'
     return isIntroSeen() ? '/onboarding/payment' : '/onboarding/welcome'
   }
   if (!me.bots.length) return '/onboarding/bot'

@@ -1,12 +1,34 @@
 <script setup>
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { acceptTerms } from '../api'
 import { markIntroSeen } from '../services/intro'
+import { locale } from '../services/locale'
+import { TERMS } from '../content/terms'
+import TermsModal from '../components/TermsModal.vue'
 
 const router = useRouter()
+const accepted = ref(false)
+const saving = ref(false)
+const error = ref('')
+const termsOpen = ref(false)
 
-function start() {
-  markIntroSeen()
-  router.replace('/onboarding/payment')
+// Строки блока условий зависят от языка, выбранного в модалке
+const copy = computed(() => TERMS[locale.value])
+
+async function start() {
+  if (saving.value) return
+  saving.value = true
+  error.value = ''
+  try {
+    await acceptTerms()
+    markIntroSeen()
+    router.replace('/onboarding/payment')
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Не удалось сохранить. Попробуй ещё раз.'
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -39,14 +61,22 @@ function start() {
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" @click="start">
+      <a href="#" class="terms-link" @click.prevent="termsOpen = true">{{ copy.linkLabel }}</a>
+      <label class="agree">
+        <input v-model="accepted" type="checkbox">
+        <span>{{ copy.disclaimer }}</span>
+      </label>
+      <button class="btn btn-primary" :disabled="!accepted || saving" @click="start">
         Начать
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 12h14" /><path d="M13 6l6 6-6 6" />
         </svg>
       </button>
+      <p v-if="error" class="error">{{ error }}</p>
       <div class="note">2 шага · ~5 минут</div>
     </div>
+
+    <TermsModal v-if="termsOpen" @close="termsOpen = false" />
   </div>
 </template>
 
@@ -88,5 +118,32 @@ h1 {
   position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 20px 26px;
   display: flex; flex-direction: column; gap: 10px; background: var(--bg);
 }
+.terms-link {
+  align-self: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+/* чекбокс согласия; глобальные стили input здесь не подходят — перекрываем */
+.agree {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--sub);
+  cursor: pointer;
+}
+.agree input {
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.error { color: var(--red); font-size: 13px; text-align: center; margin: 0; }
 .note { font-size: 13px; font-weight: 600; color: var(--sub); text-align: center; }
 </style>
