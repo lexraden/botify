@@ -49,14 +49,10 @@ const doc = computed(() => TERMS[locale.value])
 }
 .sheet {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  max-height: 82vh;
+  inset: 0; /* во весь экран — без зазора сверху */
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border-radius: 20px 20px 0 0;
   animation: slide-up 0.22s ease;
 }
 .head {
@@ -105,6 +101,8 @@ const doc = computed(() => TERMS[locale.value])
   cursor: pointer;
 }
 .body {
+  flex: 1;
+  min-height: 0; /* даёт скроллиться внутри листа фиксированной высоты */
   overflow-y: auto;
   padding: 4px 18px 28px;
 }

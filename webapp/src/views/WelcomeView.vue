@@ -132,6 +132,8 @@ h1 {
   line-height: 1.45;
   color: var(--sub);
   cursor: pointer;
+  /* отступ снизу приподнимает блок условий над кнопкой действия */
+  margin-bottom: 8px;
 }
 .agree input {
   width: 17px;
