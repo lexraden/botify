@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, String, Text
@@ -5,6 +6,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, CreatedAtMixin
 from app.models.catalog import JsonB
+
+
+def new_spend_token() -> str:
+    """Случайный spend_id для пачки выплат (см. PayoutBatch.spend_id)."""
+    return secrets.token_urlsafe(16)
 
 
 # Заказ считается состоявшимся с момента оплаты; дальше меняется только
@@ -75,6 +81,11 @@ class PayoutBatch(Base, CreatedAtMixin):
     amount: Mapped[float] = mapped_column(Numeric(18, 6))
     # pending | sent | failed | too_small (минимум оказался выше нашего — копим дальше)
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    # Случайный токен, уходящий в Crypto Pay как spend_id. Не производная от id:
+    # сброс базы начинает нумерацию заново, и batch-{id} столкнулся бы с уже
+    # использованным spend_id (SPEND_ID_ALREADY_USED). Генерируется один раз
+    # при создании пачки и не меняется при повторных попытках отправить её.
+    spend_id: Mapped[str] = mapped_column(String(64), unique=True, default=new_spend_token)
     last_error: Mapped[str | None] = mapped_column(String(512))
     transfer_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

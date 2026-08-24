@@ -14,8 +14,8 @@
 transfer идёт на Telegram user_id продавца (баланс внутри @CryptoBot) —
 продавец должен был хотя бы раз нажать /start у @CryptoBot. Автоматики нет:
 перевод запускает только сам продавец кнопкой «Вывести». Упавшая пачка
-при следующем нажатии уйдёт с тем же spend_id, поэтому двойной выплаты
-не будет.
+при следующем нажатии уйдёт с тем же spend_id (случайный токен из самой
+пачки, не её номер), поэтому двойной выплаты не будет.
 """
 
 import logging
@@ -141,6 +141,9 @@ async def flush_shop_payouts(bot_id: int) -> bool:
         seller = await session.get(Seller, batch.seller_id)
         shop = await session.get(SellerBot, bot_id)
         batch_id, amount = batch.id, Decimal(batch.amount)
+        # идемпотентность на стороне Crypto Pay: случайный токен из самой пачки,
+        # а не её порядковый id (после сброса базы id начнутся заново)
+        spend_token = batch.spend_id
         seller_tg, shop_name = seller.telegram_id, shop.bot_username
         await session.commit()
 
@@ -149,7 +152,7 @@ async def flush_shop_payouts(bot_id: int) -> bool:
             user_id=seller_tg,
             asset="USDT",
             amount=float(amount),
-            spend_id=f"batch-{batch_id}",  # идемпотентность на стороне Crypto Pay
+            spend_id=spend_token,
         )
         ok, transfer_id, error = True, transfer.transfer_id, None
     except Exception as exc:

@@ -96,13 +96,48 @@ async def test_flush_shop_payouts_success_without_double_transfer(db):
         # повторное нажатие «Вывести» не делает второй transfer — выводить нечего
         assert await flush_shop_payouts(bot_id) is False
     assert fake_crypto.transfer.await_count == 1
-    assert fake_crypto.transfer.call_args.kwargs["spend_id"].startswith("batch-")
     assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(95.0)
 
     async with db() as session:
+        batch = (await session.execute(select(PayoutBatch))).scalar_one()
         payout = (await session.execute(select(Payout))).scalar_one()
+        # уходит сохранённый в пачке случайный токен, а не её порядковый id
+        assert fake_crypto.transfer.call_args.kwargs["spend_id"] == batch.spend_id
         assert payout.status == "sent"
         assert payout.transfer_id == 31337
+
+
+@pytest.mark.asyncio
+async def test_transfer_sends_stored_random_spend_token(db):
+    """spend_id берётся из пачки (случайный токен), а не из её порядкового id:
+    после сброса базы нумерация id начинается заново, и batch-{id} столкнулся
+    бы с уже использованным spend_id в Crypto Pay."""
+    await make_order(db, product_type="physical", digital_url=None, total=Decimal("100"))
+    await _paid_order_payout(db)
+    async with db() as session:
+        bot_id = (await session.execute(select(SellerBot))).scalars().first().id
+    from app.payments.payouts import flush_shop_payouts
+
+    fake_crypto = SimpleNamespace(
+        transfer=AsyncMock(return_value=SimpleNamespace(transfer_id=909))
+    )
+    with (
+        patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        assert await flush_shop_payouts(bot_id) is True
+
+    async with db() as session:
+        batch = (await session.execute(select(PayoutBatch))).scalar_one()
+        # следующая пачка получает свой случайный токен, не совпадающий с чужим
+        other = PayoutBatch(seller_id=batch.seller_id, bot_id=batch.bot_id, amount=Decimal("3"))
+        session.add(other)
+        await session.commit()
+        assert other.spend_id != batch.spend_id
+
+    sent = fake_crypto.transfer.call_args.kwargs["spend_id"]
+    assert sent == batch.spend_id  # шлём ровно то, что храним в пачке
+    assert sent != f"batch-{batch.id}"
 
 
 @pytest.mark.asyncio
