@@ -92,9 +92,9 @@ async def test_flush_shop_payouts_success_without_double_transfer(db):
         transfer=AsyncMock(return_value=SimpleNamespace(transfer_id=31337))
     )
     with patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto):
-        assert await flush_shop_payouts(bot_id) is True
+        assert (await flush_shop_payouts(bot_id)).ok is True
         # повторное нажатие «Вывести» не делает второй transfer — выводить нечего
-        assert await flush_shop_payouts(bot_id) is False
+        assert (await flush_shop_payouts(bot_id)).ok is False
     assert fake_crypto.transfer.await_count == 1
     assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(95.0)
 
@@ -125,7 +125,7 @@ async def test_transfer_sends_stored_random_spend_token(db):
         patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
         patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
     ):
-        assert await flush_shop_payouts(bot_id) is True
+        assert (await flush_shop_payouts(bot_id)).ok is True
 
     async with db() as session:
         batch = (await session.execute(select(PayoutBatch))).scalar_one()
@@ -182,7 +182,7 @@ async def test_flush_failure_marks_failed_and_notifies(db):
         patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
         patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as hub_mock,
     ):
-        assert await flush_shop_payouts(bot_id) is False
+        assert (await flush_shop_payouts(bot_id)).ok is False
 
     async with db() as session:
         payout = (await session.execute(select(Payout))).scalar_one()
@@ -227,7 +227,7 @@ async def test_payout_below_minimum_accumulates_silently(db):
         patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
         patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as hub_mock,
     ):
-        assert await flush_shop_payouts(bot_id) is False
+        assert (await flush_shop_payouts(bot_id)).ok is False
 
     assert fake_crypto.transfer.await_count == 0  # заведомо провальный transfer не делаем
     assert hub_mock.await_count == 0  # и продавца не тревожим
@@ -263,7 +263,7 @@ async def test_payouts_of_several_orders_go_in_one_transfer(db):
     ):
         async with db() as session:
             bot_id = (await session.execute(select(SellerBot))).scalars().first().id
-        assert await flush_shop_payouts(bot_id) is True
+        assert (await flush_shop_payouts(bot_id)).ok is True
 
     assert fake_crypto.transfer.await_count == 1
     assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(1.90)  # 2 × 0.95
@@ -293,7 +293,7 @@ async def test_amount_too_small_releases_batch_for_later(db):
         patch("app.payments.payouts.get_crypto_pay", return_value=fake_crypto),
         patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as hub_mock,
     ):
-        assert await flush_shop_payouts(bot_id) is False
+        assert (await flush_shop_payouts(bot_id)).ok is False
 
     assert hub_mock.await_count == 0  # продавцу это знать незачем
     async with db() as session:
@@ -453,10 +453,10 @@ async def test_each_shop_has_its_own_till(db):
         patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as hub_mock,
     ):
         # во втором магазине выводить нечего — перевода нет
-        assert await flush_shop_payouts(b_id) is False
+        assert (await flush_shop_payouts(b_id)).ok is False
         assert fake_crypto.transfer.await_count == 0
         # в первом — уходит только его сумма
-        assert await flush_shop_payouts(a_id) is True
+        assert (await flush_shop_payouts(a_id)).ok is True
 
     assert fake_crypto.transfer.call_args.kwargs["amount"] == pytest.approx(95.0)
     # в уведомлении названо, по какому именно магазину пришли деньги
@@ -490,7 +490,7 @@ async def test_summary_splits_balance_and_paid_out(db):
     ):
         from app.payments.payouts import flush_shop_payouts
 
-        assert await flush_shop_payouts(bot_id) is True
+        assert (await flush_shop_payouts(bot_id)).ok is True
 
     async with client() as c:
         summary = (
@@ -550,7 +550,7 @@ async def test_failed_batch_is_retried_with_the_same_spend_id(db):
         patch("app.payments.payouts.get_crypto_pay", return_value=failing),
         patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
     ):
-        assert await flush_shop_payouts(bot_id) is False
+        assert (await flush_shop_payouts(bot_id)).ok is False
 
     async with db() as session:
         batch = (await session.execute(select(PayoutBatch))).scalar_one()
@@ -561,7 +561,7 @@ async def test_failed_batch_is_retried_with_the_same_spend_id(db):
         patch("app.payments.payouts.get_crypto_pay", return_value=retry),
         patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
     ):
-        assert await flush_shop_payouts(bot_id) is True
+        assert (await flush_shop_payouts(bot_id)).ok is True
 
     # тот же spend_id и та же пачка: повторной выплаты по этим деньгам не будет
     assert (

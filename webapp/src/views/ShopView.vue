@@ -1,8 +1,7 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  confirmPayment,
   createMailing,
   deleteProduct,
   fetchMailings,
@@ -29,8 +28,6 @@ const error = ref('')
 const tab = ref('products')
 
 // --- кошелёк магазина ---
-// null = ещё неизвестно; без подключённого @CryptoBot вывод недоступен
-const cryptobotConnected = ref(null)
 const withdrawing = ref(false)
 const withdrawNote = ref('')
 const withdrawFailed = ref(false)
@@ -47,26 +44,18 @@ const WITHDRAW_ERROR = {
   no_funds: 'Пока нечего выводить.',
   below_min: 'Накопленного ещё не хватает для перевода.',
   no_token: 'Выплаты временно недоступны — уже разбираемся.',
+  too_small: 'Сумма пока мала для перевода — она подождёт следующих продаж.',
   failed: 'Перевод не прошёл — подробности пришли в чат с ботом.',
-  payment_not_connected: 'Сначала подключи оплату.',
 }
 
-// --- подключение оплаты (prerequisite вывода) ---
-const connecting = ref(false)
-const connectError = ref('')
+// Единственный отказ, который продавец может исправить сам: @CryptoBot ещё
+// не открыт. Заранее об этом не спрашиваем — API проверить не умеет, а сама
+// попытка перевода отвечает точно. Показываем шаг только когда он понадобился.
+const CRYPTOBOT_URL = 'https://t.me/CryptoBot'
+const needsCryptobot = ref(false)
 
-async function onConfirmPayment() {
-  if (connecting.value) return
-  connecting.value = true
-  connectError.value = ''
-  try {
-    await confirmPayment()
-    cryptobotConnected.value = true
-  } catch (e) {
-    connectError.value = e.response?.data?.detail || 'Не удалось сохранить. Попробуй ещё раз.'
-  } finally {
-    connecting.value = false
-  }
+function openCryptobot() {
+  openTelegramLink(CRYPTOBOT_URL)
 }
 
 async function onWithdraw() {
@@ -76,10 +65,13 @@ async function onWithdraw() {
   withdrawFailed.value = false
   try {
     const res = await withdrawPayout(botId.value)
-    withdrawFailed.value = !res.ok
+    needsCryptobot.value = res.reason === 'cryptobot_not_started'
+    withdrawFailed.value = !res.ok && !needsCryptobot.value
     withdrawNote.value = res.ok
       ? `${Number(res.sent).toFixed(2)} USDT отправлены в @CryptoBot`
-      : WITHDRAW_ERROR[res.reason] || 'Не получилось вывести.'
+      : needsCryptobot.value
+        ? ''
+        : WITHDRAW_ERROR[res.reason] || 'Не получилось вывести.'
     summary.value = await fetchShopSummary(botId.value)
   } catch {
     withdrawFailed.value = true
@@ -88,6 +80,15 @@ async function onWithdraw() {
     withdrawing.value = false
   }
 }
+
+// Продавец ушёл нажимать Start и вернулся — это и есть его «я готов»,
+// отдельной кнопки для подтверждения не нужно: повторяем вывод сами.
+function retryOnReturn() {
+  if (document.visibilityState === 'visible' && needsCryptobot.value) onWithdraw()
+}
+
+onMounted(() => document.addEventListener('visibilitychange', retryOnReturn))
+onUnmounted(() => document.removeEventListener('visibilitychange', retryOnReturn))
 
 const STATUS = {
   pending_payment: '⏳ Ждёт оплаты',
@@ -113,9 +114,7 @@ async function reload() {
 
 onMounted(async () => {
   try {
-    // заодно проверяем сессию и запоминаем, подключена ли оплата для вывода
-    const me = await fetchMe()
-    cryptobotConnected.value = me.cryptobot_connected
+    await fetchMe()  // проверка сессии продавца
     await reload()
   } catch (e) {
     error.value = e.response?.data?.detail || 'Не удалось загрузить магазин'
@@ -322,30 +321,23 @@ async function submitMailing() {
           <div class="wallet-sum">
             <b class="num">{{ balance.toFixed(2) }}</b><span>USDT</span>
           </div>
-          <!-- статус один на все состояния; ниже — действие по подключению оплаты -->
-          <p class="wallet-state" :class="canWithdraw ? 'ready' : 'wait'">
-            <template v-if="canWithdraw">Готово к выводу</template>
-            <template v-else-if="balance > 0">
-              Ещё <span class="num">{{ leftToMin.toFixed(2) }}</span> USDT до вывода
-            </template>
-            <template v-else>Здесь копятся деньги с продаж</template>
-          </p>
-
-          <!-- без подключённого @CryptoBot перевод не пройдёт: сперва оплата -->
-          <template v-if="cryptobotConnected === false">
-            <button class="btn btn-green wallet-btn" @click="openTelegramLink('https://t.me/CryptoBot')">
-              Подключить оплату
+          <!-- Про @CryptoBot говорим только когда он реально понадобился:
+               после отказа перевода. В обычном случае экран о нём молчит. -->
+          <template v-if="needsCryptobot">
+            <p class="wallet-state wait">Деньги придут в @CryptoBot — открой его и нажми Start</p>
+            <button class="btn btn-green wallet-btn" @click="openCryptobot">
+              Открыть @CryptoBot
             </button>
-            <div class="hint">
-              Вывод денег идёт через @CryptoBot: открой бота и нажми /start,
-              затем вернись сюда и подтверди.
-            </div>
-            <button class="btn btn-soft wallet-btn" :disabled="connecting" @click="onConfirmPayment">
-              {{ connecting ? '…' : 'Готово, я нажал /start' }}
-            </button>
-            <p v-if="connectError" class="wallet-note err">{{ connectError }}</p>
+            <p class="hint">Вернёшься сюда — вывод повторится сам.</p>
           </template>
-          <template v-else-if="cryptobotConnected">
+          <template v-else>
+            <p class="wallet-state" :class="canWithdraw ? 'ready' : 'wait'">
+              <template v-if="canWithdraw">Готово к выводу</template>
+              <template v-else-if="balance > 0">
+                Ещё <span class="num">{{ leftToMin.toFixed(2) }}</span> USDT до вывода
+              </template>
+              <template v-else>Здесь копятся деньги с продаж</template>
+            </p>
             <button
               class="btn btn-green wallet-btn"
               :disabled="!canWithdraw || withdrawing"
