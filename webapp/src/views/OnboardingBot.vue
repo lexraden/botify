@@ -74,7 +74,7 @@ async function submit() {
 <template>
   <div class="step" :class="{ 'kb-open': keyboardOpen }">
     <h2>{{ addingMore ? 'Подключи ещё одного бота' : 'Подключи своего бота' }}</h2>
-    <p class="lead">Через него покупатели будут заходить в магазин</p>
+    <p class="lead">Через него покупатели будут заходить в твой магазин и получать рассылки</p>
 
     <ol class="steps">
       <li><span class="num">1</span><span>Открой <b>@BotFather</b>, отправь <b>/newbot</b></span></li>
