@@ -40,6 +40,9 @@ class Order(Base, CreatedAtMixin):
 
     invoice_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)  # Crypto Pay invoice
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Момент доставки (delivered). От него считается окно чата заказа —
+    # 72 часа на обсуждение (app/services/chat.py)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     fulfillment: Mapped[dict | None] = mapped_column(JsonB)  # трек-номер / ссылка / файл
 

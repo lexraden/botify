@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     # только считаются и показываются, но ничего не блокируют.
     enforce_plan_limits: bool = False
 
+    # Окно активности чата заказа (app/services/chat.py): после доставки
+    # заказ можно обсуждать ещё 72 часа, потом чат закрывается для новых
+    # сообщений (история остаётся читаемой).
+    chat_window_hours: float = 72.0
+    # Через сколько дней после блокировки история уходит в архивную таблицу
+    archive_chat_after_days: int = 30
+
     @field_validator("database_url")
     @classmethod
     def force_asyncpg(cls, v: str) -> str:

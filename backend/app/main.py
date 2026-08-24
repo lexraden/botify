@@ -37,6 +37,22 @@ async def mailing_loop() -> None:
             logger.exception("Ошибка в цикле рассылок")
 
 
+async def chat_maintenance_loop() -> None:
+    """Обслуживание чатов заказов раз в минуту: закрытие истёкших окон (72ч)
+    и архивация переписки заблокированных больше месяца назад чатов."""
+    from app.services.chat import archive_old_chats, lock_expired_chats
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            locked = await lock_expired_chats()
+            if locked:
+                logger.info("Закрыто истёкших чатов: %d", locked)
+            await archive_old_chats()
+        except Exception:
+            logger.exception("Ошибка в цикле обслуживания чатов")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await setup_hub_webhook()
@@ -44,6 +60,7 @@ async def lifespan(app: FastAPI):
     # Выплаты автоматикой не трогаем вовсе: только продавец жмёт «Вывести»
     background_tasks = [
         asyncio.create_task(mailing_loop()),
+        asyncio.create_task(chat_maintenance_loop()),
     ]
     yield
     for task in background_tasks:

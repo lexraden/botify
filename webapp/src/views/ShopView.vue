@@ -25,7 +25,10 @@ const products = ref([])
 const orders = ref([])
 const mailings = ref([])
 const error = ref('')
-const tab = ref('products')
+// вкладка восстанавливается из ?tab= — возврат из чата заказа открывает заказы
+const tab = ref(['products', 'orders', 'mailings', 'stats'].includes(route.query.tab)
+  ? route.query.tab
+  : 'products')
 
 // --- кошелёк магазина ---
 const withdrawing = ref(false)
@@ -97,6 +100,8 @@ const STATUS = {
   delivered: '🎉 Доставлен',
   cancelled: '✖️ Отменён',
 }
+// у оплаченных заказов есть чат с покупателем (закрывается сам через 72ч после доставки)
+const CHAT_STATUSES = ['paid', 'fulfilled', 'delivered']
 const TYPE_LABEL = { physical: 'товар', digital: 'digital', service: 'услуга' }
 const TYPE_EMOJI = { physical: '📦', digital: '📕', service: '🛎' }
 
@@ -243,6 +248,13 @@ async function submitMailing() {
           </span>
           <div v-if="o.comment" class="comment">💬 {{ o.comment }}</div>
 
+          <button
+            v-if="CHAT_STATUSES.includes(o.status)"
+            class="btn btn-soft chat-btn"
+            @click="router.push(`/shop/${botId}/orders/${o.id}/chat`)"
+          >
+            💬 Чат с покупателем
+          </button>
           <button
             v-if="o.status === 'paid' && fulfillForm.orderId !== o.id"
             class="btn btn-green fulfill-btn"
@@ -435,6 +447,7 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 }
 .comment { background: var(--surface2); border-radius: 11px; padding: 9px 11px; font-size: 13px; }
 .fulfill-btn { height: 42px; }
+.chat-btn { height: 42px; margin-top: 2px; }
 .fulfill-form { display: flex; flex-direction: column; gap: 8px; }
 .pair { display: flex; gap: 8px; }
 .pair .btn { height: 42px; }

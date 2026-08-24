@@ -153,6 +153,8 @@ async def handle_invoice_paid(
         all_digital = all(product.type in ("digital", "service") for _, product in items)
         if digital_lines and all_digital:
             order.status = "delivered"
+            # метка доставки: с неё считается окно чата заказа (72 часа)
+            order.delivered_at = func.now()
 
         order_summary = "\n".join(
             f"• {product.title} × {item.qty}" for item, product in items

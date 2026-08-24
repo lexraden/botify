@@ -12,6 +12,7 @@ import OnboardingDone from './views/OnboardingDone.vue'
 import ShopsView from './views/ShopsView.vue'
 import ShopView from './views/ShopView.vue'
 import ProductFormView from './views/ProductFormView.vue'
+import OrderChatView from './views/OrderChatView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -28,6 +29,7 @@ const router = createRouter({
     { path: '/shops', component: ShopsView },
     { path: '/shop/:botId', component: ShopView },
     { path: '/shop/:botId/product/:id?', component: ProductFormView },
+    { path: '/shop/:botId/orders/:orderId/chat', component: OrderChatView },
   ],
 })
 

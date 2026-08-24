@@ -11,16 +11,18 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_seller
 from app.config import get_settings
 from app.db import get_api_session
 from app.models import (
+    ChatMessage,
     Customer,
     Mailing,
     Order,
+    OrderChat,
     OrderItem,
     Product,
     ProductImage,
@@ -749,9 +751,115 @@ async def fulfill_order(
     )
 
     order.status = "delivered"
+    order.delivered_at = func.now()
     await session.commit()
 
     return {"status": order.status}
+
+
+# --------------------------------------------------------------------------
+# Чат заказа: продавец <-> покупатель через relay (личности не раскрываются)
+# --------------------------------------------------------------------------
+
+
+class ChatMessageOut(BaseModel):
+    id: int
+    sender: str  # seller | customer
+    body: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrderChatOut(BaseModel):
+    status: str  # active | locked_by_timeout | archived
+    can_send: bool
+    closes_at: datetime | None
+    messages: list[ChatMessageOut]
+
+
+class ChatMessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=1000)
+
+
+async def _order_with_chat(
+    shop: SellerBot, order_id: int, session: AsyncSession
+) -> tuple[Order, OrderChat]:
+    """Заказ и его чат в контексте магазина. Чужой заказ или неоплаченный —
+    403: подменённый id не должен даже намекать на существование переписки."""
+    from app.services.chat import get_or_create_chat
+
+    order = await session.get(Order, order_id)
+    if order is None or order.bot_id != shop.id:
+        raise HTTPException(status_code=403, detail="foreign order")
+    chat = await get_or_create_chat(session, order)
+    if chat is None:
+        raise HTTPException(status_code=403, detail="chat_not_available")
+    return order, chat
+
+
+@router.get("/bots/{bot_id}/orders/{order_id}/chat", response_model=OrderChatOut)
+async def get_order_chat(
+    order_id: int,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> OrderChatOut:
+    """История переписки по заказу + состояние окна активности."""
+    from app.services.chat import chat_is_open, closes_at, read_history
+
+    order, chat = await _order_with_chat(shop, order_id, session)
+    messages = await read_history(session, chat.id)
+    await session.commit()  # чат мог создаться этим вызовом
+    return OrderChatOut(
+        status=chat.status,
+        can_send=chat_is_open(order),
+        closes_at=closes_at(order),
+        messages=[ChatMessageOut.model_validate(m) for m in messages],
+    )
+
+
+@router.post("/bots/{bot_id}/orders/{order_id}/chat/messages", response_model=ChatMessageOut)
+async def send_order_chat_message(
+    order_id: int,
+    payload: ChatMessageIn,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> ChatMessageOut:
+    """Сообщение продавца: пишем в базу, доставляем покупателю от бота магазина."""
+    from app.db import session_factory
+    from app.services.chat import (
+        ChatLockedError,
+        RateLimitedError,
+        notify_customer,
+        send_message,
+    )
+
+    order, chat = await _order_with_chat(shop, order_id, session)
+    try:
+        message = await send_message(session, chat, order, "seller", payload.body)
+    except ChatLockedError:
+        raise HTTPException(status_code=403, detail="chat_locked")
+    except RateLimitedError:
+        raise HTTPException(status_code=429, detail="too_many_messages")
+
+    out = ChatMessageOut.model_validate(message)
+    customer_tg = (
+        await session.get(Customer, order.customer_id)
+    ).telegram_id
+    await session.commit()
+
+    # Доставка после коммита: сбой Telegram не должен терять сообщение из
+    # истории (продавец увидит его в кабинете при следующем открытии)
+    tg_message_id = await notify_customer(shop, customer_tg, order.id, message.body)
+    if tg_message_id is not None:
+        async with session_factory() as followup:
+            await followup.execute(
+                update(ChatMessage)
+                .where(ChatMessage.id == out.id)
+                .values(tg_message_id=tg_message_id)
+            )
+            await followup.commit()
+    return out
 
 
 # --------------------------------------------------------------------------

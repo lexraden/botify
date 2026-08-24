@@ -1,14 +1,16 @@
 """API витрины: покупатель внутри seller-бота. Всё отфильтровано по продавцу бота."""
 
 import logging
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import BuyerContext, get_buyer
-from app.models import Order, OrderItem, Product, ShopEvent
+from app.models import Customer, Order, OrderChat, OrderItem, Product, Seller, ShopEvent
 
 logger = logging.getLogger(__name__)
 
@@ -208,4 +210,88 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
                 ],
             )
         )
+    return out
+
+
+# --------------------------------------------------------------------------
+# Чат заказа: покупатель отвечает в диалоге с ботом магазина, история видна
+# и ему (эти эндпоинты), и продавцу в кабинете. Личность не раскрывается.
+# --------------------------------------------------------------------------
+
+
+class BuyerChatMessageOut(BaseModel):
+    id: int
+    sender: str  # seller | customer
+    body: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BuyerOrderChatOut(BaseModel):
+    status: str  # active | locked_by_timeout | archived
+    can_send: bool
+    closes_at: datetime | None
+    messages: list[BuyerChatMessageOut]
+
+
+class BuyerChatMessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=1000)
+
+
+async def _own_order_with_chat(ctx: BuyerContext, order_id: int) -> tuple[Order, OrderChat]:
+    """Заказ и его чат, принадлежащие именно этому покупателю. Чужой заказ —
+    403: подменённый order_id не должен выдавать даже факт существования чата."""
+    from app.services.chat import get_or_create_chat
+
+    order = await ctx.session.get(Order, order_id)
+    if order is None or order.bot_id != ctx.bot.id or order.customer_id != ctx.customer.id:
+        raise HTTPException(status_code=403, detail="foreign order")
+    chat = await get_or_create_chat(ctx.session, order)
+    if chat is None:
+        raise HTTPException(status_code=403, detail="chat_not_available")
+    return order, chat
+
+
+@router.get("/orders/{order_id}/chat", response_model=BuyerOrderChatOut)
+async def get_order_chat(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> BuyerOrderChatOut:
+    from app.services.chat import chat_is_open, closes_at, read_history
+
+    order, chat = await _own_order_with_chat(ctx, order_id)
+    messages = await read_history(ctx.session, chat.id)
+    await ctx.session.commit()  # чат мог создаться этим вызовом
+    return BuyerOrderChatOut(
+        status=chat.status,
+        can_send=chat_is_open(order),
+        closes_at=closes_at(order),
+        messages=[BuyerChatMessageOut.model_validate(m) for m in messages],
+    )
+
+
+@router.post("/orders/{order_id}/chat/messages", response_model=BuyerChatMessageOut)
+async def send_order_chat_message(
+    order_id: int, payload: BuyerChatMessageIn, ctx: BuyerContext = Depends(get_buyer)
+) -> BuyerChatMessageOut:
+    """Сообщение покупателя. Пишется в историю сразу; продавцу уходит пуш в
+    hub-бот без деталей личности, сам текст он увидит в кабинете."""
+    from app.services.chat import (
+        ChatLockedError,
+        RateLimitedError,
+        notify_seller,
+        send_message,
+    )
+
+    order, chat = await _own_order_with_chat(ctx, order_id)
+    try:
+        message = await send_message(ctx.session, chat, order, "customer", payload.body)
+    except ChatLockedError:
+        raise HTTPException(status_code=403, detail="chat_locked")
+    except RateLimitedError:
+        raise HTTPException(status_code=429, detail="too_many_messages")
+
+    out = BuyerChatMessageOut.model_validate(message)
+    seller_tg = (await ctx.session.get(Seller, order.seller_id)).telegram_id
+    await ctx.session.commit()
+
+    await notify_seller(seller_tg, order.id)
     return out
