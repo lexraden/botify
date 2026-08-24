@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { acceptTerms } from '../api'
-import { markIntroSeen } from '../services/intro'
 import { locale } from '../services/locale'
 import { TERMS } from '../content/terms'
 import TermsModal from '../components/TermsModal.vue'
@@ -22,8 +21,7 @@ async function start() {
   error.value = ''
   try {
     await acceptTerms()
-    markIntroSeen()
-    router.replace('/onboarding/payment')
+    router.replace('/onboarding/bot')
   } catch (e) {
     error.value = e.response?.data?.detail || 'Не удалось сохранить. Попробуй ещё раз.'
   } finally {
@@ -75,7 +73,7 @@ async function start() {
         </svg>
       </button>
       <p v-if="error" class="error">{{ error }}</p>
-      <div class="note">2 шага · ~5 минут</div>
+      <div class="note">1 шаг · ~2 минуты</div>
     </div>
 
     <TermsModal v-if="termsOpen" @close="termsOpen = false" />

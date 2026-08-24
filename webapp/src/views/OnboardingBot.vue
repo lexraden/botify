@@ -9,8 +9,8 @@ const token = ref('')
 const saving = ref(false)
 const error = ref('')
 
-// Повторный вход (оплата уже подключена и есть хотя бы один бот):
-// прячем прогресс онбординга и просим подключить «ещё одного бота».
+// Повторный вход (уже есть хотя бы один бот): показываем упрощённый экран
+// «ещё одного бота», без поздравления о создании магазина.
 const addingMore = ref(false)
 onMounted(async () => {
   try {
@@ -51,7 +51,15 @@ async function submit() {
   try {
     const res = await connectBot(token.value.trim())
     if (res.ok) {
-      router.replace(`/shop/${res.bot.id}`)
+      if (addingMore.value) {
+        router.replace(`/shop/${res.bot.id}`)
+      } else {
+        const query = new URLSearchParams({
+          bot: String(res.bot.id),
+          username: res.bot.bot_username || '',
+        })
+        router.replace(`/onboarding/done?${query}`)
+      }
     } else {
       error.value = ERRORS[res.error] || 'Не удалось подключить бота. Попробуй ещё раз.'
     }
@@ -65,16 +73,8 @@ async function submit() {
 
 <template>
   <div class="step" :class="{ 'kb-open': keyboardOpen }">
-    <template v-if="!addingMore">
-      <div class="progress">
-        <span class="done" title="Вернуться к шагу 1" @click="router.push('/onboarding/payment')" />
-        <span class="filled" />
-      </div>
-      <div class="step-label">Шаг 2 из 2</div>
-    </template>
-
     <h2>{{ addingMore ? 'Подключи ещё одного бота' : 'Подключи своего бота' }}</h2>
-    <p class="lead">Через него покупатели увидят твой каталог</p>
+    <p class="lead">Через него покупатели будут заходить в магазин</p>
 
     <ol class="steps">
       <li><span class="num">1</span><span>Открой <b>@BotFather</b>, отправь <b>/newbot</b></span></li>
@@ -126,13 +126,6 @@ async function submit() {
 <style scoped>
 .step { padding: 20px 18px 118px; }
 .step.kb-open { padding-bottom: 75vh; }
-.progress { display: flex; gap: 6px; }
-.progress span { flex: 1; height: 5px; border-radius: 3px; background: var(--surface2); }
-.progress .filled { background: var(--accent); }
-.progress .done { background: var(--green); cursor: pointer; position: relative; }
-/* полоска всего 5px — расширяем область нажатия по вертикали */
-.progress .done::after { content: ''; position: absolute; inset: -14px 0; }
-.step-label { font-size: 13px; font-weight: 700; color: var(--sub); margin-top: 10px; }
 h2 { font-size: 21px; margin: 18px 0 10px; }
 .lead { font-size: 14px; color: var(--sub); line-height: 1.5; margin: 0; }
 .alert {

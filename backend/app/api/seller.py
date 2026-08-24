@@ -54,7 +54,7 @@ class BotOut(BaseModel):
 
 
 class MeOut(BaseModel):
-    onboarding_step: str  # payment_pending | payment_done | bot_pending | bot_done
+    onboarding_step: str  # bot_pending | bot_done; payment_pending — legacy старых строк
     terms_accepted: bool
     cryptobot_connected: bool
     commission_pct: Decimal
@@ -433,6 +433,18 @@ async def withdraw(
     """
     from app.payments.client import get_crypto_pay
     from app.payments.payouts import flush_shop_payouts
+
+    seller = await session.get(Seller, shop.seller_id)
+    if seller is None or not seller.cryptobot_connected:
+        # без /start у @CryptoBot transfer всё равно бы упал с USER_NOT_FOUND;
+        # prerequisite проверяем здесь, а не в момент перевода
+        return WithdrawOut(
+            ok=False,
+            sent=Decimal(0),
+            pending=await pending_total(session, shop.id),
+            minimum=Decimal(str(get_settings().min_payout_usdt)),
+            reason="payment_not_connected",
+        )
 
     minimum = Decimal(str(get_settings().min_payout_usdt))
     before = await pending_total(session, shop.id)

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  confirmPayment,
   createMailing,
   deleteProduct,
   fetchMailings,
@@ -13,6 +14,7 @@ import {
   fulfillOrder,
   withdrawPayout,
 } from '../api'
+import { openTelegramLink } from '../services/telegram'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,6 +29,8 @@ const error = ref('')
 const tab = ref('products')
 
 // --- кошелёк магазина ---
+// null = ещё неизвестно; без подключённого @CryptoBot вывод недоступен
+const cryptobotConnected = ref(null)
 const withdrawing = ref(false)
 const withdrawNote = ref('')
 const withdrawFailed = ref(false)
@@ -44,6 +48,25 @@ const WITHDRAW_ERROR = {
   below_min: 'Накопленного ещё не хватает для перевода.',
   no_token: 'Выплаты временно недоступны — уже разбираемся.',
   failed: 'Перевод не прошёл — подробности пришли в чат с ботом.',
+  payment_not_connected: 'Сначала подключи оплату.',
+}
+
+// --- подключение оплаты (prerequisite вывода) ---
+const connecting = ref(false)
+const connectError = ref('')
+
+async function onConfirmPayment() {
+  if (connecting.value) return
+  connecting.value = true
+  connectError.value = ''
+  try {
+    await confirmPayment()
+    cryptobotConnected.value = true
+  } catch (e) {
+    connectError.value = e.response?.data?.detail || 'Не удалось сохранить. Попробуй ещё раз.'
+  } finally {
+    connecting.value = false
+  }
 }
 
 async function onWithdraw() {
@@ -90,7 +113,9 @@ async function reload() {
 
 onMounted(async () => {
   try {
-    await fetchMe() // заодно проверяем сессию
+    // заодно проверяем сессию и запоминаем, подключена ли оплата для вывода
+    const me = await fetchMe()
+    cryptobotConnected.value = me.cryptobot_connected
     await reload()
   } catch (e) {
     error.value = e.response?.data?.detail || 'Не удалось загрузить магазин'
@@ -305,16 +330,37 @@ async function submitMailing() {
             <template v-else>Здесь копятся деньги с продаж</template>
           </p>
 
-          <button
-            class="btn btn-green wallet-btn"
-            :disabled="!canWithdraw || withdrawing"
-            @click="onWithdraw"
-          >
-            {{ withdrawing ? 'Отправляем…' : 'Вывести' }}
-          </button>
-          <p v-if="withdrawNote" class="wallet-note" :class="{ err: withdrawFailed }">
-            {{ withdrawNote }}
-          </p>
+          <!-- без подключённого @CryptoBot перевод не пройдёт: сперва оплата -->
+          <template v-if="cryptobotConnected === false">
+            <p class="wallet-state wait">Подключи оплату, чтобы выводить заработанное</p>
+            <button class="btn btn-soft wallet-btn" @click="openTelegramLink('https://t.me/CryptoBot')">
+              Открыть @CryptoBot
+            </button>
+            <button class="btn btn-green wallet-btn" :disabled="connecting" @click="onConfirmPayment">
+              {{ connecting ? '…' : 'Готово, я нажал /start' }}
+            </button>
+            <p v-if="connectError" class="wallet-note err">{{ connectError }}</p>
+          </template>
+          <template v-else>
+            <p class="wallet-state" :class="canWithdraw ? 'ready' : 'wait'">
+              <template v-if="canWithdraw">Готово к выводу</template>
+              <template v-else-if="balance > 0">
+                Ещё <span class="num">{{ leftToMin.toFixed(2) }}</span> USDT до вывода
+              </template>
+              <template v-else>Здесь копятся деньги с продаж</template>
+            </p>
+
+            <button
+              class="btn btn-green wallet-btn"
+              :disabled="!canWithdraw || withdrawing"
+              @click="onWithdraw"
+            >
+              {{ withdrawing ? 'Отправляем…' : 'Вывести' }}
+            </button>
+            <p v-if="withdrawNote" class="wallet-note" :class="{ err: withdrawFailed }">
+              {{ withdrawNote }}
+            </p>
+          </template>
 
           <div class="wallet-rows">
             <div class="plan-row">

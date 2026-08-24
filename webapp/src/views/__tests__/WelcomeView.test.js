@@ -49,7 +49,7 @@ describe('WelcomeView — согласие с условиями', () => {
     expect(wrapper.find('.agree input').element.checked).toBeFalsy()
   })
 
-  it('после принятия условий сохраняет согласие и переходит к оплате', async () => {
+  it('после принятия условий сохраняет согласие и переходит к подключению бота', async () => {
     acceptTermsMock.mockResolvedValue({})
     const wrapper = mountView()
     await wrapper.find('.agree input').setValue(true)
@@ -57,7 +57,7 @@ describe('WelcomeView — согласие с условиями', () => {
     await flushPromises()
 
     expect(acceptTermsMock).toHaveBeenCalledTimes(1)
-    expect(replaceMock).toHaveBeenCalledWith('/onboarding/payment')
+    expect(replaceMock).toHaveBeenCalledWith('/onboarding/bot')
   })
 
   it('при ошибке сохранения показывает сообщение и никуда не ведёт', async () => {

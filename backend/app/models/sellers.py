@@ -19,9 +19,11 @@ class Seller(Base, CreatedAtMixin):
     language_code: Mapped[str | None] = mapped_column(String(8))
 
     # Онбординг идёт в Mini App; прогресс хранится здесь, чтобы пересоздание
-    # webview (уход в @BotFather/@CryptoBot и обратно) не сбрасывало шаг:
-    # payment_pending -> payment_done -> bot_pending -> bot_done
-    onboarding_step: Mapped[str] = mapped_column(String(32), default="payment_pending")
+    # webview (уход в @BotFather и обратно) не сбрасывало шаг.
+    # Единственный шаг — подключение бота. Дефолт ниже — питоновский (все
+    # вставки идут через ORM); серверный DEFAULT в базе остался старым
+    # ('payment_pending') как legacy и роли не играет.
+    onboarding_step: Mapped[str] = mapped_column(String(32), default="bot_pending")
     # Принятие условий использования на первом экране онбординга; null = ещё не принял
     terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Продавец нажал /start у @CryptoBot — без этого transfer не сработает

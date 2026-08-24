@@ -35,6 +35,7 @@ export const trackEvent = (type, productId = null) =>
 export const fetchMe = () => api.get('/seller/me').then((r) => r.data)
 export const acceptTerms = () =>
   api.post('/seller/onboarding/terms-accept').then((r) => r.data)
+// подключение @CryptoBot из кошелька магазина: prerequisite вывода средств
 export const confirmPayment = () => api.post('/seller/onboarding/payment-done').then((r) => r.data)
 export const connectBot = (token) => api.post('/seller/bots', { token }).then((r) => r.data)
 // управление магазином прямо из кабинета; каждое действие дублируется в hub-бот
