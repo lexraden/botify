@@ -6,11 +6,20 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import BuyerContext, get_buyer
-from app.models import Customer, Order, OrderChat, OrderItem, Product, Seller, ShopEvent
+from app.models import (
+    Customer,
+    Order,
+    OrderChat,
+    OrderItem,
+    Product,
+    ProductReview,
+    Seller,
+    ShopEvent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +36,9 @@ class ProductOut(BaseModel):
     currency: str
     # остаток; None — не ограничен, 0 — «нет в наличии»
     stock: int | None
+    # рейтинг: среднее по отзывам покупателей; нет отзывов — None и ноль
+    avg_rating: float | None = None
+    reviews_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -51,6 +63,8 @@ class OrderItemOut(BaseModel):
     title: str
     qty: int
     price: Decimal
+    # оценён ли товар покупателем (для кнопки «Оценить покупки»)
+    reviewed: bool = False
 
 
 class OrderOut(BaseModel):
@@ -70,9 +84,32 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
         .order_by(Product.id)
     )
     products = result.scalars().all()
+
+    # средний рейтинг одним агрегатом на все товары магазина
+    ratings: dict[int, tuple[float, int]] = {}
+    if products:
+        rows = await ctx.session.execute(
+            select(
+                ProductReview.product_id,
+                func.avg(ProductReview.rating),
+                func.count(),
+            )
+            .where(
+                ProductReview.bot_id == ctx.bot.id,
+                ProductReview.product_id.in_([p.id for p in products]),
+            )
+            .group_by(ProductReview.product_id)
+        )
+        ratings = {pid: (float(avg), cnt) for pid, avg, cnt in rows.all()}
+
+    out = []
+    for p in products:
+        product_out = ProductOut.model_validate(p)
+        product_out.avg_rating, product_out.reviews_count = ratings.get(p.id, (None, 0))
+        out.append(product_out)
     return ShopOut(
         shop_name=f"@{ctx.bot.bot_username}",
-        products=[ProductOut.model_validate(p) for p in products],
+        products=out,
     )
 
 
@@ -191,6 +228,18 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
         .limit(50)
     )
     orders = result.scalars().all()
+
+    # какие позиции покупатель уже оценил — один запрос на всю страницу
+    reviewed_pairs: set[tuple[int, int]] = set()
+    if orders:
+        rows = await ctx.session.execute(
+            select(ProductReview.order_id, ProductReview.product_id).where(
+                ProductReview.customer_id == ctx.customer.id,
+                ProductReview.order_id.in_([o.id for o in orders]),
+            )
+        )
+        reviewed_pairs = set(rows.all())
+
     out: list[OrderOut] = []
     for order in orders:
         items_result = await ctx.session.execute(
@@ -205,7 +254,13 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
                 total=order.total,
                 currency=order.currency,
                 items=[
-                    OrderItemOut(product_id=i.product_id, title=title, qty=i.qty, price=i.price)
+                    OrderItemOut(
+                        product_id=i.product_id,
+                        title=title,
+                        qty=i.qty,
+                        price=i.price,
+                        reviewed=(order.id, i.product_id) in reviewed_pairs,
+                    )
                     for i, title in items_result.all()
                 ],
             )
@@ -295,4 +350,102 @@ async def send_order_chat_message(
     await ctx.session.commit()
 
     await notify_seller(seller_tg, order.id)
+    return out
+
+
+# --------------------------------------------------------------------------
+# Отзывы: оценка товара доступна только покупателю его доставленного заказа.
+# Наружу идёт рейтинг и текст — без каких-либо данных об авторе.
+# --------------------------------------------------------------------------
+
+
+class PublicReviewOut(BaseModel):
+    rating: int
+    body: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ReviewItemIn(BaseModel):
+    product_id: int
+    rating: int = Field(ge=1, le=5)
+    body: str | None = Field(default=None, max_length=1000)
+
+
+class ReviewsIn(BaseModel):
+    items: list[ReviewItemIn] = Field(min_length=1, max_length=20)
+
+
+class BuyerReviewOut(BaseModel):
+    id: int
+    product_id: int
+    rating: int
+    body: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/products/{product_id}/reviews", response_model=list[PublicReviewOut])
+async def product_reviews(
+    product_id: int, ctx: BuyerContext = Depends(get_buyer)
+) -> list[PublicReviewOut]:
+    product = await ctx.session.get(Product, product_id)
+    if product is None or product.bot_id != ctx.bot.id or not product.is_active:
+        raise HTTPException(status_code=404, detail="product not found")
+    result = await ctx.session.execute(
+        select(ProductReview)
+        .where(ProductReview.product_id == product_id)
+        .order_by(ProductReview.id.desc())
+        .limit(50)
+    )
+    return [PublicReviewOut.model_validate(r) for r in result.scalars().all()]
+
+
+@router.post("/orders/{order_id}/reviews", response_model=list[BuyerReviewOut])
+async def leave_review(
+    order_id: int, payload: ReviewsIn, ctx: BuyerContext = Depends(get_buyer)
+) -> list[BuyerReviewOut]:
+    """Оценки позиций своего доставленного заказа. Повторная отправка по той же
+    паре (заказ, товар) правит оценку — передумать можно."""
+    order = await ctx.session.get(Order, order_id)
+    if order is None or order.bot_id != ctx.bot.id or order.customer_id != ctx.customer.id:
+        raise HTTPException(status_code=403, detail="foreign order")
+    if order.status != "delivered":
+        raise HTTPException(status_code=400, detail=f"order is {order.status}, not delivered")
+
+    items_result = await ctx.session.execute(
+        select(OrderItem).where(OrderItem.order_id == order.id)
+    )
+    ordered_products = {i.product_id for i in items_result.scalars().all()}
+    foreign = [i.product_id for i in payload.items if i.product_id not in ordered_products]
+    if foreign:
+        raise HTTPException(status_code=400, detail=f"products not in this order: {foreign}")
+
+    # существующие отзывы заказа — их обновляем, остальные создаём
+    existing_rows = await ctx.session.execute(
+        select(ProductReview).where(ProductReview.order_id == order.id)
+    )
+    by_product = {r.product_id: r for r in existing_rows.scalars().all()}
+
+    out: list[BuyerReviewOut] = []
+    for item in payload.items:
+        review = by_product.get(item.product_id)
+        if review is None:
+            review = ProductReview(
+                bot_id=ctx.bot.id,
+                product_id=item.product_id,
+                order_id=order.id,
+                customer_id=ctx.customer.id,
+                rating=item.rating,
+                body=item.body,
+            )
+            ctx.session.add(review)
+            await ctx.session.flush()
+        else:
+            review.rating = item.rating
+            review.body = item.body
+        out.append(BuyerReviewOut.model_validate(review))
+    await ctx.session.commit()
     return out

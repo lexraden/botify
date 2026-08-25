@@ -48,6 +48,9 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
     <div class="meta">
       <div class="title">{{ product.title }}</div>
       <div class="price">{{ Number(product.price) }} USDT</div>
+      <div v-if="product.reviews_count" class="rating">
+        ★ {{ Number(product.avg_rating).toFixed(1) }} · {{ product.reviews_count }}
+      </div>
     </div>
     <div v-if="qty" class="stepper">
       <button class="minus" @click.stop="cart.remove(product)">−</button>
@@ -74,6 +77,7 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
 .meta { display: flex; flex-direction: column; gap: 2px; }
 .title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .price { font-size: 14px; font-weight: 800; }
+.rating { font-size: 11.5px; font-weight: 700; color: var(--sub); }
 .add, .stepper button {
   border: 0; border-radius: 11px; height: 36px; font-size: 13px; font-weight: 800; cursor: pointer;
 }

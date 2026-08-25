@@ -27,6 +27,11 @@ export const fetchShop = () => api.get(`/store/${getBotId()}`).then((r) => r.dat
 export const createOrder = (items, comment) =>
   api.post(`/store/${getBotId()}/orders`, { items, comment }).then((r) => r.data)
 export const fetchMyOrders = () => api.get(`/store/${getBotId()}/orders/my`).then((r) => r.data)
+// отзывы: список у товара, оценка — только по своему доставленному заказу
+export const fetchProductReviews = (productId) =>
+  api.get(`/store/${getBotId()}/products/${productId}/reviews`).then((r) => r.data)
+export const submitOrderReviews = (orderId, items) =>
+  api.post(`/store/${getBotId()}/orders/${orderId}/reviews`, { items }).then((r) => r.data)
 // Статистика витрины: ошибки глотаем — аналитика не должна ломать покупку
 export const trackEvent = (type, productId = null) =>
   api.post(`/store/${getBotId()}/events`, { type, product_id: productId }).catch(() => {})
@@ -65,6 +70,9 @@ export const uploadProductImage = (botId, file) =>
     })
     .then((r) => r.data)
 export const fetchShopOrders = (botId) => api.get(`/seller/bots/${botId}/orders`).then((r) => r.data)
+// отзывы о товарах магазина — только чтение, без автора
+export const fetchSellerReviews = (botId) =>
+  api.get(`/seller/bots/${botId}/reviews`).then((r) => r.data)
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
 // чат заказа: история читается всегда, писать можно в открытом окне

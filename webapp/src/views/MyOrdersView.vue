@@ -1,7 +1,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchMyOrders } from '../api'
+import { fetchMyOrders, submitOrderReviews } from '../api'
 import BrandBadge from '../components/BrandBadge.vue'
 
 const route = useRoute()
@@ -15,6 +15,50 @@ const STATUS = {
   fulfilled: ['📦 Отправлен', 'ok'],
   delivered: ['🎉 Доставлен', 'ok'],
   cancelled: ['✖️ Отменён', 'bad'],
+}
+
+// --- отзыв о доставленном заказе ---
+const formFor = ref(null) // id заказа с раскрытой формой
+const drafts = ref({}) // product_id -> { rating, body }
+const sending = ref(false)
+const sendError = ref('')
+
+const unreviewed = (o) => o.items.filter((i) => !i.reviewed)
+const canRate = (o) => o.status === 'delivered' && unreviewed(o).length > 0
+
+function openForm(o) {
+  formFor.value = o.id
+  sendError.value = ''
+  drafts.value = Object.fromEntries(
+    unreviewed(o).map((i) => [i.product_id, { rating: 0, body: '' }]),
+  )
+}
+
+async function submit(o) {
+  const pending = unreviewed(o)
+  if (pending.some((i) => !drafts.value[i.product_id]?.rating)) {
+    sendError.value = 'Поставь оценку каждому товару.'
+    return
+  }
+  sending.value = true
+  sendError.value = ''
+  try {
+    await submitOrderReviews(
+      o.id,
+      pending.map((i) => ({
+        product_id: i.product_id,
+        rating: drafts.value[i.product_id].rating,
+        body: drafts.value[i.product_id].body.trim() || null,
+      })),
+    )
+    formFor.value = null
+    // флаги reviewed приходят с сервера — кнопка гаснет сама
+    await refresh()
+  } catch (e) {
+    sendError.value = e.response?.data?.detail || 'Не удалось отправить отзыв.'
+  } finally {
+    sending.value = false
+  }
 }
 
 // Статусы меняются на бэкенде (вебхук оплаты, отправка продавцом) — обновляем
@@ -73,8 +117,43 @@ onBeforeUnmount(() => {
       </div>
       <div v-for="i in o.items" :key="i.product_id" class="item">
         {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
+        <span v-if="i.reviewed" class="reviewed-mark">оценено ★</span>
       </div>
       <div class="total">Итого: {{ Number(o.total).toFixed(2) }} {{ o.currency }}</div>
+
+      <button v-if="canRate(o) && formFor !== o.id" class="rate-btn" @click="openForm(o)">
+        ⭐ Оценить покупки
+      </button>
+
+      <div v-if="formFor === o.id" class="review-form">
+        <!-- сервер принимает оценку только по своему доставленному заказу -->
+        <div v-for="i in unreviewed(o)" :key="i.product_id" class="rate-row">
+          <span class="rate-title">{{ i.title }}</span>
+          <div class="stars">
+            <button
+              v-for="n in 5"
+              :key="n"
+              :class="{ on: n <= drafts[i.product_id].rating }"
+              @click="drafts[i.product_id].rating = n"
+            >
+              ★
+            </button>
+          </div>
+          <input
+            v-model="drafts[i.product_id].body"
+            class="rate-note"
+            placeholder="Пара слов (необязательно)"
+            maxlength="1000"
+          />
+        </div>
+        <p v-if="sendError" class="rate-error">{{ sendError }}</p>
+        <div class="form-actions">
+          <button class="btn btn-primary" :disabled="sending" @click="submit(o)">
+            {{ sending ? 'Отправляем…' : 'Отправить отзыв' }}
+          </button>
+          <a @click="formFor = null">Позже</a>
+        </div>
+      </div>
     </div>
     <BrandBadge />
   </div>
@@ -105,6 +184,60 @@ header {
   .head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .item { font-size: 13px; padding: 2px 0; }
   .total { margin-top: 6px; font-weight: 700; }
+}
+.reviewed-mark {
+  color: #f59e1b;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+.rate-btn {
+  width: 100%;
+  margin-top: 8px;
+  height: 36px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.review-form { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.rate-row {
+  border-top: 1px solid var(--surface2);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rate-title { font-size: 13px; font-weight: 700; }
+.stars { display: flex; gap: 4px; }
+.stars button {
+  border: 0;
+  background: none;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--surface2);
+  cursor: pointer;
+  padding: 0 2px;
+}
+.stars button.on { color: #f59e1b; }
+.rate-note {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+}
+.rate-error { color: var(--red); font-size: 12.5px; margin: 0; }
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  a { color: var(--sub); font-size: 13px; font-weight: 700; cursor: pointer; }
 }
 .status {
   &.ok { color: var(--green); }

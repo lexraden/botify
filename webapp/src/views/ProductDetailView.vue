@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchShop, trackEvent } from '../api'
+import { fetchProductReviews, fetchShop, trackEvent } from '../api'
 import BrandBadge from '../components/BrandBadge.vue'
 import { useCartStore } from '../stores/cart'
 
@@ -9,7 +9,11 @@ const route = useRoute()
 const router = useRouter()
 const cart = useCartStore()
 const product = ref(null)
+const reviews = ref([])
 const error = ref('')
+
+const fmtDate = (iso) =>
+  new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
 
 const emoji = computed(
   () => ({ physical: '📦', digital: '📕', service: '🛎' })[product.value?.type] ?? '📦',
@@ -29,6 +33,8 @@ onMounted(async () => {
       return
     }
     trackEvent('product_view', product.value.id)
+    // отзывы — украшение: не загрузились, товар всё равно работает
+    fetchProductReviews(product.value.id).then((r) => (reviews.value = r)).catch(() => {})
   } catch (e) {
     error.value = e.response?.data?.detail || 'Не удалось загрузить товар'
   }
@@ -48,11 +54,26 @@ onMounted(async () => {
       <h2>{{ product.title }}</h2>
       <div class="price-line">
         <b class="price">{{ Number(product.price) }} USDT</b>
+        <span v-if="product.reviews_count" class="state rating">
+          ★ {{ Number(product.avg_rating).toFixed(1) }} · {{ product.reviews_count }}
+        </span>
         <span v-if="soldOut" class="state soldout">Нет в наличии</span>
         <span v-else-if="product.stock != null" class="state">Осталось: {{ product.stock }}</span>
       </div>
 
       <p v-if="product.description" class="desc">{{ product.description }}</p>
+
+      <section v-if="reviews.length" class="reviews">
+        <h3>Отзывы</h3>
+        <!-- автор не показывается никогда: сервис анонимный -->
+        <div v-for="r in reviews" :key="r.created_at + String(r.rating)" class="review">
+          <div class="review-head">
+            <span class="stars">{{ '★'.repeat(r.rating) }}</span>
+            <span class="date">{{ fmtDate(r.created_at) }}</span>
+          </div>
+          <p v-if="r.body">{{ r.body }}</p>
+        </div>
+      </section>
 
       <div v-if="qty" class="stepper">
         <button @click="cart.remove(product)">−</button>
@@ -93,7 +114,18 @@ h2 { font-size: 19px; margin: 14px 0 6px; }
 .price { font-size: 20px; }
 .state { font-size: 13px; color: var(--sub); font-weight: 700; }
 .state.soldout { color: var(--red); }
+.state.rating { color: #f59e1b; }
 .desc { white-space: pre-wrap; font-size: 14px; line-height: 1.5; color: var(--text); margin: 12px 0 0; }
+.reviews { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.reviews h3 { font-size: 15px; margin: 0 0 2px; }
+.review {
+  border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px;
+  background: var(--surface);
+}
+.review-head { display: flex; justify-content: space-between; align-items: baseline; }
+.stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; }
+.date { color: var(--sub); font-size: 11.5px; font-weight: 700; }
+.review p { margin: 5px 0 0; font-size: 13.5px; line-height: 1.45; }
 .stepper {
   display: flex; align-items: center; justify-content: center; gap: 18px;
   height: 48px; border-radius: 15px; background: var(--surface2); margin-top: 16px;

@@ -1,0 +1,38 @@
+from sqlalchemy import ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import Base, CreatedAtMixin
+
+
+class ProductReview(Base, CreatedAtMixin):
+    """Отзыв о товаре. Оставить можно только на позицию из своего заказа в
+    статусе delivered — накрутка исключена архитектурно (пара
+    order_id + product_id уникальна, повторная отправка правит оценку).
+
+    Автор нигде не показывается: ни витрине, ни продавцу — сервис анонимный.
+    """
+
+    __tablename__ = "product_reviews"
+    __table_args__ = (
+        UniqueConstraint("order_id", "product_id", name="uq_review_once_per_order_item"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="CASCADE"), index=True
+    )
+    # RESTRICT — как у OrderItem.product_id: товар с заказами удаляется только
+    # деактивацией, так что живой отзыв всегда указывает на существующий товар
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="RESTRICT"), index=True
+    )
+    # отзыв умирает вместе со своим заказом: без него это была бы оценка без
+    # подтверждённой покупки
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"), index=True
+    )
+    customer_id: Mapped[int] = mapped_column(
+        ForeignKey("customers.id", ondelete="CASCADE"), index=True
+    )
+    rating: Mapped[int] = mapped_column(Integer)  # 1..5, диапазон валидируется в API
+    body: Mapped[str | None] = mapped_column(Text)

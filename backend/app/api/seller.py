@@ -27,6 +27,7 @@ from app.models import (
     OrderItem,
     Product,
     ProductImage,
+    ProductReview,
     Seller,
     SellerBot,
     ShopEvent,
@@ -735,6 +736,43 @@ async def list_orders(
     ]
 
 
+# --------------------------------------------------------------------------
+# Отзывы о товарах магазина: только чтение, автор не раскрывается
+# --------------------------------------------------------------------------
+
+
+class SellerReviewOut(BaseModel):
+    product_title: str
+    rating: int
+    body: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/bots/{bot_id}/reviews", response_model=list[SellerReviewOut])
+async def list_reviews(
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> list[SellerReviewOut]:
+    result = await session.execute(
+        select(ProductReview, Product.title)
+        .join(Product, Product.id == ProductReview.product_id)
+        .where(ProductReview.bot_id == shop.id)
+        .order_by(ProductReview.id.desc())
+        .limit(50)
+    )
+    return [
+        SellerReviewOut(
+            product_title=title,
+            rating=review.rating,
+            body=review.body,
+            created_at=review.created_at,
+        )
+        for review, title in result.all()
+    ]
+
+
 class FulfillIn(BaseModel):
     tracking: str | None = Field(default=None, max_length=256)  # трек-номер
     url: str | None = Field(default=None, max_length=512)       # ссылка (файл/инвайт)
@@ -775,6 +813,8 @@ async def fulfill_order(
         lines.append(f"Ссылка: {payload.url}")
     if payload.note:
         lines.append(payload.note)
+    # заказ теперь delivered — можно оценивать; подводим к разделу с формой
+    lines.append("\n⭐ Как всё прошло? Оцени покупки в разделе «Мои покупки».")
     await _notify(
         decrypt_bot_token(shop.bot_token_encrypted),
         customer.telegram_id,

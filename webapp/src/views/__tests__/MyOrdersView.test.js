@@ -4,8 +4,10 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 // Мок API: первый вызов отдаёт «Ожидает оплаты», второй — «Оплачен».
 const fetchMyOrders = vi.fn()
+const submitOrderReviews = vi.fn()
 vi.mock('../../api', () => ({
   fetchMyOrders: (...args) => fetchMyOrders(...args),
+  submitOrderReviews: (...args) => submitOrderReviews(...args),
 }))
 const { default: MyOrdersView } = await import('../MyOrdersView.vue')
 
@@ -25,6 +27,7 @@ describe('MyOrdersView — живые статусы', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     fetchMyOrders.mockReset()
+    submitOrderReviews.mockReset()
     router.push('/my-orders')
   })
 
@@ -86,6 +89,61 @@ describe('MyOrdersView — живые статусы', () => {
     await vi.advanceTimersByTimeAsync(10_000) // сеть вернулась
     await flushPromises()
     expect(wrapper.text()).toContain('📦 Отправлен')
+    wrapper.unmount()
+  })
+
+  it('доставленный заказ можно оценить: звёзды и сабмит уходят на сервер', async () => {
+    fetchMyOrders.mockResolvedValue([
+      {
+        id: 5,
+        status: 'delivered',
+        total: '15',
+        currency: 'USDT',
+        items: [
+          { product_id: 1, title: 'Гайд', qty: 1, price: '10', reviewed: false },
+          { product_id: 2, title: 'Бургер', qty: 1, price: '5', reviewed: true },
+        ],
+      },
+    ])
+    submitOrderReviews.mockResolvedValue([])
+    const wrapper = await mountView()
+    await flushPromises()
+    expect(wrapper.text()).toContain('⭐ Оценить покупки')
+
+    await wrapper.find('.rate-btn').trigger('click')
+    // форма только по неотзывленным позициям
+    expect(wrapper.findAll('.rate-row')).toHaveLength(1)
+
+    // без оценки хотя бы одного товара отправить нельзя
+    await wrapper.find('.form-actions button').trigger('click')
+    expect(submitOrderReviews).not.toHaveBeenCalled()
+
+    // четвёртая звезда -> рейтинг 4
+    const stars = wrapper.findAll('.stars button')
+    await stars[3].trigger('click')
+    await wrapper.find('.form-actions button').trigger('click')
+    await flushPromises()
+
+    expect(submitOrderReviews).toHaveBeenCalledTimes(1)
+    expect(submitOrderReviews).toHaveBeenCalledWith(5, [
+      { product_id: 1, rating: 4, body: null },
+    ])
+    wrapper.unmount()
+  })
+
+  it('полностью оценённый заказ кнопку оценки не показывает', async () => {
+    fetchMyOrders.mockResolvedValue([
+      {
+        id: 6,
+        status: 'delivered',
+        total: '10',
+        currency: 'USDT',
+        items: [{ product_id: 1, title: 'Гайд', qty: 1, price: '10', reviewed: true }],
+      },
+    ])
+    const wrapper = await mountView()
+    await flushPromises()
+    expect(wrapper.find('.rate-btn').exists()).toBe(false)
     wrapper.unmount()
   })
 })

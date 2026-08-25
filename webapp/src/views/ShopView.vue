@@ -10,6 +10,7 @@ import {
   fetchShopOrders,
   fetchShopStats,
   fetchShopSummary,
+  fetchSellerReviews,
   fulfillOrder,
   withdrawPayout,
 } from '../api'
@@ -24,6 +25,7 @@ const stats = ref(null)
 const products = ref([])
 const orders = ref([])
 const mailings = ref([])
+const reviews = ref([])
 const error = ref('')
 // вкладка восстанавливается из ?tab= — возврат из чата заказа открывает заказы
 const tab = ref(['products', 'orders', 'mailings', 'stats'].includes(route.query.tab)
@@ -134,6 +136,8 @@ async function reload() {
       fetchShopOrders(id),
       fetchMailings(id),
     ])
+  // отзывы — второстепенно: не грузятся, остальной кабинет всё равно работает
+  reviews.value = await fetchSellerReviews(id).catch(() => [])
 }
 
 onMounted(async () => {
@@ -406,6 +410,22 @@ async function submitMailing() {
           </p>
         </div>
 
+        <!-- что говорят покупатели: только чтение, авторы не раскрываются -->
+        <div v-if="reviews.length" class="card reviews-block">
+          <b>Отзывы покупателей</b>
+          <div
+            v-for="r in reviews"
+            :key="r.created_at + r.product_title"
+            class="seller-review"
+          >
+            <div class="sr-head">
+              <span class="stars">{{ '★'.repeat(r.rating) }}</span>
+              <span class="muted sr-title">{{ r.product_title }}</span>
+            </div>
+            <p v-if="r.body">{{ r.body }}</p>
+          </div>
+        </div>
+
         <div v-if="summary.limits" class="card plan">
           <div class="plan-head">
             <b>Тариф: {{ summary.limits.plan === 'pro' ? 'Pro' : 'Бесплатный' }}</b>
@@ -493,6 +513,12 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .metric span { font-size: 12px; font-weight: 700; color: var(--sub); }
 .metric.green { background: var(--green-soft); }
 .metric.green b, .metric.green span { color: var(--green-text); }
+.reviews-block { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.seller-review { border-top: 1px solid var(--surface2); padding-top: 8px; }
+.sr-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; flex-shrink: 0; }
+.sr-title { font-size: 12.5px; font-weight: 700; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seller-review p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; }
 .plan { margin-top: 12px; display: flex; flex-direction: column; gap: 9px; }
 .plan-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .plan-head .muted { font-size: 12px; }

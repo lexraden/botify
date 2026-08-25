@@ -177,7 +177,9 @@ async def handle_invoice_paid(
             "\n📬 Твои материалы:\n" + "\n".join(digital_lines)
             if digital_lines
             else "\nПродавец готовит заказ — детали доставки придут сюда."
-        ),
+        )
+        # доставленные цифровые заказы можно оценивать — подводим к форме отзыва
+        + ("\n⭐ Как всё прошло? Оцени покупки в разделе «Мои покупки»." if all_digital else ""),
     )
 
     from app.bots.hub import hub_bot

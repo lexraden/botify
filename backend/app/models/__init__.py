@@ -7,6 +7,7 @@ from app.models.customers import Customer
 from app.models.events import ShopEvent
 from app.models.mailings import Mailing
 from app.models.orders import Order, OrderItem, Payout, PayoutBatch
+from app.models.reviews import ProductReview
 from app.models.sellers import Seller
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "ChatMessage",
     "Payout",
     "PayoutBatch",
+    "ProductReview",
 ]
