@@ -65,13 +65,18 @@ onMounted(async () => {
 
       <section v-if="reviews.length" class="reviews">
         <h3>Отзывы</h3>
-        <!-- автор не показывается никогда: сервис анонимный -->
+        <!-- вместо личности — случайный псевдоним, сервис анонимный -->
         <div v-for="r in reviews" :key="r.created_at + String(r.rating)" class="review">
           <div class="review-head">
             <span class="stars">{{ '★'.repeat(r.rating) }}</span>
             <span class="date">{{ fmtDate(r.created_at) }}</span>
           </div>
+          <p v-if="r.author_name" class="author">{{ r.author_name }}</p>
           <p v-if="r.body">{{ r.body }}</p>
+          <div v-if="r.reply_body" class="reply">
+            <b>Ответ продавца</b>
+            <p>{{ r.reply_body }}</p>
+          </div>
         </div>
       </section>
 
@@ -125,7 +130,16 @@ h2 { font-size: 19px; margin: 14px 0 6px; }
 .review-head { display: flex; justify-content: space-between; align-items: baseline; }
 .stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; }
 .date { color: var(--sub); font-size: 11.5px; font-weight: 700; }
+.author { margin: 6px 0 0; font-size: 12px; font-weight: 700; color: var(--text); }
 .review p { margin: 5px 0 0; font-size: 13.5px; line-height: 1.45; }
+.reply {
+  margin-top: 8px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  padding: 8px 10px;
+}
+.reply b { font-size: 11.5px; color: var(--accent); }
+.reply p { margin: 3px 0 0; font-size: 13px; }
 .stepper {
   display: flex; align-items: center; justify-content: center; gap: 18px;
   height: 48px; border-radius: 15px; background: var(--surface2); margin-top: 16px;

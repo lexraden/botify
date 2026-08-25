@@ -1,7 +1,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchMyOrders, submitOrderReviews } from '../api'
+import { deleteOrderReview, fetchMyOrders, submitOrderReviews } from '../api'
 import BrandBadge from '../components/BrandBadge.vue'
 
 const route = useRoute()
@@ -17,26 +17,29 @@ const STATUS = {
   cancelled: ['✖️ Отменён', 'bad'],
 }
 
-// --- отзыв о доставленном заказе ---
+// --- отзыв о доставленном заказе: создание, правка, удаление ---
 const formFor = ref(null) // id заказа с раскрытой формой
 const drafts = ref({}) // product_id -> { rating, body }
 const sending = ref(false)
 const sendError = ref('')
 
-const unreviewed = (o) => o.items.filter((i) => !i.reviewed)
-const canRate = (o) => o.status === 'delivered' && unreviewed(o).length > 0
+const canRate = (o) => o.status === 'delivered' && o.items.length > 0
+const allReviewed = (o) => o.items.every((i) => i.reviewed)
 
 function openForm(o) {
   formFor.value = o.id
   sendError.value = ''
+  // уже оценённые позиции открываются заполненными — правим, а не пишем заново
   drafts.value = Object.fromEntries(
-    unreviewed(o).map((i) => [i.product_id, { rating: 0, body: '' }]),
+    o.items.map((i) => [
+      i.product_id,
+      { rating: i.my_review?.rating ?? 0, body: i.my_review?.body ?? '' },
+    ]),
   )
 }
 
 async function submit(o) {
-  const pending = unreviewed(o)
-  if (pending.some((i) => !drafts.value[i.product_id]?.rating)) {
+  if (o.items.some((i) => !drafts.value[i.product_id]?.rating)) {
     sendError.value = 'Поставь оценку каждому товару.'
     return
   }
@@ -45,19 +48,30 @@ async function submit(o) {
   try {
     await submitOrderReviews(
       o.id,
-      pending.map((i) => ({
+      o.items.map((i) => ({
         product_id: i.product_id,
         rating: drafts.value[i.product_id].rating,
         body: drafts.value[i.product_id].body.trim() || null,
       })),
     )
     formFor.value = null
-    // флаги reviewed приходят с сервера — кнопка гаснет сама
+    // флаги и тексты отзывов приходят с сервера
     await refresh()
   } catch (e) {
     sendError.value = e.response?.data?.detail || 'Не удалось отправить отзыв.'
   } finally {
     sending.value = false
+  }
+}
+
+async function removeReview(o, productId) {
+  sendError.value = ''
+  try {
+    await deleteOrderReview(o.id, productId)
+    formFor.value = null
+    await refresh()
+  } catch (e) {
+    sendError.value = e.response?.data?.detail || 'Не удалось удалить отзыв.'
   }
 }
 
@@ -122,13 +136,16 @@ onBeforeUnmount(() => {
       <div class="total">Итого: {{ Number(o.total).toFixed(2) }} {{ o.currency }}</div>
 
       <button v-if="canRate(o) && formFor !== o.id" class="rate-btn" @click="openForm(o)">
-        ⭐ Оценить покупки
+        {{ allReviewed(o) ? '✏️ Изменить отзыв' : '⭐ Оценить покупки' }}
       </button>
 
       <div v-if="formFor === o.id" class="review-form">
         <!-- сервер принимает оценку только по своему доставленному заказу -->
-        <div v-for="i in unreviewed(o)" :key="i.product_id" class="rate-row">
-          <span class="rate-title">{{ i.title }}</span>
+        <div v-for="i in o.items" :key="i.product_id" class="rate-row">
+          <div class="rate-title-line">
+            <span class="rate-title">{{ i.title }}</span>
+            <a v-if="i.reviewed" class="del" @click="removeReview(o, i.product_id)">Удалить</a>
+          </div>
           <div class="stars">
             <button
               v-for="n in 5"
@@ -212,6 +229,18 @@ header {
   gap: 6px;
 }
 .rate-title { font-size: 13px; font-weight: 700; }
+.rate-title-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.del {
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
 .stars { display: flex; gap: 4px; }
 .stars button {
   border: 0;

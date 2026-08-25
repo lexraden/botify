@@ -52,8 +52,14 @@ describe('ProductDetailView — рейтинг и отзывы на страни
   it('показывает средний рейтинг и список отзывов', async () => {
     fetchShop.mockResolvedValue({ products: [product] })
     fetchProductReviews.mockResolvedValue([
-      { rating: 5, body: 'Отличное качество', created_at: '2026-08-20T12:00:00Z' },
-      { rating: 4, body: null, created_at: '2026-08-21T12:00:00Z' },
+      {
+        rating: 5,
+        body: 'Отличное качество',
+        author_name: 'Анна К.',
+        reply_body: 'Спасибо за отзыв!',
+        created_at: '2026-08-20T12:00:00Z',
+      },
+      { rating: 4, body: null, author_name: null, created_at: '2026-08-21T12:00:00Z' },
     ])
     const wrapper = await mountView()
     await flushPromises()
@@ -61,6 +67,11 @@ describe('ProductDetailView — рейтинг и отзывы на страни
     expect(wrapper.text()).toContain('★ 4.5 · 2')
     expect(wrapper.text()).toContain('Отзывы')
     expect(wrapper.text()).toContain('Отличное качество')
+    // вместо личности — случайный псевдоним
+    expect(wrapper.text()).toContain('Анна К.')
+    // ответ продавца виден покупателю
+    expect(wrapper.text()).toContain('Ответ продавца')
+    expect(wrapper.text()).toContain('Спасибо за отзыв!')
     // звёзды отзыва соответствуют оценкам
     const stars = wrapper.findAll('.review .stars').map((s) => s.text())
     expect(stars).toEqual(['★★★★★', '★★★★'])

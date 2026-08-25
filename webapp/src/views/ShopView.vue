@@ -12,6 +12,7 @@ import {
   fetchShopSummary,
   fetchSellerReviews,
   fulfillOrder,
+  replyToReview,
   withdrawPayout,
 } from '../api'
 import { openTelegramLink } from '../services/telegram'
@@ -27,6 +28,29 @@ const orders = ref([])
 const mailings = ref([])
 const reviews = ref([])
 const error = ref('')
+// форма ответа на отзыв: один ответ на отзыв, повторная отправка правит его
+const replyForm = ref({ reviewId: null, body: '', sending: false })
+const replyError = ref('')
+
+function openReply(r) {
+  replyError.value = ''
+  replyForm.value = { reviewId: r.id, body: r.reply_body || '', sending: false }
+}
+
+async function sendReply() {
+  const f = replyForm.value
+  if (!f.body.trim() || f.sending) return
+  f.sending = true
+  try {
+    const updated = await replyToReview(botId.value, f.reviewId, f.body.trim())
+    reviews.value = reviews.value.map((r) => (r.id === updated.id ? updated : r))
+    replyForm.value = { reviewId: null, body: '', sending: false }
+  } catch (e) {
+    replyError.value = e.response?.data?.detail || 'Не удалось отправить ответ.'
+  } finally {
+    f.sending = false
+  }
+}
 // вкладка восстанавливается из ?tab= — возврат из чата заказа открывает заказы
 const tab = ref(['products', 'orders', 'mailings', 'stats'].includes(route.query.tab)
   ? route.query.tab
@@ -410,19 +434,42 @@ async function submitMailing() {
           </p>
         </div>
 
-        <!-- что говорят покупатели: только чтение, авторы не раскрываются -->
+        <!-- что говорят покупатели: личность не раскрывается, только псевдоним -->
         <div v-if="reviews.length" class="card reviews-block">
           <b>Отзывы покупателей</b>
-          <div
-            v-for="r in reviews"
-            :key="r.created_at + r.product_title"
-            class="seller-review"
-          >
+          <div v-for="r in reviews" :key="r.id" class="seller-review">
             <div class="sr-head">
-              <span class="stars">{{ '★'.repeat(r.rating) }}</span>
+              <span class="stars">
+                {{ '★'.repeat(r.rating) }}<template v-if="r.author_name"> · {{ r.author_name }}</template>
+              </span>
               <span class="muted sr-title">{{ r.product_title }}</span>
             </div>
             <p v-if="r.body">{{ r.body }}</p>
+
+            <div v-if="r.reply_body" class="sr-reply">
+              <b>Ваш ответ</b>
+              <p>{{ r.reply_body }}</p>
+            </div>
+
+            <template v-if="replyForm.reviewId === r.id">
+              <textarea
+                v-model="replyForm.body"
+                class="reply-input"
+                rows="2"
+                maxlength="1000"
+                placeholder="Ответ на отзыв"
+              ></textarea>
+              <p v-if="replyError" class="reply-error">{{ replyError }}</p>
+              <div class="pair">
+                <button class="btn btn-green" :disabled="replyForm.sending" @click="sendReply">
+                  {{ replyForm.sending ? 'Отправляем…' : 'Ответить' }}
+                </button>
+                <button class="btn btn-soft" @click="replyForm.reviewId = null">Отмена</button>
+              </div>
+            </template>
+            <a v-else class="sr-reply-link" @click="openReply(r)">
+              {{ r.reply_body ? 'Изменить ответ' : 'Ответить' }}
+            </a>
           </div>
         </div>
 
@@ -519,6 +566,29 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; flex-shrink: 0; }
 .sr-title { font-size: 12.5px; font-weight: 700; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seller-review p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; }
+.sr-reply { margin-top: 6px; border-radius: 10px; background: var(--accent-soft); padding: 8px 10px; }
+.sr-reply b { font-size: 11.5px; color: var(--accent); }
+.sr-reply p { margin: 3px 0 0; font-size: 13px; line-height: 1.45; }
+.sr-reply-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.reply-input {
+  resize: none;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+}
+.reply-error { color: var(--red); font-size: 12px; margin: 4px 0 0; }
 .plan { margin-top: 12px; display: flex; flex-direction: column; gap: 9px; }
 .plan-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .plan-head .muted { font-size: 12px; }

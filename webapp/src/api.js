@@ -32,6 +32,9 @@ export const fetchProductReviews = (productId) =>
   api.get(`/store/${getBotId()}/products/${productId}/reviews`).then((r) => r.data)
 export const submitOrderReviews = (orderId, items) =>
   api.post(`/store/${getBotId()}/orders/${orderId}/reviews`, { items }).then((r) => r.data)
+// передумал: свой отзыв позиции можно снять целиком
+export const deleteOrderReview = (orderId, productId) =>
+  api.delete(`/store/${getBotId()}/orders/${orderId}/reviews/${productId}`).then((r) => r.data)
 // Статистика витрины: ошибки глотаем — аналитика не должна ломать покупку
 export const trackEvent = (type, productId = null) =>
   api.post(`/store/${getBotId()}/events`, { type, product_id: productId }).catch(() => {})
@@ -70,9 +73,12 @@ export const uploadProductImage = (botId, file) =>
     })
     .then((r) => r.data)
 export const fetchShopOrders = (botId) => api.get(`/seller/bots/${botId}/orders`).then((r) => r.data)
-// отзывы о товарах магазина — только чтение, без автора
+// отзывы о товарах магазина; на каждый продавец может ответить один раз
 export const fetchSellerReviews = (botId) =>
   api.get(`/seller/bots/${botId}/reviews`).then((r) => r.data)
+// повторная отправка правит ответ
+export const replyToReview = (botId, reviewId, body) =>
+  api.post(`/seller/bots/${botId}/reviews/${reviewId}/reply`, { body }).then((r) => r.data)
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
 // чат заказа: история читается всегда, писать можно в открытом окне

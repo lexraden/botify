@@ -1,4 +1,6 @@
-from sqlalchemy import ForeignKey, Integer, Text, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CreatedAtMixin
@@ -9,7 +11,9 @@ class ProductReview(Base, CreatedAtMixin):
     статусе delivered — накрутка исключена архитектурно (пара
     order_id + product_id уникальна, повторная отправка правит оценку).
 
-    Автор нигде не показывается: ни витрине, ни продавцу — сервис анонимный.
+    Личность автора не раскрывается нигде: наружу идёт случайный псевдоним
+    (author_name), сгенерированный при создании и никак не связанный
+    с покупателем.
     """
 
     __tablename__ = "product_reviews"
@@ -36,3 +40,8 @@ class ProductReview(Base, CreatedAtMixin):
     )
     rating: Mapped[int] = mapped_column(Integer)  # 1..5, диапазон валидируется в API
     body: Mapped[str | None] = mapped_column(Text)
+    author_name: Mapped[str | None] = mapped_column(String(64))
+
+    # один ответ продавца на отзыв (не поток); повторная отправка правит его
+    reply_body: Mapped[str | None] = mapped_column(Text)
+    reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

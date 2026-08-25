@@ -742,12 +742,21 @@ async def list_orders(
 
 
 class SellerReviewOut(BaseModel):
+    id: int
     product_title: str
+    # случайный псевдоним автора — тот же, что видят покупатели
+    author_name: str | None
     rating: int
     body: str | None
+    reply_body: str | None
+    reply_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ReviewReplyIn(BaseModel):
+    body: str = Field(min_length=1, max_length=1000)
 
 
 @router.get("/bots/{bot_id}/reviews", response_model=list[SellerReviewOut])
@@ -764,13 +773,47 @@ async def list_reviews(
     )
     return [
         SellerReviewOut(
+            id=review.id,
             product_title=title,
+            author_name=review.author_name,
             rating=review.rating,
             body=review.body,
+            reply_body=review.reply_body,
+            reply_at=review.reply_at,
             created_at=review.created_at,
         )
         for review, title in result.all()
     ]
+
+
+@router.post("/bots/{bot_id}/reviews/{review_id}/reply", response_model=SellerReviewOut)
+async def reply_to_review(
+    review_id: int,
+    payload: ReviewReplyIn,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> SellerReviewOut:
+    """Ответ продавца на отзыв. Один на отзыв; повторная отправка правит его."""
+    review = await session.get(ProductReview, review_id)
+    if review is None or review.bot_id != shop.id:
+        raise HTTPException(status_code=404, detail="review not found")
+
+    review.reply_body = payload.body
+    review.reply_at = func.now()
+    await session.commit()
+    await session.refresh(review)
+
+    product = await session.get(Product, review.product_id)
+    return SellerReviewOut(
+        id=review.id,
+        product_title=product.title if product else "",
+        author_name=review.author_name,
+        rating=review.rating,
+        body=review.body,
+        reply_body=review.reply_body,
+        reply_at=review.reply_at,
+        created_at=review.created_at,
+    )
 
 
 class FulfillIn(BaseModel):

@@ -20,6 +20,7 @@ from app.models import (
     Seller,
     ShopEvent,
 )
+from app.services.reviews import notify_new_review, random_author_name
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,13 @@ class OrderIn(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
 
 
+class BuyerOwnReviewOut(BaseModel):
+    """Свой отзыв позиции — для предзаполнения формы правки в «Моих покупках»."""
+
+    rating: int
+    body: str | None
+
+
 class OrderItemOut(BaseModel):
     product_id: int
     title: str
@@ -65,6 +73,8 @@ class OrderItemOut(BaseModel):
     price: Decimal
     # оценён ли товар покупателем (для кнопки «Оценить покупки»)
     reviewed: bool = False
+    # сам отзыв, если он есть — форма правки открывается уже заполненной
+    my_review: BuyerOwnReviewOut | None = None
 
 
 class OrderOut(BaseModel):
@@ -229,16 +239,17 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
     )
     orders = result.scalars().all()
 
-    # какие позиции покупатель уже оценил — один запрос на всю страницу
-    reviewed_pairs: set[tuple[int, int]] = set()
+    # свои отзывы по всем заказам страницы — одним запросом; из них и флаг
+    # reviewed, и данные для предзаполнения формы правки
+    my_reviews: dict[tuple[int, int], ProductReview] = {}
     if orders:
         rows = await ctx.session.execute(
-            select(ProductReview.order_id, ProductReview.product_id).where(
+            select(ProductReview).where(
                 ProductReview.customer_id == ctx.customer.id,
                 ProductReview.order_id.in_([o.id for o in orders]),
             )
         )
-        reviewed_pairs = set(rows.all())
+        my_reviews = {(r.order_id, r.product_id): r for r in rows.scalars().all()}
 
     out: list[OrderOut] = []
     for order in orders:
@@ -259,7 +270,15 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
                         title=title,
                         qty=i.qty,
                         price=i.price,
-                        reviewed=(order.id, i.product_id) in reviewed_pairs,
+                        reviewed=(order.id, i.product_id) in my_reviews,
+                        my_review=(
+                            BuyerOwnReviewOut(
+                                rating=review.rating, body=review.body
+                            )
+                            if (review := my_reviews.get((order.id, i.product_id)))
+                            is not None
+                            else None
+                        ),
                     )
                     for i, title in items_result.all()
                 ],
@@ -355,13 +374,18 @@ async def send_order_chat_message(
 
 # --------------------------------------------------------------------------
 # Отзывы: оценка товара доступна только покупателю его доставленного заказа.
-# Наружу идёт рейтинг и текст — без каких-либо данных об авторе.
+# Наружу идут оценка, текст, случайный псевдоним автора и ответ продавца —
+# но никакие реальные данные о покупателе.
 # --------------------------------------------------------------------------
 
 
 class PublicReviewOut(BaseModel):
     rating: int
     body: str | None
+    # случайный псевдоним («Анна К.»), к личности не привязан
+    author_name: str | None
+    reply_body: str | None
+    reply_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -382,9 +406,20 @@ class BuyerReviewOut(BaseModel):
     product_id: int
     rating: int
     body: str | None
+    author_name: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+async def _own_delivered_order(ctx: BuyerContext, order_id: int) -> Order:
+    """Заказ этого покупателя в статусе delivered; иначе 403/400 без деталей."""
+    order = await ctx.session.get(Order, order_id)
+    if order is None or order.bot_id != ctx.bot.id or order.customer_id != ctx.customer.id:
+        raise HTTPException(status_code=403, detail="foreign order")
+    if order.status != "delivered":
+        raise HTTPException(status_code=400, detail=f"order is {order.status}, not delivered")
+    return order
 
 
 @router.get("/products/{product_id}/reviews", response_model=list[PublicReviewOut])
@@ -408,18 +443,19 @@ async def leave_review(
     order_id: int, payload: ReviewsIn, ctx: BuyerContext = Depends(get_buyer)
 ) -> list[BuyerReviewOut]:
     """Оценки позиций своего доставленного заказа. Повторная отправка по той же
-    паре (заказ, товар) правит оценку — передумать можно."""
-    order = await ctx.session.get(Order, order_id)
-    if order is None or order.bot_id != ctx.bot.id or order.customer_id != ctx.customer.id:
-        raise HTTPException(status_code=403, detail="foreign order")
-    if order.status != "delivered":
-        raise HTTPException(status_code=400, detail=f"order is {order.status}, not delivered")
+    паре (заказ, товар) правит оценку — передумать можно. Пуш продавцу уходит
+    только на новые отзывы, правки не спамят."""
+    order = await _own_delivered_order(ctx, order_id)
 
     items_result = await ctx.session.execute(
-        select(OrderItem).where(OrderItem.order_id == order.id)
+        select(OrderItem, Product.title)
+        .join(Product, Product.id == OrderItem.product_id)
+        .where(OrderItem.order_id == order.id)
     )
-    ordered_products = {i.product_id for i in items_result.scalars().all()}
-    foreign = [i.product_id for i in payload.items if i.product_id not in ordered_products]
+    titles: dict[int, str] = {}
+    for i, title in items_result.all():
+        titles[i.product_id] = title
+    foreign = [i.product_id for i in payload.items if i.product_id not in titles]
     if foreign:
         raise HTTPException(status_code=400, detail=f"products not in this order: {foreign}")
 
@@ -430,6 +466,7 @@ async def leave_review(
     by_product = {r.product_id: r for r in existing_rows.scalars().all()}
 
     out: list[BuyerReviewOut] = []
+    created: list[tuple[str, int, str | None]] = []
     for item in payload.items:
         review = by_product.get(item.product_id)
         if review is None:
@@ -440,12 +477,40 @@ async def leave_review(
                 customer_id=ctx.customer.id,
                 rating=item.rating,
                 body=item.body,
+                author_name=random_author_name(),
             )
             ctx.session.add(review)
             await ctx.session.flush()
+            created.append((titles[item.product_id], item.rating, item.body))
         else:
             review.rating = item.rating
             review.body = item.body
         out.append(BuyerReviewOut.model_validate(review))
     await ctx.session.commit()
+
+    seller_tg = (await ctx.session.get(Seller, order.seller_id)).telegram_id
+    for title, rating, body in created:
+        await notify_new_review(seller_tg, title, rating, body)
     return out
+
+
+@router.delete("/orders/{order_id}/reviews/{product_id}")
+async def delete_review(
+    order_id: int, product_id: int, ctx: BuyerContext = Depends(get_buyer)
+) -> dict:
+    """Покупатель передумал: свой отзыв на позицию доставленного заказа можно
+    снять целиком. Средний рейтинг пересчитается при следующей выдаче витрины."""
+    order = await _own_delivered_order(ctx, order_id)
+    result = await ctx.session.execute(
+        select(ProductReview).where(
+            ProductReview.order_id == order.id,
+            ProductReview.product_id == product_id,
+            ProductReview.customer_id == ctx.customer.id,
+        )
+    )
+    review = result.scalar_one_or_none()
+    if review is None:
+        raise HTTPException(status_code=404, detail="review not found")
+    await ctx.session.delete(review)
+    await ctx.session.commit()
+    return {"status": "deleted"}
