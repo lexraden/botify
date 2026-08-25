@@ -34,10 +34,11 @@ onMounted(async () => {
           </div>
         </div>
         <button class="orders" @click="router.push('/my-orders')">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
             <path d="M6 7h12l-1.2 12.2a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 7z" />
             <path d="M9 7V6a3 3 0 0 1 6 0v1" />
           </svg>
+          Мои покупки
         </button>
       </header>
 
@@ -45,7 +46,8 @@ onMounted(async () => {
       <div class="grid">
         <ProductCard v-for="p in shop.products" :key="p.id" :product="p" @seen="trackEvent('product_view', p.id)" />
       </div>
-      <BrandBadge />
+      <!-- при открытой корзине прячем плашку: низ экрана занят панелью корзины -->
+      <BrandBadge v-if="!cart.count" />
 
       <button v-if="cart.count" class="cart-bar" @click="router.push('/checkout')">
         <span class="left">
@@ -72,8 +74,9 @@ header { display: flex; justify-content: space-between; align-items: center; mar
 h2 { font-size: 15px; margin: 0; }
 .muted { font-size: 12px; }
 .orders {
-  width: 38px; height: 38px; border-radius: 13px; border: 0; background: var(--surface2);
-  color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer;
+  height: 38px; padding: 0 14px; border-radius: 13px; border: 0; background: var(--surface2);
+  color: var(--text); display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer;
 }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .empty { text-align: center; color: var(--sub); margin-top: 40px; }

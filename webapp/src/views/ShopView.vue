@@ -105,6 +105,15 @@ const CHAT_STATUSES = ['paid', 'fulfilled', 'delivered']
 const TYPE_LABEL = { physical: 'товар', digital: 'digital', service: 'услуга' }
 const TYPE_EMOJI = { physical: '📦', digital: '📕', service: '🛎' }
 
+// заказы приходят без данных покупателя (анонимность) — вместо них дата
+const fmtDateTime = (iso) =>
+  new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
 async function reload() {
   const id = botId.value
   ;[summary.value, stats.value, products.value, orders.value, mailings.value] =
@@ -244,7 +253,7 @@ async function submitMailing() {
             <span class="badge">{{ STATUS[o.status] || o.status }}</span>
           </div>
           <span class="muted">
-            {{ o.customer_username ? '@' + o.customer_username : o.customer_first_name || 'аноним' }}
+            {{ fmtDateTime(o.created_at) }}
           </span>
           <div v-if="o.comment" class="comment">💬 {{ o.comment }}</div>
 

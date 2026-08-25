@@ -2,17 +2,19 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchMyOrders } from '../api'
+import BrandBadge from '../components/BrandBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
 const orders = ref(null)
 
+// класс для цвета статуса: ok — зелёный, bad — красный, wait — нейтральный
 const STATUS = {
-  pending_payment: '⏳ Ожидает оплаты',
-  paid: '✅ Оплачен',
-  fulfilled: '📦 Отправлен',
-  delivered: '🎉 Доставлен',
-  cancelled: '✖️ Отменён',
+  pending_payment: ['⏳ Ожидает оплаты', 'wait'],
+  paid: ['✅ Оплачен', 'ok'],
+  fulfilled: ['📦 Отправлен', 'ok'],
+  delivered: ['🎉 Доставлен', 'ok'],
+  cancelled: ['✖️ Отменён', 'bad'],
 }
 
 onMounted(async () => {
@@ -34,22 +36,29 @@ onMounted(async () => {
       </template>
       <template v-else>Оплата временно недоступна — попробуй позже.</template>
     </p>
-    <p v-if="orders && !orders.length" class="empty">Покупок пока нет.</p>
+    <template v-if="orders && !orders.length">
+      <p class="empty">Покупок пока нет.</p>
+      <button class="btn btn-primary empty-cta" @click="router.push('/')">В каталог</button>
+    </template>
     <div v-for="o in orders" :key="o.id" class="order">
       <div class="head">
         <b>Заказ #{{ o.id }}</b>
-        <span>{{ STATUS[o.status] || o.status }}</span>
+        <span class="status" :class="(STATUS[o.status] || ['', 'wait'])[1]">
+          {{ (STATUS[o.status] || [o.status])[0] }}
+        </span>
       </div>
       <div v-for="i in o.items" :key="i.product_id" class="item">
         {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
       </div>
       <div class="total">Итого: {{ Number(o.total).toFixed(2) }} {{ o.currency }}</div>
     </div>
+    <BrandBadge />
   </div>
 </template>
 
 <style scoped lang="scss">
-.orders { padding: 16px; }
+/* нижний отступ с запасом под фиксированную плашку «Сделано через Botify» */
+.orders { padding: 16px 16px 76px; }
 header {
   display: flex;
   justify-content: space-between;
@@ -63,6 +72,7 @@ header {
   font-size: 13px;
 }
 .empty { text-align: center; opacity: 0.6; margin-top: 40px; }
+.empty-cta { display: block; width: max-content; margin: 16px auto 0; }
 .order {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -71,5 +81,10 @@ header {
   .head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .item { font-size: 13px; padding: 2px 0; }
   .total { margin-top: 6px; font-weight: 700; }
+}
+.status {
+  &.ok { color: var(--green); }
+  &.bad { color: var(--red); }
+  &.wait { opacity: 0.7; }
 }
 </style>

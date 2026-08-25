@@ -670,13 +670,15 @@ async def delete_product(
 
 
 class SellerOrderOut(BaseModel):
+    """Без данных покупателя: сервис анонимный, продавцу достаточно заказа —
+    личность раскрывается только в relay-чате и только как роль отправителя."""
+
     id: int
     status: str
     total: Decimal
     currency: str
     comment: str | None
-    customer_username: str | None
-    customer_first_name: str | None
+    created_at: datetime
 
 
 @router.get("/bots/{bot_id}/orders", response_model=list[SellerOrderOut])
@@ -685,8 +687,7 @@ async def list_orders(
     session: AsyncSession = Depends(get_api_session),
 ) -> list[SellerOrderOut]:
     result = await session.execute(
-        select(Order, Customer)
-        .join(Customer, Customer.id == Order.customer_id)
+        select(Order)
         .where(Order.bot_id == shop.id)
         .order_by(Order.id.desc())
         .limit(100)
@@ -698,10 +699,9 @@ async def list_orders(
             total=order.total,
             currency=order.currency,
             comment=order.comment,
-            customer_username=customer.username,
-            customer_first_name=customer.first_name,
+            created_at=order.created_at,
         )
-        for order, customer in result.all()
+        for order in result.scalars().all()
     ]
 
 

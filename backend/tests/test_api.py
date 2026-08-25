@@ -116,7 +116,11 @@ async def test_full_buy_flow(db):
         r = await c.get(f"/api/seller/bots/{bot_id}/orders", headers=seller_headers())
         seller_orders = r.json()
         assert seller_orders[0]["comment"] == "без лука"
-        assert seller_orders[0]["customer_username"] == "petya"
+        # сервис анонимный: личности покупателя в заказах продавца быть не должно
+        assert "customer_username" not in seller_orders[0]
+        assert "customer_first_name" not in seller_orders[0]
+        assert "petya" not in str(seller_orders)
+        assert seller_orders[0]["created_at"]
 
         # статистика продавца
         r = await c.get("/api/seller/me", headers=seller_headers())

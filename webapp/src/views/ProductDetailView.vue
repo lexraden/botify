@@ -79,7 +79,8 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.detail { padding: 18px 16px 40px; }
+/* нижний отступ с запасом под фиксированную плашку «Сделано через Botify» */
+.detail { padding: 18px 16px 76px; }
 .back { display: inline-block; margin-bottom: 14px; color: var(--sub); font-size: 14px; font-weight: 700; cursor: pointer; }
 .photo {
   width: 100%; aspect-ratio: 1; border-radius: 18px; background: var(--surface2);

@@ -7,14 +7,15 @@ import { startLoading, stopLoading } from '../../services/loading'
 // fade-перехода — в обоих случаях ждём с запасом
 const SETTLE_MS = 300
 
-describe('LoadingOverlay — бренд платформы', () => {
-  it('во время загрузки виден знак Botify и подпись-ротация', async () => {
+describe('LoadingOverlay', () => {
+  it('показывает подпись-ротацию во время загрузки и уходит после', async () => {
     startLoading()
     const wrapper = mount(LoadingOverlay)
     await new Promise((resolve) => setTimeout(resolve, SETTLE_MS))
 
-    expect(wrapper.find('.brand').text()).toBe('Botify')
     expect(wrapper.find('.message').text()).toBeTruthy()
+    // водяного знака Botify внизу больше нет — брендинг живёт только на витрине
+    expect(wrapper.find('.brand').exists()).toBe(false)
 
     try {
       stopLoading()
