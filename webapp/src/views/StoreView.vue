@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchShop, trackEvent } from '../api'
+import BrandBadge from '../components/BrandBadge.vue'
 import ProductCard from '../components/ProductCard.vue'
 import { useCartStore } from '../stores/cart'
 
@@ -44,6 +45,7 @@ onMounted(async () => {
       <div class="grid">
         <ProductCard v-for="p in shop.products" :key="p.id" :product="p" @seen="trackEvent('product_view', p.id)" />
       </div>
+      <BrandBadge />
 
       <button v-if="cart.count" class="cart-bar" @click="router.push('/checkout')">
         <span class="left">

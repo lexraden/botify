@@ -5,6 +5,7 @@ import { isLoading } from '../services/loading'
 // Пока идёт загрузка, подпись под спиннером меняется — так ожидание
 // читается как работа, а не как зависший экран
 const MESSAGES = [
+  'Botifying…',
   'Собираем данные…',
   'Загружаем бота…',
   'Подключаем базу…',
@@ -26,6 +27,9 @@ function pickMessage(previous) {
 
 const message = ref(pickMessage(null))
 let timer = null
+
+// наружу — только для тестов: пул подписей проверяется на «Botifying…»
+defineExpose({ messages: MESSAGES })
 
 function startCycling() {
   message.value = pickMessage(null)
@@ -52,6 +56,7 @@ onUnmounted(stopCycling)
       <Transition name="swap" mode="out-in">
         <div :key="message" class="message">{{ message }}</div>
       </Transition>
+      <div class="brand">Botify</div>
     </div>
   </Transition>
 </template>
@@ -80,6 +85,19 @@ onUnmounted(stopCycling)
 .message {
   font-size: 14px;
   font-weight: 700;
+  color: var(--sub);
+}
+/* водяной знак платформы: виден всю загрузку, не мельтешит вместе с подписями */
+.brand {
+  position: absolute;
+  bottom: 28px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
   color: var(--sub);
 }
 @keyframes spin {

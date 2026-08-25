@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchShop, trackEvent } from '../api'
+import BrandBadge from '../components/BrandBadge.vue'
 import { useCartStore } from '../stores/cart'
 
 const route = useRoute()
@@ -70,6 +71,7 @@ onMounted(async () => {
       <button v-if="cart.count" class="btn btn-green go-cart" @click="router.push('/checkout')">
         В корзину · {{ cart.count }} · {{ cart.total.toFixed(2) }} USDT
       </button>
+      <BrandBadge />
     </template>
 
     <p v-else-if="error" class="error">{{ error }}</p>
