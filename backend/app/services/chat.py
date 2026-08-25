@@ -40,6 +40,8 @@ MAX_MESSAGE_LEN = 1000
 MIN_SEND_INTERVAL_SEC = 2.0
 MAX_MESSAGES_PER_WINDOW = 30
 WINDOW_SEC = 5 * 60
+# после скольких накопленных ключей чистим протухшие (см. _prune_rate_limit)
+PRUNE_AFTER_KEYS = 1000
 
 
 class ChatLockedError(Exception):
@@ -56,9 +58,21 @@ _sends: dict[tuple[int, str], deque[float]] = defaultdict(deque)
 _last_send_at: dict[tuple[int, str], float] = {}
 
 
+def _prune_rate_limit(now: float) -> None:
+    """Счётчики чатов, в которые давно не писали, из памяти выбрасываются:
+    ключей столько же, сколько было чатов за время жизни процесса, а окно
+    живёт пять минут. Без этого словари растут вместе с числом заказов."""
+    stale = [key for key, last in _last_send_at.items() if now - last > WINDOW_SEC]
+    for key in stale:
+        _last_send_at.pop(key, None)
+        _sends.pop(key, None)
+
+
 def _check_rate_limit(chat_id: int, sender_role: str) -> None:
     key = (chat_id, sender_role)
     now = monotonic()
+    if len(_last_send_at) > PRUNE_AFTER_KEYS:
+        _prune_rate_limit(now)
     last = _last_send_at.get(key)
     if last is not None and now - last < MIN_SEND_INTERVAL_SEC:
         raise RateLimitedError()
@@ -298,7 +312,9 @@ async def archive_old_chats() -> int:
             messages = (
                 (
                     await session.execute(
-                        select(ChatMessage).where(ChatMessage.chat_id == chat.id)
+                        select(ChatMessage)
+                        .where(ChatMessage.chat_id == chat.id)
+                        .order_by(ChatMessage.id)
                     )
                 )
                 .scalars()
@@ -307,6 +323,11 @@ async def archive_old_chats() -> int:
             for message in messages:
                 session.add(
                     ChatMessageArchive(
+                        # id переносится как есть: у архивной таблицы своя
+                        # последовательность, и без этого read_history,
+                        # сортирующий обе таблицы по id, перемешал бы порядок
+                        # переписки, а во фронте совпали бы :key соседних строк
+                        id=message.id,
                         chat_id=message.chat_id,
                         sender=message.sender,
                         body=message.body,

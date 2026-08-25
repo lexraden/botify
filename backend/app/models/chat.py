@@ -86,8 +86,11 @@ class ChatMessageArchive(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # default (а не только server_default): значение уходит прямо в INSERT.
+    # Тесты поднимают схему через create_all и серверный дефолт получают, а на
+    # мигрированной базе его не было — вставка падала бы NOT NULL только в проде.
     archived_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True), default=func.now(), server_default=func.now(), nullable=False
     )
 
     @property

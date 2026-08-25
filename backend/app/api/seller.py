@@ -6,6 +6,7 @@
 иначе данные магазинов одного продавца протекали бы друг в друга.
 """
 
+import html
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -849,13 +850,15 @@ async def fulfill_order(
     from app.payments.service import _notify
     from app.security import decrypt_bot_token
 
+    # текст продавца уходит с parse_mode=HTML — экранируем, иначе «<» в
+    # примечании или треке оставит покупателя без уведомления об отправке
     lines = [f"📦 Продавец отправил заказ #{order.id}!"]
     if payload.tracking:
-        lines.append(f"Трек-номер: <code>{payload.tracking}</code>")
+        lines.append(f"Трек-номер: <code>{html.escape(payload.tracking)}</code>")
     if payload.url:
-        lines.append(f"Ссылка: {payload.url}")
+        lines.append(f"Ссылка: {html.escape(payload.url)}")
     if payload.note:
-        lines.append(payload.note)
+        lines.append(html.escape(payload.note))
     # заказ теперь delivered — можно оценивать; подводим к разделу с формой
     lines.append("\n⭐ Как всё прошло? Оцени покупки в разделе «Мои покупки».")
     await _notify(

@@ -1,5 +1,6 @@
 """Отзывы: случайный псевдоним автора и пуш продавцу о новом отзыве."""
 
+import html
 import logging
 import secrets
 
@@ -27,10 +28,16 @@ def random_author_name() -> str:
 async def notify_new_review(
     seller_tg: int, product_title: str, rating: int, body: str | None
 ) -> None:
-    """Новый отзыв -> пуш продавцу в hub-бот. Правки оценки не уведомляются."""
+    """Новый отзыв -> пуш продавцу в hub-бот. Правки оценки не уведомляются.
+
+    Название товара и текст отзыва экранируются: hub-бот шлёт с parse_mode=HTML,
+    и один символ «<» в отзыве покупателя оставил бы продавца без уведомления.
+    Обрезаем до экранирования — чтобы срез не разрубил html-сущность.
+    """
+    title = html.escape(product_title[:120])
     text = (
-        f"⭐ Новый отзыв о «{product_title}»: {'★' * rating}\n"
-        + (f"«{body}»\n" if body else "")
+        f"⭐ Новый отзыв о «{title}»: {'★' * rating}\n"
+        + (f"«{html.escape(body[:300])}»\n" if body else "")
         + "Ответить можно в кабинете, вкладка «Статистика»."
     )
     try:

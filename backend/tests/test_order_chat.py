@@ -408,6 +408,63 @@ async def test_archive_moves_messages_but_history_still_readable(db):
     assert body["status"] == "archived"
 
 
+@pytest.mark.asyncio
+async def test_archived_history_keeps_message_order(db):
+    """Порядок переписки после архивации.
+
+    Выборка сообщений на перенос шла без ORDER BY, а Postgres без него порядок
+    строк не обещает: обновлённая строка переезжает в конец кучи и уезжает в
+    архив последней. История сортируется по id — и переписка перемешивалась бы.
+    Здесь первое сообщение специально трогаем UPDATE'ом, чтобы это воспроизвести.
+    """
+    order_id = await paid_physical_order(db)
+    bot_id = await shop_id(db)
+
+    texts = ["первое", "второе", "третье", "четвёртое"]
+    with (
+        patch("app.services.chat.notify_customer", new=AsyncMock(return_value=None)),
+        patch("app.services.chat._check_rate_limit", new=lambda *a: None),
+    ):
+        async with client() as c:
+            for text in texts:
+                r = await c.post(
+                    f"/api/seller/bots/{bot_id}/orders/{order_id}/chat/messages",
+                    headers=seller_headers(),
+                    json={"body": text},
+                )
+                assert r.status_code == 200, r.text
+
+    async with db() as session:
+        first = (
+            await session.execute(select(ChatMessage).order_by(ChatMessage.id).limit(1))
+        ).scalar_one()
+        live_ids = sorted((await session.execute(select(ChatMessage.id))).scalars().all())
+        # доставка message_id — обычное дело для сообщений продавца; для кучи
+        # Postgres это новая версия строки в самом конце таблицы
+        first.tg_message_id = 9001
+        await session.commit()
+
+    await backdate_delivery(db, order_id, hours=73)
+    await chat_service.lock_expired_chats()
+    async with db() as session:
+        chat = (await session.execute(select(OrderChat))).scalar_one()
+        chat.locked_at = datetime.now(timezone.utc) - timedelta(days=31)
+        await session.commit()
+
+    assert await chat_service.archive_old_chats() == len(texts)
+
+    body = (await get_chat(bot_id, order_id)).json()
+    assert [m["body"] for m in body["messages"]] == texts
+
+    # id переносятся как есть: у архива своя последовательность, и без этого
+    # сортировка истории по id опиралась бы на два независимых счётчика
+    async with db() as session:
+        archived_ids = sorted(
+            (await session.execute(select(ChatMessageArchive.id))).scalars().all()
+        )
+    assert archived_ids == live_ids
+
+
 # --------------------------------------------------------------------------
 # Адресация в Telegram (хендлер relay)
 # --------------------------------------------------------------------------

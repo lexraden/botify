@@ -7,6 +7,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import BuyerContext, get_buyer
@@ -100,8 +101,14 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
     if avatar is None:
         # магазину, подключённому до появления аватаров, докачиваем фото лениво;
         # неудача (нет фото, Telegram недоступен) витрину не ломает
-        await refresh_bot_avatar(ctx.session, ctx.bot)
-        await ctx.session.commit()
+        try:
+            await refresh_bot_avatar(ctx.session, ctx.bot)
+            await ctx.session.commit()
+        except IntegrityError:
+            # bot_id уникален: два покупателя открыли витрину одновременно и
+            # оба скачали аватар. Проигравший просто перечитает чужую строку —
+            # 500 на витрине из-за украшения недопустим
+            await ctx.session.rollback()
         avatar = (
             await ctx.session.execute(
                 select(BotAvatar.token).where(BotAvatar.bot_id == ctx.bot.id)
@@ -272,13 +279,20 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
         )
         my_reviews = {(r.order_id, r.product_id): r for r in rows.scalars().all()}
 
-    out: list[OrderOut] = []
-    for order in orders:
+    # состав всех заказов одним запросом: экран «Мои покупки» обновляется сам
+    # раз в 10 секунд, и запрос на каждый заказ множился бы на этот опрос
+    items_by_order: dict[int, list[tuple[OrderItem, str]]] = {}
+    if orders:
         items_result = await ctx.session.execute(
             select(OrderItem, Product.title)
             .join(Product, Product.id == OrderItem.product_id)
-            .where(OrderItem.order_id == order.id)
+            .where(OrderItem.order_id.in_([o.id for o in orders]))
         )
+        for item, title in items_result.all():
+            items_by_order.setdefault(item.order_id, []).append((item, title))
+
+    out: list[OrderOut] = []
+    for order in orders:
         out.append(
             OrderOut(
                 id=order.id,
@@ -301,7 +315,7 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
                             else None
                         ),
                     )
-                    for i, title in items_result.all()
+                    for i, title in items_by_order.get(order.id, [])
                 ],
             )
         )
