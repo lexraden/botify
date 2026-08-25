@@ -29,19 +29,13 @@ onMounted(async () => {
     <p v-if="error" class="error">{{ error }}</p>
     <template v-else-if="shop">
       <header>
-        <div class="shop-name">
-          <div class="avatar">{{ shop.shop_name.replace('@', '').charAt(0).toUpperCase() }}</div>
-          <div class="titles">
-            <h2>{{ shop.shop_name }}</h2>
-            <span class="muted">каталог</span>
-          </div>
-        </div>
-        <button class="orders" @click="router.push('/my-orders')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 7h12l-1.2 12.2a2 2 0 0 1-2 1.8H9.2a2 2 0 0 1-2-1.8L6 7z" />
-            <path d="M9 7V6a3 3 0 0 1 6 0v1" />
+        <!-- Имя магазина не показываем: покупатель уже внутри бота этого
+             магазина, дублировать @username незачем. Справа — профиль. -->
+        <button class="profile-btn" aria-label="Профиль" @click="router.push('/profile')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
           </svg>
-          Мои покупки
         </button>
       </header>
 
@@ -68,22 +62,10 @@ onMounted(async () => {
 
 <style scoped>
 .store { padding: 18px 16px 96px; }
-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 16px; }
-/* min-width:0 — иначе длинный @username не даёт шапке сжаться и выталкивает
-   кнопку «Мои покупки» за экран на узких телефонах */
-.shop-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.titles { min-width: 0; }
-.avatar {
-  width: 38px; height: 38px; border-radius: 13px; background: var(--accent); color: #fff;
-  display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0;
-}
-h2 { font-size: 15px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.muted { font-size: 12px; }
-.orders {
-  flex-shrink: 0;
-  height: 38px; padding: 0 14px; border-radius: 13px; border: 0; background: var(--surface2);
-  color: var(--text); display: flex; align-items: center; gap: 8px;
-  font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer;
+header { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+.profile-btn {
+  width: 38px; height: 38px; border-radius: 13px; border: 0; background: var(--surface2);
+  color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .empty { text-align: center; color: var(--sub); margin-top: 40px; }

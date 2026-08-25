@@ -122,6 +122,13 @@ async def test_full_buy_flow(db):
         assert "petya" not in str(seller_orders)
         assert seller_orders[0]["created_at"]
 
+        # продавец видит состав заказа: что, сколько и по какой цене куплено
+        items = seller_orders[0]["items"]
+        assert {(i["title"], i["qty"]) for i in items} == {("Бургер", 2), ("Гайд", 1)}
+        burger = next(i for i in items if i["title"] == "Бургер")
+        assert float(burger["price"]) == pytest.approx(4.99)
+        assert seller_orders[0]["fulfillment"] is None  # заказ ещё не отправлен
+
         # статистика продавца
         r = await c.get("/api/seller/me", headers=seller_headers())
         me = r.json()

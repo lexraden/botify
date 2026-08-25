@@ -1,0 +1,417 @@
+<title>Botify · Снимки экранов</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --surface2: #eff1f5; --border: #e8eaf0;
+    --text: #14161b; --sub: #6b7280; --accent: #6a58f5; --accent-soft: #ece9ff;
+    --green: #17b877; --green-soft: #e1f7ed; --green-text: #0e9a62;
+    --red: #e5544b; --on-green: #ffffff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: 'Manrope', -apple-system, system-ui, sans-serif; font-weight: 500;
+  }
+  h1, h2, h3 { font-family: 'Unbounded', 'Arial Black', sans-serif; letter-spacing: -0.2px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 34px 22px 70px; }
+  .page-head h1 { font-size: 24px; margin: 0 0 6px; }
+  .page-head p { color: var(--sub); margin: 0; max-width: 720px; line-height: 1.55; font-size: 14px; }
+  section { margin-top: 38px; }
+  section > h2 { font-size: 17px; margin: 0 0 4px; }
+  section > .sec-sub { color: var(--sub); font-size: 13px; margin: 0 0 16px; }
+
+  /* --- галерея телефонов --- */
+  .row { display: flex; flex-wrap: wrap; gap: 26px; }
+  .shot { width: 262px; flex-shrink: 0; }
+  .phone {
+    background: #101116; border-radius: 34px; padding: 9px;
+    box-shadow: 0 18px 44px rgba(20, 22, 27, 0.18);
+  }
+  .screen {
+    background: var(--bg); border-radius: 26px; overflow: hidden;
+    height: 520px; display: flex; flex-direction: column; position: relative;
+    font-size: 13px;
+  }
+  .notch { height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .notch i { width: 74px; height: 7px; border-radius: 99px; background: #2a2c33; display: block; }
+  .viewport { flex: 1; overflow-y: auto; padding: 12px 13px 60px; scrollbar-width: none; }
+  .viewport::-webkit-scrollbar { display: none; }
+  .shot-cap { text-align: center; margin-top: 10px; font-size: 12.5px; font-weight: 700; color: var(--sub); }
+
+  /* --- элементы интерфейса (токены из webapp/src/styles.css) --- */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px; }
+  .btn {
+    border: 0; border-radius: 15px; height: 42px; width: 100%; font-size: 13.5px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-soft { background: var(--surface2); color: var(--text); }
+  .btn-green { background: var(--green); color: var(--on-green); }
+  .muted { color: var(--sub); }
+  .num { font-family: 'Space Grotesk', 'Manrope', sans-serif; font-weight: 700; letter-spacing: -0.4px; }
+
+  .bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; min-height: 38px; }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 12px; border: 0; background: var(--surface2);
+    color: var(--text); display: flex; align-items: center; justify-content: center;
+  }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+  .p-card { background: var(--surface); border: 1px solid var(--border); border-radius: 15px; padding: 8px; }
+  .p-img {
+    aspect-ratio: 1; border-radius: 11px; background: var(--surface2);
+    display: flex; align-items: center; justify-content: center; font-size: 40px;
+  }
+  .p-title { font-weight: 700; font-size: 12.5px; margin: 7px 2px 2px; }
+  .p-line { display: flex; justify-content: space-between; align-items: center; margin: 4px 2px 2px; }
+  .price { font-weight: 800; font-size: 13px; }
+  .plus {
+    width: 26px; height: 26px; border-radius: 9px; border: 0; background: var(--accent);
+    color: #fff; font-size: 16px; line-height: 1; cursor: pointer;
+  }
+
+  .cart-bar {
+    position: absolute; left: 10px; right: 10px; bottom: 10px; height: 48px; border-radius: 15px;
+    background: var(--green); color: var(--on-green); box-shadow: 0 14px 34px rgba(20,22,27,.18);
+    display: flex; align-items: center; justify-content: space-between; padding: 0 15px;
+    font-weight: 800; font-size: 13px;
+  }
+  .abs-badge { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; }
+  .abs-badge span { background: var(--surface2); color: var(--sub); border-radius: 999px; padding: 6px 12px; font-size: 11px; }
+
+  .back-link { color: var(--sub); font-weight: 700; font-size: 12.5px; display: inline-block; margin-bottom: 10px; cursor: pointer; }
+
+  .who { display: flex; gap: 11px; align-items: center; margin-bottom: 15px; }
+  .ava {
+    width: 46px; height: 46px; border-radius: 15px; background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 19px;
+  }
+  .menu-item {
+    width: 100%; border: 1px solid var(--border); background: var(--surface); border-radius: 13px;
+    padding: 13px; margin-bottom: 9px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 13.5px; font-weight: 700; color: var(--text); cursor: pointer; font-family: inherit;
+  }
+  .count { min-width: 24px; text-align: center; background: var(--surface2); border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 800; }
+
+  .order-card { margin-bottom: 10px; display: flex; flex-direction: column; gap: 7px; }
+  .o-head { display: flex; justify-content: space-between; align-items: center; }
+  .status { border-radius: 11px; padding: 4px 9px; font-size: 10.5px; font-weight: 800; background: var(--surface2); }
+  .status.ok { color: var(--green-text); background: var(--green-soft); }
+  .status.wait { opacity: 0.75; }
+  .items-block {
+    border-top: 1px solid var(--surface2); border-bottom: 1px solid var(--surface2);
+    padding: 7px 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px;
+  }
+  .items-block div { display: flex; justify-content: space-between; gap: 8px; }
+  .comment-box { background: var(--surface2); border-radius: 10px; padding: 8px 10px; font-size: 12px; }
+  .btn-sm { height: 36px; font-size: 12.5px; }
+
+  .stat-cards { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; margin-bottom: 12px; }
+  .stat-cards .card { padding: 10px 8px; }
+  .stat-cards b { font-size: 16px; display: block; }
+  .stat-cards span { font-size: 10px; font-weight: 700; color: var(--sub); }
+  .nav-tabs { display: flex; gap: 3px; background: var(--surface2); border-radius: 14px; padding: 3px; margin-bottom: 11px; }
+  .nav-tabs span { flex: 1; text-align: center; padding: 8px 0; border-radius: 10px; font-size: 11.5px; font-weight: 700; color: var(--text); }
+  .nav-tabs .on { background: var(--accent); color: #fff; font-weight: 800; }
+  .prod-row { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+  .thumb { width: 42px; height: 42px; border-radius: 11px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 21px; flex-shrink: 0; }
+
+  .chat-msgs { flex: 1; display: flex; flex-direction: column; gap: 7px; padding-bottom: 8px; }
+  .msg { max-width: 82%; border-radius: 14px; padding: 8px 11px; font-size: 12px; background: var(--surface); border: 1px solid var(--border); align-self: flex-start; }
+  .msg.me { background: var(--accent-soft); border-color: transparent; align-self: flex-end; }
+  .composer { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 7px; padding: 8px 10px 12px; background: var(--bg); }
+  .composer input { flex: 1; border: 1px solid var(--border); border-radius: 12px; padding: 10px 11px; font-size: 12.5px; font-family: inherit; background: var(--surface); color: var(--text); }
+  .composer .icon-btn { width: 38px; height: 38px; flex-shrink: 0; }
+
+  .metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+  .metric-grid .card b { font-size: 17px; display: block; }
+  .metric-grid .card span { font-size: 10px; font-weight: 700; color: var(--sub); }
+  .wallet-big { font-size: 28px; letter-spacing: -0.5px; }
+  .plan-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 4px 0; }
+
+  /* --- рекомендации --- */
+  .recs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .rec { padding: 18px; }
+  .rec h3 { font-size: 15px; margin: 0 0 8px; }
+  .rec p { font-size: 13.5px; line-height: 1.55; color: var(--sub); margin: 0 0 10px; }
+  .effort {
+    display: inline-block; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 4px 10px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .effort.mid { background: var(--green-soft); color: var(--green-text); }
+  .extra { margin-top: 14px; font-size: 13px; color: var(--sub); line-height: 1.6; }
+  .extra b { color: var(--text); }
+</style>
+
+<div class="wrap">
+  <div class="page-head">
+    <h1>Botify — снимки экранов Mini App</h1>
+    <p>
+      Воссоздано по коду витрины и кабинета в актуальном состоянии
+      (состояние на 2026-08-25): те же токены оформления, компоновка и тексты,
+      что в приложении. Это не скриншоты живого Telegram — из среды разработки
+      прод недоступен, поэтому страницы перерисованы один в один по компонентам.
+      Светлая тема; в тёмной теме Telegram палитра инвертируется автоматически.
+    </p>
+  </div>
+
+  <!-- ======================= ПОКУПАТЕЛЬ ======================= -->
+  <section>
+    <h2>Покупатель · витрина</h2>
+    <p class="sec-sub">Имя магазина из шапки убрано — покупатель уже внутри бота этого магазина. Справа — профиль.</p>
+    <div class="row">
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport">
+          <div class="bar">
+            <span></span>
+            <button class="icon-btn">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+            </button>
+          </div>
+          <div class="grid">
+            <div class="p-card"><div class="p-img">🍔</div><div class="p-title">Бургер</div><div class="p-line"><span class="price num">4.99 USDT</span><button class="plus">+</button></div></div>
+            <div class="p-card"><div class="p-img">📕</div><div class="p-title">Гайд по маркетплейсам</div><div class="p-line"><span class="price num">10 USDT</span><button class="plus">+</button></div></div>
+            <div class="p-card"><div class="p-img">🛎</div><div class="p-title">Консультация 1 час</div><div class="p-line"><span class="price num">25 USDT</span><button class="plus">+</button></div></div>
+            <div class="p-card"><div class="p-img">☕️</div><div class="p-title">Кофе в зёрнах 250 г</div><div class="p-line"><span class="price num">3.50 USDT</span><button class="plus">+</button></div></div>
+          </div>
+        </div><div class="cart-bar"><span>🛒 Корзина · 3</span><span class="num">18.49 USDT</span></div></div></div>
+        <div class="shot-cap">Витрина магазина</div>
+      </div>
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport">
+          <a class="back-link">← В каталог</a>
+          <div class="p-img" style="border-radius:16px">🍔</div>
+          <h3 style="font-size:16px;margin:12px 0 4px">Бургер</h3>
+          <div style="display:flex;gap:9px;align-items:baseline">
+            <span class="price num" style="font-size:17px">4.99 USDT</span>
+            <span class="muted" style="font-size:11.5px;font-weight:700">Осталось: 7</span>
+          </div>
+          <p class="muted" style="font-size:12.5px;line-height:1.5;margin:9px 0 12px">Двойная котлета, чеддер и соус по фирменному рецепту.</p>
+          <div style="display:flex;align-items:center;justify-content:center;gap:16px;height:44px;border-radius:13px;background:var(--surface2)">
+            <button class="icon-btn">−</button><b>2</b><button class="icon-btn">+</button>
+          </div>
+          <button class="btn btn-green" style="margin-top:9px">В корзину · 2 · 9.98 USDT</button>
+          <div class="abs-badge"><span>Сделано через <b>Botify</b></span></div>
+        </div></div></div>
+        <div class="shot-cap">Карточка товара</div>
+      </div>
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+            <h3 style="font-size:14.5px;margin:0;letter-spacing:.3px">YOUR ORDER</h3>
+            <a style="color:var(--green);font-weight:700;font-size:12px;cursor:pointer">Edit</a>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--surface2);font-size:12.5px">
+            <b>Бургер <span style="color:#f59e1b;margin-left:6px">2x</span></b><span class="num">9.98 USDT</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--surface2);font-size:12.5px">
+            <b>Кофе в зёрнах <span style="color:#f59e1b;margin-left:6px">1x</span></b><span class="num">3.50 USDT</span>
+          </div>
+          <textarea style="width:100%;margin-top:13px;border:1px solid var(--border);border-radius:10px;padding:9px;background:var(--surface);color:var(--text);font-family:inherit;font-size:12px;height:64px" placeholder="Комментарий к заказу — детали, пожелания…"></textarea>
+        </div><div class="cart-bar" style="justify-content:center"><span>PAY 13.48 USDT</span></div></div></div>
+        <div class="shot-cap">Корзина / оплата</div>
+      </div>
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport">
+          <a class="back-link">← В каталог</a>
+          <div class="who">
+            <div class="ava">A</div>
+            <div><h3 style="font-size:15px;margin:0">Алексей</h3><span class="muted" style="font-size:11.5px">покупатель</span></div>
+          </div>
+          <button class="menu-item"><span>🛍 Мои покупки</span><span class="count">2</span></button>
+          <button class="menu-item"><span>💬 Поддержка</span><span class="muted" style="font-size:11.5px">написать</span></button>
+          <div class="abs-badge"><span>Сделано через <b>Botify</b></span></div>
+        </div></div></div>
+        <div class="shot-cap">Профиль (новый)</div>
+      </div>
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport">
+          <div class="bar" style="align-items:baseline">
+            <h3 style="font-size:15px;margin:0">Мои покупки</h3>
+            <a style="color:var(--accent);font-size:12px;font-weight:700;cursor:pointer">В каталог</a>
+          </div>
+          <p style="background:var(--accent-soft);border-radius:10px;padding:9px 10px;font-size:11.5px;line-height:1.45;margin:0 0 11px">
+            Заказ #103 создан. Заверши оплату в открывшемся окне @CryptoBot — после оплаты придёт подтверждение в чат с ботом.
+          </p>
+          <div class="card order-card">
+            <div class="o-head"><b>#103</b><span class="status wait">⏳ Ожидает оплаты</span></div>
+            <div class="items-block"><div><span>Бургер × 2</span><span class="num">9.98 USDT</span></div></div>
+            <div class="muted num" style="font-size:12px">Итого: 9.98 USDT</div>
+          </div>
+          <div class="card order-card">
+            <div class="o-head"><b>#97</b><span class="status ok">📦 Отправлен</span></div>
+            <div class="items-block"><div><span>Гайд × 1</span><span class="num">10.00 USDT</span></div></div>
+            <div class="muted num" style="font-size:12px">Итого: 10.00 USDT</div>
+          </div>
+          <div class="abs-badge"><span>Сделано через <b>Botify</b></span></div>
+        </div></div></div>
+        <div class="shot-cap">Мои покупки (живые статусы)</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ======================= ПРОДАВЕЦ ======================= -->
+  <section>
+    <h2>Продавец · кабинет</h2>
+    <p class="sec-sub">В карточке заказа теперь виден состав (что, сколько, суммы) и то, что отправлено покупателю.</p>
+    <div class="row">
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport">
+          <div class="bar">
+            <div><h3 style="font-size:14px;margin:0 0 3px">Магазин</h3>
+              <span class="muted" style="font-size:11px">● @petshop_bot</span></div>
+            <button class="btn btn-soft" style="height:32px;width:auto;padding:0 12px;font-size:11.5px;border-radius:10px">Кабинет</button>
+          </div>
+          <div class="stat-cards">
+            <div class="card"><b class="num">128</b><span>покупателей</span></div>
+            <div class="card"><b class="num">214</b><span>заказов</span></div>
+            <div class="card" style="background:var(--green-soft);color:var(--green-text)"><b class="num">37.40</b><span style="color:var(--green-text)">USDT баланс</span></div>
+          </div>
+          <div class="nav-tabs"><span class="on">Товары</span><span>Заказы</span><span>Рассылки</span><span>Статистика</span></div>
+          <button class="btn btn-primary" style="background:var(--accent-soft);color:var(--accent);height:38px;font-size:12.5px">+ Добавить товар или услугу</button>
+          <div class="card prod-row"><div class="thumb">🍔</div><div><b style="font-size:12.5px">Бургер</b><br><span class="muted" style="font-size:11px">4.99 USDT · товар</span></div></div>
+          <div class="card prod-row"><div class="thumb">📕</div><div><b style="font-size:12.5px">Гайд</b><br><span class="muted" style="font-size:11px">10 USDT · digital</span></div></div>
+          <div class="card prod-row" style="opacity:.5"><div class="thumb">☕️</div><div><b style="font-size:12.5px">Кофе</b><br><span class="muted" style="font-size:11px">3.50 USDT · скрыт</span></div></div>
+        </div></div></div>
+        <div class="shot-cap">Магазин · товары</div>
+      </div>
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport">
+          <div class="nav-tabs" style="margin-top:2px"><span>Товары</span><span class="on">Заказы</span><span>Рассылки</span><span>Статистика</span></div>
+          <div class="card order-card">
+            <div class="o-head"><b>#104 · 19.98 USDT</b><span class="status ok" style="background:var(--green-soft);color:var(--green-text)">✅ Оплачен — пора отправлять</span></div>
+            <span class="muted" style="font-size:10.5px">25.08 19:31</span>
+            <div class="items-block">
+              <div><span>Бургер × 2</span><span class="num">9.98 USDT</span></div>
+              <div><span>Гайд × 1</span><span class="num">10.00 USDT</span></div>
+            </div>
+            <div class="comment-box">💬 без лука</div>
+            <button class="btn btn-soft btn-sm">💬 Чат с покупателем</button>
+            <button class="btn btn-green btn-sm">Отправить покупателю</button>
+          </div>
+          <div class="card order-card">
+            <div class="o-head"><b>#97 · 10 USDT</b><span class="status ok">🎉 Доставлен</span></div>
+            <span class="muted" style="font-size:10.5px">24.08 12:04</span>
+            <div class="items-block"><div><span>Гайд × 1</span><span class="num">10.00 USDT</span></div></div>
+            <div class="comment-box">📤 Трек: RA123456789CN · Отправлено CDEK</div>
+          </div>
+        </div></div></div>
+        <div class="shot-cap">Заказы · состав и отправка (новое)</div>
+      </div>
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport" style="display:flex;flex-direction:column;padding-bottom:64px">
+          <div class="bar" style="min-height:30px;margin-bottom:8px">
+            <h3 style="font-size:13px;margin:0">Заказ #104</h3>
+            <span class="muted" style="font-size:10.5px">окно закроется через 71 ч</span>
+          </div>
+          <div class="chat-msgs">
+            <div class="msg">Здравствуйте! Бургеры будут острые?</div>
+            <div class="msg me">Один соус острый, второй обычный. Напишите в комментарии, какой класть 🙂</div>
+            <div class="msg">Хорошо, написал. Когда забирать можно?</div>
+          </div>
+          <div class="composer">
+            <button class="icon-btn" style="font-size:17px">+</button>
+            <input placeholder="Сообщение…" />
+            <button class="icon-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg></button>
+          </div>
+        </div></div></div>
+        <div class="shot-cap">Чат заказа (анонимно)</div>
+      </div>
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport">
+          <div class="nav-tabs" style="margin-top:2px"><span>Товары</span><span>Заказы</span><span class="on">Рассылки</span><span>Статистика</span></div>
+          <div class="card" style="display:flex;flex-direction:column;gap:9px;margin-bottom:11px">
+            <textarea style="resize:none;height:56px;border:1px solid var(--border);border-radius:10px;padding:9px;font-family:inherit;font-size:12px;background:var(--surface);color:var(--text)" placeholder="Текст рассылки по базе этого магазина"></textarea>
+            <input style="border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12px;background:var(--surface);color:var(--text)" placeholder="Текст кнопки (опционально)" />
+            <input style="border:1px solid var(--border);border-radius:10px;padding:9px 10px;font-size:12px;background:var(--surface);color:var(--text)" placeholder="Ссылка кнопки" />
+            <button class="btn btn-primary btn-sm">Отправить всем</button>
+          </div>
+          <div class="card prod-row"><div><b style="font-size:12px">Новое меню уже здесь…</b><br><span class="muted" style="font-size:11px">✅ Отправлена · доставлено 121</span></div></div>
+          <div class="card prod-row"><div><b style="font-size:12px">Скидка 20% на кофе</b><br><span class="muted" style="font-size:11px">⏳ В очереди</span></div></div>
+        </div></div></div>
+        <div class="shot-cap">Рассылки</div>
+      </div>
+
+      <div class="shot">
+        <div class="phone"><div class="screen"><div class="notch"><i></i></div><div class="viewport">
+          <div class="nav-tabs" style="margin-top:2px"><span>Товары</span><span>Заказы</span><span>Рассылки</span><span class="on">Статистика</span></div>
+          <div class="metric-grid">
+            <div class="card"><b class="num">156</b><span>пользователей Telegram</span></div>
+            <div class="card"><b class="num">892</b><span>просмотров товаров</span></div>
+            <div class="card"><b class="num">231</b><span>переходов к оплате</span></div>
+            <div class="card"><b class="num">214</b><span>покупок</span></div>
+            <div class="card" style="background:var(--green-soft);color:var(--green-text)"><b class="num">1 842.60</b><span style="color:var(--green-text)">USDT оборот</span></div>
+            <div class="card"><b class="num">47</b><span>повторных покупателей</span></div>
+          </div>
+          <div class="card" style="margin-top:11px">
+            <span class="muted" style="font-size:11px;font-weight:700">Баланс магазина</span>
+            <div class="wallet-big num">37.40 <small style="font-size:13px;color:var(--sub)">USDT</small></div>
+            <p style="color:var(--green-text);font-weight:700;font-size:11.5px;margin:3px 0 0">Готово к выводу</p>
+            <button class="btn btn-green btn-sm" style="margin-top:10px">Вывести</button>
+            <div style="border-top:1px solid var(--border);margin-top:11px;padding-top:9px">
+              <div class="plan-row"><span class="muted">Всего заработано</span><span class="num">1 805.20</span></div>
+              <div class="plan-row"><span class="muted">Уже выплачено</span><span class="num">1 767.80</span></div>
+            </div>
+            <p class="muted" style="font-size:10.5px;line-height:1.45;margin:8px 0 0">Комиссия 5%. Минимальный порог вывода 1 USDT</p>
+          </div>
+        </div></div></div>
+        <div class="shot-cap">Статистика и кошелёк</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ======================= РЕКОМЕНДАЦИИ ======================= -->
+  <section>
+    <h2>3 рекомендации — что добавить следующим</h2>
+    <p class="sec-sub">По убыванию пользы для комфорта маркетплейса; все три не требуют менять платёжный слой.</p>
+    <div class="recs">
+      <div class="card rec">
+        <h3>1. ⭐ Отзывы и рейтинг товара</h3>
+        <p>
+          Доверие — главная валюта анонимного маркета: покупатель не знает продавца,
+          и единственный его инструмент — мнение предыдущих покупателей. После
+          доставки бот спрашивает оценку (1–5 + короткий текст), средний рейтинг
+          показывается звёздами на карточке витрины и странице товара.
+          Отзыв можно оставить только за свой доставленный заказ — накрутка исключена архитектурно.
+        </p>
+        <span class="effort mid">среднее усилие: модель + эндпоинт + UI</span>
+      </div>
+      <div class="card rec">
+        <h3>2. 🔍 Поиск и категории в каталоге</h3>
+        <p>
+          Витрина — плоская сетка: после ~15 товаров покупатель листает всё подряд.
+          Строка поиска по названию (фильтрация на клиенте, без бэкенда) и
+          простые категории/теги у товара с фильтром сверху сетки.
+        </p>
+        <span class="effort">малое усилие: сначала поиск, категории позже</span>
+      </div>
+      <div class="card rec">
+        <h3>3. 🔁 «Повторить заказ» одним тапом</h3>
+        <p>
+          В «Моих покупках» кнопка «Повторить»: тот же состав падает в корзину,
+          цены и сток подставляются свежие. Половина повторных покупок — это
+          «то же самое, что в прошлый раз», а сейчас для этого нужно заново
+          найти каждый товар.
+        </p>
+        <span class="effort">малое усилие: только фронт + готовый API корзины</span>
+      </div>
+    </div>
+    <p class="extra">
+      Идеи второго эшелона: <b>счётчик непрочитанного чата</b> на вкладке «Заказы»
+      (покупатель написал — продавцу нужен сигнал, не заходя в кабинет),
+      <b>бейдж активных заказов</b> на иконке профиля, <b>избранное</b>,
+      <b>промокоды</b>. Из уже записанного в docs/REVIEW.md ждут: детекция
+      отозванного токена бота, напоминания по зависшим manual-заказам, бэкапы Railway.
+    </p>
+  </section>
+</div>

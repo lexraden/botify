@@ -19,19 +19,23 @@ const { createRouter, createMemoryHistory } = await import('vue-router')
 
 describe('backTarget — куда ведёт системная «Назад»', () => {
   it('с внутренних экранов без истории — в каталог', () => {
-    expect(backTarget('/product/3', false)).toBe('/')
-    expect(backTarget('/checkout', false)).toBe('/')
+    expect(backTarget('/product/3', null)).toBe('/')
+    expect(backTarget('/checkout', null)).toBe('/')
   })
 
   it('с внутренних экранов с историей — шаг назад', () => {
-    expect(backTarget('/product/3', true)).toBe('BACK')
-    expect(backTarget('/checkout', true)).toBe('BACK')
+    expect(backTarget('/product/3', '/')).toBe('BACK')
+    expect(backTarget('/profile', '/')).toBe('BACK')
+    expect(backTarget('/checkout', '/product/1')).toBe('BACK')
   })
 
-  it('из «Моих покупок» — всегда в каталог, даже с историей', () => {
-    // после оплаты предыдущий экран истории — пустая корзина
-    expect(backTarget('/my-orders', true)).toBe('/')
-    expect(backTarget('/my-orders', false)).toBe('/')
+  it('из «Моих покупок» после оплаты — в каталог, а не в пустую корзину', () => {
+    expect(backTarget('/my-orders', '/checkout')).toBe('/')
+    expect(backTarget('/my-orders', null)).toBe('/')
+  })
+
+  it('из «Моих покупок», открытых из профиля, — шаг назад в профиль', () => {
+    expect(backTarget('/my-orders', '/profile')).toBe('BACK')
   })
 })
 
@@ -59,14 +63,27 @@ describe('attachBackButton — показ и реакция на клик', () =
   it('клик по кнопке без внутренней истории уводит в каталог', async () => {
     window.history.replaceState(null, '')
     expect(handlers.length).toBe(1)
-    await handlers[0]()
+    const nav = handlers[0]()
+    if (nav) await nav
     expect(router.currentRoute.value.path).toBe('/')
   })
 
-  it('из «Моих покупок» клик ведёт в каталог даже при наличии истории', async () => {
-    await router.push('/') // создаём историю, чтобы state.back существовал
+  it('из «Моих покупок» после оплаты клик ведёт в каталог, а не в корзину', async () => {
+    // memory-history роутер не пишет в window.history — состояние истории
+    // (state.back), которое читает хендлер, симулируем руками
+    window.history.replaceState({ back: '/checkout' }, '')
     await router.push('/my-orders')
-    await handlers[0]()
+    handlers[0]()
+    await new Promise((r) => setTimeout(r, 0))
     expect(router.currentRoute.value.path).toBe('/')
+  })
+
+  it('из «Моих покупок», открытых из профиля, клик возвращает в профиль', async () => {
+    await router.push('/profile') // создаём шаг истории в самом роутере
+    await router.push('/my-orders')
+    window.history.replaceState({ back: '/profile' }, '') // и симулируем window-state
+    handlers[0]() // ветка BACK вызывает router.back() без промиса
+    await new Promise((r) => setTimeout(r, 0))
+    expect(router.currentRoute.value.path).toBe('/profile')
   })
 })

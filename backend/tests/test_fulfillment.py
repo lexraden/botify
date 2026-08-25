@@ -63,6 +63,15 @@ async def test_fulfill_flow(db):
             assert r.status_code == 200, r.text
             assert r.json()["status"] == "delivered"
 
+            # в списке заказов видно, что именно отправили покупателю
+            orders = (
+                await c.get(f"/api/seller/bots/{bot_id}/orders", headers=seller_headers())
+            ).json()
+            sent = next(o for o in orders if o["id"] == order_id)
+            assert sent["items"][0]["title"] == "Кроссовки"
+            assert sent["fulfillment"]["tracking"] == "RA123456789CN"
+            assert sent["fulfillment"]["note"] == "Отправлено CDEK"
+
             # повторная отправка уже доставленного — отказ
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",

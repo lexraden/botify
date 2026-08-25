@@ -114,6 +114,16 @@ const fmtDateTime = (iso) =>
     minute: '2-digit',
   })
 
+// что продавец отправил при выполнении — одной строкой для карточки
+const fulfillmentLine = (f) =>
+  [
+    f?.tracking ? `Трек: ${f.tracking}` : '',
+    f?.url ? `Ссылка: ${f.url}` : '',
+    f?.note || '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
 async function reload() {
   const id = botId.value
   ;[summary.value, stats.value, products.value, orders.value, mailings.value] =
@@ -255,7 +265,15 @@ async function submitMailing() {
           <span class="muted">
             {{ fmtDateTime(o.created_at) }}
           </span>
+          <!-- состав заказа: что именно куплено, сколько штук и на какую сумму -->
+          <div class="items">
+            <div v-for="i in o.items" :key="i.product_id" class="item">
+              <span>{{ i.title }} × {{ i.qty }}</span>
+              <span>{{ (Number(i.price) * i.qty).toFixed(2) }} USDT</span>
+            </div>
+          </div>
           <div v-if="o.comment" class="comment">💬 {{ o.comment }}</div>
+          <div v-if="o.fulfillment" class="comment">📤 {{ fulfillmentLine(o.fulfillment) }}</div>
 
           <button
             v-if="CHAT_STATUSES.includes(o.status)"
@@ -455,6 +473,13 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
   font-size: 11px; font-weight: 800;
 }
 .comment { background: var(--surface2); border-radius: 11px; padding: 9px 11px; font-size: 13px; }
+.items {
+  display: flex; flex-direction: column; gap: 5px;
+  border-top: 1px solid var(--surface2); border-bottom: 1px solid var(--surface2);
+  padding: 8px 0;
+}
+.item { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.item span:first-child { min-width: 0; }
 .fulfill-btn { height: 42px; }
 .chat-btn { height: 42px; margin-top: 2px; }
 .fulfill-form { display: flex; flex-direction: column; gap: 8px; }

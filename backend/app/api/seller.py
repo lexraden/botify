@@ -669,6 +669,16 @@ async def delete_product(
 # --------------------------------------------------------------------------
 
 
+class SellerOrderItemOut(BaseModel):
+    """Состав заказа: названия берутся из каталога, цена — зафиксированная
+    на момент покупки из OrderItem (каталог мог подорожать после)."""
+
+    product_id: int
+    title: str
+    qty: int
+    price: Decimal
+
+
 class SellerOrderOut(BaseModel):
     """Без данных покупателя: сервис анонимный, продавцу достаточно заказа —
     личность раскрывается только в relay-чате и только как роль отправителя."""
@@ -679,6 +689,9 @@ class SellerOrderOut(BaseModel):
     currency: str
     comment: str | None
     created_at: datetime
+    items: list[SellerOrderItemOut]
+    # то, что продавец отправил покупателю при выполнении (трек/ссылка/note)
+    fulfillment: dict | None = None
 
 
 @router.get("/bots/{bot_id}/orders", response_model=list[SellerOrderOut])
@@ -692,6 +705,21 @@ async def list_orders(
         .order_by(Order.id.desc())
         .limit(100)
     )
+    orders = result.scalars().all()
+    # состав всех заказов одним запросом, чтобы не ходить в БД за каждым
+    items_by_order: dict[int, list[SellerOrderItemOut]] = {}
+    if orders:
+        items_result = await session.execute(
+            select(OrderItem, Product.title)
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(OrderItem.order_id.in_([o.id for o in orders]))
+        )
+        for item, title in items_result.all():
+            items_by_order.setdefault(item.order_id, []).append(
+                SellerOrderItemOut(
+                    product_id=item.product_id, title=title, qty=item.qty, price=item.price
+                )
+            )
     return [
         SellerOrderOut(
             id=order.id,
@@ -700,8 +728,10 @@ async def list_orders(
             currency=order.currency,
             comment=order.comment,
             created_at=order.created_at,
+            items=items_by_order.get(order.id, []),
+            fulfillment=order.fulfillment,
         )
-        for order in result.scalars().all()
+        for order in orders
     ]
 
 
