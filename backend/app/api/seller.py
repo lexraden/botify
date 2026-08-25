@@ -18,6 +18,7 @@ from app.api.deps import get_seller
 from app.config import get_settings
 from app.db import get_api_session
 from app.models import (
+    ChatImage,
     ChatMessage,
     Customer,
     Mailing,
@@ -766,6 +767,7 @@ class ChatMessageOut(BaseModel):
     id: int
     sender: str  # seller | customer
     body: str
+    image_url: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -851,6 +853,72 @@ async def send_order_chat_message(
     # Доставка после коммита: сбой Telegram не должен терять сообщение из
     # истории (продавец увидит его в кабинете при следующем открытии)
     tg_message_id = await notify_customer(shop, customer_tg, order.id, message.body)
+    if tg_message_id is not None:
+        async with session_factory() as followup:
+            await followup.execute(
+                update(ChatMessage)
+                .where(ChatMessage.id == out.id)
+                .values(tg_message_id=tg_message_id)
+            )
+            await followup.commit()
+    return out
+
+
+@router.post("/bots/{bot_id}/orders/{order_id}/chat/photo", response_model=ChatMessageOut)
+async def send_order_chat_photo(
+    order_id: int,
+    request: Request,
+    caption: str | None = None,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> ChatMessageOut:
+    """Фото продавца в чат заказа: сырые байты (как у фото товара), подпись —
+    query-параметром. Пишем в историю, доставляем покупателю от бота магазина."""
+    from app.db import session_factory
+    from app.services.chat import (
+        ChatLockedError,
+        RateLimitedError,
+        notify_customer_photo,
+        send_message,
+    )
+
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="фото больше 5 МБ")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="пустой файл")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="фото больше 5 МБ")
+    mime = sniff_image_mime(data)
+    if mime is None:
+        raise HTTPException(status_code=400, detail="только JPEG, PNG, WebP или GIF")
+
+    order, chat = await _order_with_chat(shop, order_id, session)
+    image = ChatImage(bot_id=shop.id, chat_id=chat.id, mime=mime, size=len(data), data=data)
+    session.add(image)
+    await session.flush()
+
+    try:
+        message = await send_message(
+            session, chat, order, "seller", caption or "", image_token=image.token
+        )
+    except ChatLockedError:
+        raise HTTPException(status_code=403, detail="chat_locked")
+    except RateLimitedError:
+        raise HTTPException(status_code=429, detail="too_many_messages")
+
+    out = ChatMessageOut.model_validate(message)
+    customer_tg = (
+        await session.get(Customer, order.customer_id)
+    ).telegram_id
+    await session.commit()
+
+    # Доставка после коммита — как у текстовых сообщений: сбой Telegram не
+    # теряет фото из истории кабинета
+    tg_message_id = await notify_customer_photo(
+        shop, customer_tg, order.id, data, mime, message.body or None
+    )
     if tg_message_id is not None:
         async with session_factory() as followup:
             await followup.execute(

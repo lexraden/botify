@@ -1,6 +1,6 @@
 <script setup>
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { fetchOrderChat, sendOrderChatMessage } from '../api'
+import { fetchOrderChat, sendOrderChatMessage, sendOrderChatPhoto } from '../api'
 
 const props = defineProps({
   botId: { type: [String, Number], required: true },
@@ -12,6 +12,7 @@ const error = ref('')
 const draft = ref('')
 const sending = ref(false)
 const scroller = ref(null)
+const fileInput = ref(null)
 
 async function reload() {
   try {
@@ -43,6 +44,15 @@ watch(
   },
 )
 
+function sendErrorText(e) {
+  const detail = e.response?.data?.detail
+  if (detail === 'chat_locked') return 'Чат уже закрыт для новых сообщений.'
+  if (detail === 'too_many_messages') return 'Слишком много сообщений подряд — подожди немного.'
+  if (e.response?.status === 413) return 'Фото больше 5 МБ — выбери поменьше.'
+  if (e.response?.status === 400) return 'Это не похоже на фото — выбери JPEG, PNG, WebP или GIF.'
+  return 'Не получилось отправить — попробуй ещё раз.'
+}
+
 async function send() {
   const body = draft.value.trim()
   if (!body || sending.value) return
@@ -53,13 +63,29 @@ async function send() {
     error.value = ''
     await reload()
   } catch (e) {
-    const detail = e.response?.data?.detail
-    error.value =
-      detail === 'chat_locked'
-        ? 'Чат уже закрыт для новых сообщений.'
-        : detail === 'too_many_messages'
-          ? 'Слишком много сообщений подряд — подожди немного.'
-          : 'Не получилось отправить — попробуй ещё раз.'
+    error.value = sendErrorText(e)
+  } finally {
+    sending.value = false
+  }
+}
+
+// фото отправляется сразу после выбора файла; текст из поля ввода уезжает подписью
+function pickPhoto() {
+  fileInput.value?.click()
+}
+
+async function onFileChange(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file || sending.value) return
+  sending.value = true
+  try {
+    await sendOrderChatPhoto(props.botId, props.orderId, file, draft.value.trim())
+    draft.value = ''
+    error.value = ''
+    await reload()
+  } catch (err) {
+    error.value = sendErrorText(err)
   } finally {
     sending.value = false
   }
@@ -74,7 +100,12 @@ const fmtTime = (iso) =>
     <!-- покупатель не подписан: обе стороны видят только роль отправителя -->
     <div ref="scroller" class="messages">
       <div v-for="m in chat?.messages ?? []" :key="m.id" class="msg" :class="m.sender">
-        <div class="bubble">{{ m.body }}</div>
+        <div class="bubble" :class="{ 'with-photo': m.image_url }">
+          <a v-if="m.image_url" :href="m.image_url" target="_blank" rel="noopener">
+            <img class="photo" :src="m.image_url" alt="Фото" />
+          </a>
+          <span v-if="m.body">{{ m.body }}</span>
+        </div>
         <span class="time">{{ fmtTime(m.created_at) }}</span>
       </div>
       <p v-if="chat && !chat.messages.length" class="empty">Сообщений пока нет.</p>
@@ -88,6 +119,14 @@ const fmtTime = (iso) =>
         Этот чат закрыт для новых сообщений — окно для обсуждения заказа истекло.
       </div>
       <div v-else class="composer">
+        <button class="plus" :disabled="sending" title="Прикрепить фото" @click="pickPhoto">+</button>
+        <input
+          ref="fileInput"
+          type="file"
+          accept="image/*"
+          hidden
+          @change="onFileChange"
+        />
         <input
           v-model="draft"
           :maxlength="1000"
@@ -114,6 +153,12 @@ const fmtTime = (iso) =>
 }
 .msg.seller .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
 .msg.customer .bubble { border-bottom-left-radius: 5px; }
+.bubble.with-photo { padding: 4px 4px 9px; }
+.photo {
+  display: block; max-width: min(220px, 100%); max-height: 280px;
+  border-radius: 11px; margin-bottom: 6px;
+}
+.bubble.with-photo > span { display: block; padding: 0 8px; }
 .time { font-size: 11px; color: var(--sub); margin-top: 3px; }
 .empty { text-align: center; color: var(--sub); margin: 24px 0; }
 .error { text-align: center; color: var(--red); font-size: 13px; margin: 0; }
@@ -122,7 +167,12 @@ const fmtTime = (iso) =>
   border-radius: 13px; padding: 12px 13px; font-size: 13px; line-height: 1.45;
 }
 .composer { display: flex; gap: 8px; align-items: stretch; }
-.composer input { flex: 1; }
+.composer input[type='text'], .composer input:not([type]) { flex: 1; }
+.plus {
+  width: 48px; border: 0; border-radius: 13px; background: var(--surface2);
+  color: var(--text); font-size: 20px; cursor: pointer;
+}
+.plus:disabled { opacity: 0.5; }
 .send {
   width: 48px; border: 0; border-radius: 13px; background: var(--accent); color: #fff;
   font-size: 18px; cursor: pointer;

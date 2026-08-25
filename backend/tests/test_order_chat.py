@@ -11,7 +11,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from app.models import ChatMessage, Customer, Order, OrderChat, Seller, SellerBot
+from app.models import ChatImage, ChatMessage, Customer, Order, OrderChat, Seller, SellerBot
 from app.models.chat import ChatMessageArchive
 from app.security import encrypt_bot_token
 from app.services import chat as chat_service
@@ -217,7 +217,7 @@ async def test_no_pii_leaks_into_chat_payload(db):
     assert r.status_code == 200
 
     payload = (await get_chat(bot_id, order_id)).json()
-    allowed_message_keys = {"id", "sender", "body", "created_at"}
+    allowed_message_keys = {"id", "sender", "body", "image_url", "created_at"}
     for message in payload["messages"]:
         assert set(message.keys()) <= allowed_message_keys
     assert "secret_username" not in str(payload)
@@ -621,3 +621,320 @@ async def test_reply_from_other_customer_does_not_hijack_chat(db):
             m.body for m in (await session.execute(select(ChatMessage))).scalars().all()
         ]
     assert "попытка угона" not in bodies
+
+
+# --------------------------------------------------------------------------
+# Фото в чате: продавец грузит из кабинета, покупатель шлёт боту в Telegram
+# --------------------------------------------------------------------------
+
+JPEG_BYTES = b"\xff\xd8\xff" + b"fake-jpeg-body"
+
+
+async def post_photo(bot_id: int, order_id: int, content: bytes, caption: str | None = None):
+    async with client() as c:
+        params = {"caption": caption} if caption is not None else None
+        return await c.post(
+            f"/api/seller/bots/{bot_id}/orders/{order_id}/chat/photo",
+            headers=seller_headers(),
+            params=params,
+            content=content,
+        )
+
+
+@pytest.mark.asyncio
+async def test_seller_photo_reaches_history_and_buyer(db):
+    order_id = await paid_physical_order(db)
+    bot_id = await shop_id(db)
+
+    with patch(
+        "app.services.chat.notify_customer_photo", new=AsyncMock(return_value=999001)
+    ):
+        r = await post_photo(bot_id, order_id, JPEG_BYTES, caption="Вот упаковка")
+    assert r.status_code == 200, r.text
+
+    out = r.json()
+    assert out["body"] == "Вот упаковка"
+    assert out["sender"] == "seller"
+    assert out["image_url"].startswith("/api/chat-images/")
+
+    # история отдаёт то же фото, tg_message_id записан для адресации реплаев
+    messages = (await get_chat(bot_id, order_id)).json()["messages"]
+    assert messages[-1]["image_url"] == out["image_url"]
+    async with db() as session:
+        stored = (
+            await session.execute(select(ChatMessage).where(ChatMessage.id == out["id"]))
+        ).scalar_one()
+        assert stored.tg_message_id == 999001
+        image = (
+            await session.execute(select(ChatImage).where(ChatImage.token == stored.image_token))
+        ).scalar_one()
+        assert image.mime == "image/jpeg"
+        assert image.size == len(JPEG_BYTES)
+
+    # картинка реально раздаётся по токену из истории
+    token = out["image_url"].rsplit("/", 1)[-1]
+    async with client() as c:
+        img = await c.get(f"/api/chat-images/{token}")
+    assert img.status_code == 200
+    assert img.content == JPEG_BYTES
+    assert img.headers["content-type"].startswith("image/jpeg")
+    assert img.headers["cache-control"].startswith("public")
+
+
+@pytest.mark.asyncio
+async def test_seller_photo_without_caption_has_empty_body(db):
+    order_id = await paid_physical_order(db)
+    bot_id = await shop_id(db)
+
+    with patch("app.services.chat.notify_customer_photo", new=AsyncMock(return_value=999002)):
+        r = await post_photo(bot_id, order_id, JPEG_BYTES)
+    assert r.status_code == 200, r.text
+    assert r.json()["body"] == ""
+    assert r.json()["image_url"]
+
+
+@pytest.mark.asyncio
+async def test_seller_photo_rejects_bad_and_oversize(db):
+    order_id = await paid_physical_order(db)
+    bot_id = await shop_id(db)
+
+    r = await post_photo(bot_id, order_id, b"definitely-not-an-image")
+    assert r.status_code == 400
+
+    r = await post_photo(bot_id, order_id, b"")
+    assert r.status_code == 400
+
+    r = await post_photo(bot_id, order_id, b"\xff\xd8\xff" + b"x" * (5 * 1024 * 1024))
+    assert r.status_code == 413
+
+    async with db() as session:
+        assert (await session.execute(select(ChatImage))).scalars().all() == []
+        assert (await session.execute(select(ChatMessage))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_seller_photo_locked_chat_rejected(db):
+    order_id = await make_order(db)
+    await pay_order(order_id)
+    await backdate_delivery(db, order_id, hours=73)
+    bot_id = await shop_id(db)
+
+    r = await post_photo(bot_id, order_id, JPEG_BYTES)
+    assert r.status_code == 403
+    assert r.json()["detail"] == "chat_locked"
+    async with db() as session:
+        assert (await session.execute(select(ChatImage))).scalars().all() == []
+
+
+def make_tg_photo(
+    caption: str | None = None,
+    file_size: int | None = len(JPEG_BYTES),
+    reply_to_message_id: int | None = None,
+):
+    from aiogram import types
+
+    photo_size = types.PhotoSize.model_construct(
+        file_id="photo-file-id",
+        file_unique_id="photo-unique",
+        width=640,
+        height=480,
+        file_size=file_size,
+    )
+    reply = None
+    if reply_to_message_id is not None:
+        reply = types.Message.model_construct(message_id=reply_to_message_id)
+    message = types.Message.model_construct(
+        message_id=101,
+        photo=[photo_size],
+        caption=caption,
+        chat=types.Chat.model_construct(id=BUYER_TG, type="private"),
+        from_user=types.User.model_construct(id=BUYER_TG, is_bot=False, first_name="Buyer"),
+        reply_to_message=reply,
+    )
+    object.__setattr__(message, "answer", AsyncMock())
+    return message
+
+
+async def buyer_and_bot(db):
+    async with db() as session:
+        bot = (await session.execute(select(SellerBot))).scalars().first()
+        customer = (
+            await session.execute(
+                select(Customer).where(
+                    Customer.telegram_id == BUYER_TG, Customer.bot_id == bot.id
+                )
+            )
+        ).scalar_one()
+    return bot, customer
+
+
+@pytest.mark.asyncio
+async def test_buyer_photo_lands_in_chat_history(db):
+    from app.handlers.seller.chat import relay_buyer_photo
+
+    await paid_physical_order(db)
+    bot, customer = await buyer_and_bot(db)
+
+    message = make_tg_photo(caption="посмотрите на фото")
+    with (
+        patch(
+            "app.handlers.seller.chat._download_photo",
+            new=AsyncMock(return_value=JPEG_BYTES),
+        ),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as push,
+    ):
+        await relay_buyer_photo(message, customer=customer, bot_record=bot)
+
+    message.answer.assert_not_awaited()
+    push.assert_awaited_once()
+    assert "📷" in push.await_args.args[1]
+
+    async with db() as session:
+        stored = (
+            await session.execute(
+                select(ChatMessage).where(ChatMessage.sender == "customer")
+            )
+        ).scalars().one()
+        assert stored.body == "посмотрите на фото"
+        assert stored.image_token is not None
+        image = (
+            await session.execute(select(ChatImage).where(ChatImage.token == stored.image_token))
+        ).scalar_one()
+        assert image.bot_id == bot.id
+        assert image.mime == "image/jpeg"
+
+
+@pytest.mark.asyncio
+async def test_buyer_reply_to_seller_photo_addresses_that_order(db):
+    from app.handlers.seller.chat import relay_buyer_photo
+
+    old_order = await paid_physical_order(db, invoice_id=555401)
+    async with db() as session:
+        seller = (
+            await session.execute(select(Seller).where(Seller.telegram_id == 111))
+        ).scalar_one()
+        bot = (await session.execute(select(SellerBot))).scalars().first()
+        customer = (
+            await session.execute(
+                select(Customer).where(
+                    Customer.telegram_id == BUYER_TG, Customer.bot_id == bot.id
+                )
+            )
+        ).scalar_one()
+        chat = OrderChat(
+            order_id=old_order, bot_id=bot.id, seller_id=seller.id, customer_id=customer.id
+        )
+        session.add(chat)
+        await session.flush()
+        # фото продавца с известным message_id в диалоге покупателя
+        session.add(
+            ChatMessage(
+                chat_id=chat.id,
+                sender="seller",
+                body="",
+                image_token="tok-seller-photo",
+                tg_message_id=666001,
+            )
+        )
+        await session.commit()
+
+    message = make_tg_photo(reply_to_message_id=666001)
+    with (
+        patch(
+            "app.handlers.seller.chat._download_photo",
+            new=AsyncMock(return_value=JPEG_BYTES),
+        ),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        await relay_buyer_photo(message, customer=customer, bot_record=bot)
+
+    async with db() as session:
+        stored = (
+            await session.execute(
+                select(ChatMessage).where(ChatMessage.sender == "customer")
+            )
+        ).scalars().one()
+        assert stored.chat_id == chat.id
+
+
+@pytest.mark.asyncio
+async def test_buyer_photo_too_big_or_not_image_is_rejected(db):
+    from app.handlers.seller.chat import relay_buyer_photo
+
+    await paid_physical_order(db)
+    bot, customer = await buyer_and_bot(db)
+
+    # Telegram сам сообщил размер больше лимита — до скачивания дело не доходит
+    big = make_tg_photo(file_size=6 * 1024 * 1024)
+    with patch(
+        "app.handlers.seller.chat._download_photo", new=AsyncMock(return_value=JPEG_BYTES)
+    ) as download:
+        await relay_buyer_photo(big, customer=customer, bot_record=bot)
+    download.assert_not_awaited()
+    big.answer.assert_awaited_once_with(chat_service.PHOTO_TOO_BIG_TEXT)
+
+    # file_size не пришел — проверка по скачанным байтам
+    sneaky = make_tg_photo(file_size=None)
+    with patch(
+        "app.handlers.seller.chat._download_photo",
+        new=AsyncMock(return_value=b"\xff\xd8\xff" + b"x" * (5 * 1024 * 1024 + 1)),
+    ):
+        await relay_buyer_photo(sneaky, customer=customer, bot_record=bot)
+    sneaky.answer.assert_awaited_once_with(chat_service.PHOTO_TOO_BIG_TEXT)
+
+    # скачалось не изображение
+    garbage = make_tg_photo()
+    with patch(
+        "app.handlers.seller.chat._download_photo", new=AsyncMock(return_value=b"garbage!")
+    ):
+        await relay_buyer_photo(garbage, customer=customer, bot_record=bot)
+    garbage.answer.assert_awaited_once_with(chat_service.BAD_IMAGE_TEXT)
+
+    async with db() as session:
+        assert (await session.execute(select(ChatImage))).scalars().all() == []
+        customer_messages = (
+            await session.execute(
+                select(ChatMessage).where(ChatMessage.sender == "customer")
+            )
+        ).scalars().all()
+        assert customer_messages == []
+
+
+@pytest.mark.asyncio
+async def test_buyer_long_caption_rejected(db):
+    from app.handlers.seller.chat import relay_buyer_photo
+
+    await paid_physical_order(db)
+    bot, customer = await buyer_and_bot(db)
+
+    message = make_tg_photo(caption="ж" * 1001)
+    with patch(
+        "app.handlers.seller.chat._download_photo", new=AsyncMock(return_value=JPEG_BYTES)
+    ) as download:
+        await relay_buyer_photo(message, customer=customer, bot_record=bot)
+    download.assert_not_awaited()
+    message.answer.assert_awaited_once_with(chat_service.TOO_LONG_TEXT)
+
+
+@pytest.mark.asyncio
+async def test_buyer_photo_rate_limit_shared_with_text(db):
+    """Rate limit общий на участника: фото и текст считаются вместе."""
+    from app.handlers.seller.chat import relay_buyer_message, relay_buyer_photo
+
+    await paid_physical_order(db)
+    bot, customer = await buyer_and_bot(db)
+
+    photo = make_tg_photo(caption="раз")
+    with (
+        patch(
+            "app.handlers.seller.chat._download_photo",
+            new=AsyncMock(return_value=JPEG_BYTES),
+        ),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        await relay_buyer_photo(photo, customer=customer, bot_record=bot)
+
+        text = make_tg_message("два")
+        await relay_buyer_message(text, customer=customer, bot_record=bot)
+
+    text.answer.assert_awaited_once_with(chat_service.RATE_LIMITED_TEXT)

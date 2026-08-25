@@ -142,17 +142,29 @@ async def read_history(session, chat_id: int) -> list[ChatMessage]:
     return merged
 
 
-async def send_message(session, chat: OrderChat, order: Order, sender_role: str, body: str) -> ChatMessage:
+async def send_message(
+    session,
+    chat: OrderChat,
+    order: Order,
+    sender_role: str,
+    body: str,
+    image_token: str | None = None,
+) -> ChatMessage:
     """Записать сообщение от стороны сделки. Бросает ChatLockedError /
-    RateLimitedError — вызывающий переводит их в ответы API или бота."""
-    body = body.strip()
-    if not body or len(body) > MAX_MESSAGE_LEN:
-        raise ValueError("message body must be 1..1000 chars")
+    RateLimitedError — вызывающий переводит их в ответы API или бота.
+    Фото-сообщение несёт image_token; без картинки тело обязательно."""
+    body = (body or "").strip()
+    if not body and not image_token:
+        raise ValueError("message must have a body or an image")
+    if len(body) > MAX_MESSAGE_LEN:
+        raise ValueError("message body must be up to 1000 chars")
     if not chat_is_open(order):
         raise ChatLockedError()
     _check_rate_limit(chat.id, sender_role)
 
-    message = ChatMessage(chat_id=chat.id, sender=sender_role, body=body)
+    message = ChatMessage(
+        chat_id=chat.id, sender=sender_role, body=body, image_token=image_token
+    )
     session.add(message)
     await session.flush()
     return message
@@ -179,13 +191,49 @@ async def notify_customer(bot_record: SellerBot, customer_tg: int, order_id: int
         await bot.session.close()
 
 
-async def notify_seller(seller_tg: int, order_id: int) -> None:
+async def notify_customer_photo(
+    bot_record: SellerBot,
+    customer_tg: int,
+    order_id: int,
+    data: bytes,
+    mime: str,
+    caption: str | None,
+) -> int | None:
+    """Фото продавца -> покупателю от бота магазина (send_photo). Возвращает
+    message_id в Telegram — реплай на него адресует этот же заказ."""
+    # импорт внутри функции — тот же цикл runner → chat → services.chat → runner,
+    # что и в notify_customer
+    from aiogram.types import BufferedInputFile
+
+    from app.bots.runner import make_seller_bot
+
+    bot = make_seller_bot(decrypt_bot_token(bot_record.bot_token_encrypted))
+    try:
+        text = f"💬 Заказ #{order_id}"
+        if caption:
+            text += f"\n\n{html.escape(caption)}"
+        sent = await bot.send_photo(
+            customer_tg,
+            BufferedInputFile(data, filename=f"order-{order_id}.{mime.split('/')[-1]}"),
+            caption=text,
+        )
+        return sent.message_id
+    except Exception:
+        logger.exception("Не удалось доставить фото по заказу %s покупателю", order_id)
+        return None
+    finally:
+        await bot.session.close()
+
+
+async def notify_seller(seller_tg: int, order_id: int, has_photo: bool = False) -> None:
     """Сообщение покупателя -> пуш продавцу в hub-бот (без деталей личности)."""
     from app.bots.hub import hub_bot
 
+    photo_mark = " 📷" if has_photo else ""
     try:
         await hub_bot.send_message(
-            seller_tg, f"💬 Новое сообщение по заказу #{order_id} — открой кабинет."
+            seller_tg,
+            f"💬 Новое сообщение по заказу #{order_id}{photo_mark} — открой кабинет.",
         )
     except Exception:
         logger.exception("Не удалось уведомить продавца о сообщении по заказу %s", order_id)
@@ -263,6 +311,7 @@ async def archive_old_chats() -> int:
                         sender=message.sender,
                         body=message.body,
                         tg_message_id=message.tg_message_id,
+                        image_token=message.image_token,
                         created_at=message.created_at,
                     )
                 )
@@ -302,3 +351,6 @@ LOCKED_CHAT_TEXT = (
 )
 RATE_LIMITED_TEXT = "Слишком много сообщений подряд — подожди немного."
 TOO_LONG_TEXT = "Сообщение слишком длинное — максимум 1000 символов."
+PHOTO_TOO_BIG_TEXT = "Фото слишком большое — максимум 5 МБ."
+BAD_IMAGE_TEXT = "Пришли, пожалуйста, именно фото — JPEG, PNG, WebP или GIF."
+PHOTO_FAILED_TEXT = "Не получилось принять фото — попробуй отправить ещё раз."

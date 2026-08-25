@@ -9,10 +9,11 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, LargeBinary, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, CreatedAtMixin
+from app.models.catalog import new_image_token
 
 
 class OrderChat(Base, CreatedAtMixin):
@@ -54,7 +55,16 @@ class ChatMessage(Base, CreatedAtMixin):
     # ответ-реплай на него адресует сообщение именно этому заказу
     tg_message_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
 
+    # фото-сообщение: токен строки в chat_images; без фото — None, тогда body
+    # обязателен. Фото без подписи хранится с пустым body (""), колонка NOT NULL
+    image_token: Mapped[str | None] = mapped_column(String(64))
+
     chat = relationship("OrderChat", back_populates="messages")
+
+    @property
+    def image_url(self) -> str | None:
+        """Адрес картинки для API/фронта; None — текстовое сообщение."""
+        return f"/api/chat-images/{self.image_token}" if self.image_token else None
 
 
 class ChatMessageArchive(Base):
@@ -72,9 +82,38 @@ class ChatMessageArchive(Base):
     sender: Mapped[str] = mapped_column(String(8))
     body: Mapped[str] = mapped_column(Text)
     tg_message_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    image_token: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     archived_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    @property
+    def image_url(self) -> str | None:
+        return f"/api/chat-images/{self.image_token}" if self.image_token else None
+
+
+class ChatImage(Base, CreatedAtMixin):
+    """Фото переписки лежит в БД так же, как фото товаров (см. ProductImage):
+    байты не больше MAX_IMAGE_BYTES, тип — только из белого списка, адрес —
+    случайный токен вместо порядкового id."""
+
+    __tablename__ = "chat_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, default=new_image_token
+    )
+    # фото принадлежит магазину и чату конкретного заказа; чат удаляется
+    # только вместе с заказом, картинки живут столько же
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="CASCADE"), index=True
+    )
+    chat_id: Mapped[int] = mapped_column(
+        ForeignKey("order_chats.id", ondelete="CASCADE"), index=True
+    )
+    mime: Mapped[str] = mapped_column(String(32))
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)

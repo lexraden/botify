@@ -72,6 +72,17 @@ export const fetchOrderChat = (botId, orderId) =>
   api.get(`/seller/bots/${botId}/orders/${orderId}/chat`).then((r) => r.data)
 export const sendOrderChatMessage = (botId, orderId, body) =>
   api.post(`/seller/bots/${botId}/orders/${orderId}/chat/messages`, { body }).then((r) => r.data)
+// фото в чат: сырые байты файла (как у фото товара), черновик уезжает подписью
+export const sendOrderChatPhoto = (botId, orderId, file, caption) =>
+  api
+    .post(
+      `/seller/bots/${botId}/orders/${orderId}/chat/photo${
+        caption ? `?caption=${encodeURIComponent(caption)}` : ''
+      }`,
+      file,
+      { headers: { 'Content-Type': 'application/octet-stream' } },
+    )
+    .then((r) => r.data)
 export const withdrawPayout = (botId) =>
   api.post(`/seller/bots/${botId}/payouts/withdraw`).then((r) => r.data)
 export const fetchMailings = (botId) => api.get(`/seller/bots/${botId}/mailings`).then((r) => r.data)
