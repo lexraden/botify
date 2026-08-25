@@ -9,6 +9,7 @@ vi.mock('../../api', () => ({
 
 import OrderChat from '../OrderChat.vue'
 import { fetchOrderChat, sendOrderChatMessage, sendOrderChatPhoto } from '../../api'
+import { setLocale } from '../../services/locale'
 
 const openChat = {
   status: 'active',
@@ -22,6 +23,8 @@ const openChat = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // в happy-dom navigator.language = en-US, а тесты про русский UI
+  setLocale('ru')
 })
 
 describe('OrderChat — чат заказа', () => {

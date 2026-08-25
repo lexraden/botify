@@ -1,27 +1,17 @@
 <script setup>
-import { onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
+import { tList } from '../i18n'
 import { isLoading } from '../services/loading'
 
 // Пока идёт загрузка, подпись под спиннером меняется — так ожидание
-// читается как работа, а не как зависший экран
-const MESSAGES = [
-  'Botifying…',
-  'Собираем данные…',
-  'Загружаем бота…',
-  'Подключаем базу…',
-  'Готовим витрину…',
-  'Считаем статистику…',
-  'Синхронизируем заказы…',
-  'Проверяем каталог…',
-  'Обновляем базу клиентов…',
-  'Шифруем соединение…',
-  'Почти готово…',
-]
+// читается как работа, а не как зависший экран. Пул подписей берём из словаря,
+// поэтому на смене языка следующая подпись приедет уже на новом языке.
+const MESSAGES = computed(() => tList('loading.messages'))
 const STEP_MS = 1400
 
 // Подписи идут вразнобой, но подряд одна и та же не повторяется
 function pickMessage(previous) {
-  const pool = MESSAGES.filter((m) => m !== previous)
+  const pool = MESSAGES.value.filter((m) => m !== previous)
   return pool[Math.floor(Math.random() * pool.length)]
 }
 

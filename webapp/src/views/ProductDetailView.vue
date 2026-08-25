@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchProductReviews, fetchShop, trackEvent } from '../api'
+import { t, intlLocale } from '../i18n'
 import BrandBadge from '../components/BrandBadge.vue'
 import { useCartStore } from '../stores/cart'
 
@@ -13,7 +14,7 @@ const reviews = ref([])
 const error = ref('')
 
 const fmtDate = (iso) =>
-  new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+  new Date(iso).toLocaleDateString(intlLocale(), { day: 'numeric', month: 'long' })
 
 const emoji = computed(
   () => ({ physical: '📦', digital: '📕', service: '🛎' })[product.value?.type] ?? '📦',
@@ -29,21 +30,21 @@ onMounted(async () => {
     const shop = await fetchShop()
     product.value = shop.products.find((p) => p.id === Number(route.params.id)) || null
     if (!product.value) {
-      error.value = 'Товар не найден'
+      error.value = t('product.notFound')
       return
     }
     trackEvent('product_view', product.value.id)
     // отзывы — украшение: не загрузились, товар всё равно работает
     fetchProductReviews(product.value.id).then((r) => (reviews.value = r)).catch(() => {})
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Не удалось загрузить товар'
+    error.value = e.response?.data?.detail || t('product.loadError')
   }
 })
 </script>
 
 <template>
   <div class="detail">
-    <a class="back" @click="router.push('/')">← В каталог</a>
+    <a class="back" @click="router.push('/')">← {{ t('common.toCatalog') }}</a>
 
     <template v-if="product">
       <div class="photo">
@@ -57,14 +58,14 @@ onMounted(async () => {
         <span v-if="product.reviews_count" class="state rating">
           ★ {{ Number(product.avg_rating).toFixed(1) }} · {{ product.reviews_count }}
         </span>
-        <span v-if="soldOut" class="state soldout">Нет в наличии</span>
-        <span v-else-if="product.stock != null" class="state">Осталось: {{ product.stock }}</span>
+        <span v-if="soldOut" class="state soldout">{{ t('product.soldOut') }}</span>
+        <span v-else-if="product.stock != null" class="state">{{ t('product.left', { n: product.stock }) }}</span>
       </div>
 
       <p v-if="product.description" class="desc">{{ product.description }}</p>
 
       <section v-if="reviews.length" class="reviews">
-        <h3>Отзывы</h3>
+        <h3>{{ t('product.reviews') }}</h3>
         <!-- вместо личности — случайный псевдоним, сервис анонимный -->
         <div v-for="r in reviews" :key="r.created_at + String(r.rating)" class="review">
           <div class="review-head">
@@ -74,7 +75,7 @@ onMounted(async () => {
           <p v-if="r.author_name" class="author">{{ r.author_name }}</p>
           <p v-if="r.body">{{ r.body }}</p>
           <div v-if="r.reply_body" class="reply">
-            <b>Ответ продавца</b>
+            <b>{{ t('product.sellerReply') }}</b>
             <p>{{ r.reply_body }}</p>
           </div>
         </div>
@@ -90,12 +91,12 @@ onMounted(async () => {
         class="btn btn-primary"
         @click="cart.add(product)"
       >
-        Добавить в корзину
+        {{ t('product.addToCart') }}
       </button>
-      <button v-else class="btn btn-soft" disabled>Нет в наличии</button>
+      <button v-else class="btn btn-soft" disabled>{{ t('product.soldOut') }}</button>
 
       <button v-if="cart.count" class="btn btn-green go-cart" @click="router.push('/checkout')">
-        В корзину · {{ cart.count }} · {{ cart.total.toFixed(2) }} USDT
+        {{ t('product.goCart', { n: cart.count, sum: cart.total.toFixed(2) }) }}
       </button>
       <BrandBadge />
     </template>

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { acceptTerms } from '../api'
+import { t, tList } from '../i18n'
 import { locale } from '../services/locale'
 import { TERMS } from '../content/terms'
 import TermsModal from '../components/TermsModal.vue'
@@ -23,7 +24,7 @@ async function start() {
     await acceptTerms()
     router.replace('/onboarding/bot')
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Не удалось сохранить. Попробуй ещё раз.'
+    error.value = e.response?.data?.detail || t('welcome.error')
   } finally {
     saving.value = false
   }
@@ -32,15 +33,15 @@ async function start() {
 
 <template>
   <div class="welcome">
-    <h1>Твой магазин внутри Telegram</h1>
-    <p class="lead">Твой бот, твои клиенты, твои деньги</p>
+    <h1>{{ t('welcome.title') }}</h1>
+    <p class="lead">{{ t('welcome.lead') }}</p>
 
     <div class="hero">
       <div class="card preview">
         <div class="cover">📕</div>
         <div class="meta">
-          <b>Гайд по обжарке</b>
-          <span class="muted">digital · придёт в чат</span>
+          <b>{{ t('welcome.demoTitle') }}</b>
+          <span class="muted">{{ t('welcome.demoMeta') }}</span>
         </div>
         <div class="price">15 USDT</div>
       </div>
@@ -48,14 +49,12 @@ async function start() {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 6L9 17l-5-5" />
         </svg>
-        Оплачено
+        {{ t('welcome.paid') }}
       </div>
     </div>
 
     <div class="chips">
-      <span>Без сайта</span>
-      <span>Быстрая оплата</span>
-      <span>Своя база</span>
+      <span v-for="chip in tList('welcome.chips')" :key="chip">{{ chip }}</span>
     </div>
 
     <div class="actions">
@@ -67,13 +66,13 @@ async function start() {
         </span>
       </label>
       <button class="btn btn-primary" :disabled="!accepted || saving" @click="start">
-        Начать
+        {{ t('welcome.start') }}
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 12h14" /><path d="M13 6l6 6-6 6" />
         </svg>
       </button>
       <p v-if="error" class="error">{{ error }}</p>
-      <div class="note">1 шаг · ~2 минуты</div>
+      <div class="note">{{ t('welcome.stepNote') }}</div>
     </div>
 
     <TermsModal v-if="termsOpen" @close="termsOpen = false" />
@@ -115,7 +114,7 @@ h1 {
   font-size: 13px; font-weight: 700; white-space: nowrap;
 }
 .actions {
-  position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 20px 26px;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 14px 20px 26px;
   display: flex; flex-direction: column; gap: 10px; background: var(--bg);
 }
 /* ссылка внутри дисклеймера: цвет даёт глобальный стиль a */

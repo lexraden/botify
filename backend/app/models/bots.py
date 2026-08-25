@@ -1,4 +1,6 @@
-from sqlalchemy import BigInteger, Boolean, ForeignKey, LargeBinary, String, Text
+import secrets
+
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, CreatedAtMixin
@@ -29,3 +31,27 @@ class SellerBot(Base, CreatedAtMixin):
 
     seller = relationship("Seller", back_populates="bots")
     customers = relationship("Customer", back_populates="bot", cascade="all, delete-orphan")
+
+
+def new_avatar_token() -> str:
+    """Случайный адрес аватара (см. BotAvatar.token)."""
+    return secrets.token_urlsafe(16)
+
+
+class BotAvatar(Base, CreatedAtMixin):
+    """Фото бота из Telegram (логотип магазина на витрине). Байты лежат в БД
+    по образцу ProductImage: файловая система контейнера эфемерна (Railway).
+    При обновлении аватара строка заменяется целиком с новым токеном —
+    браузерный кэш отдаётся по immutable-адресу и не застревает."""
+
+    __tablename__ = "bot_avatars"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # один аватар на магазин
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=new_avatar_token)
+    mime: Mapped[str] = mapped_column(String(32))
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)

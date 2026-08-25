@@ -15,6 +15,7 @@ import {
   replyToReview,
   withdrawPayout,
 } from '../api'
+import { t, intlLocale } from '../i18n'
 import { openTelegramLink } from '../services/telegram'
 
 const route = useRoute()
@@ -46,7 +47,7 @@ async function sendReply() {
     reviews.value = reviews.value.map((r) => (r.id === updated.id ? updated : r))
     replyForm.value = { reviewId: null, body: '', sending: false }
   } catch (e) {
-    replyError.value = e.response?.data?.detail || 'Не удалось отправить ответ.'
+    replyError.value = e.response?.data?.detail || t('reviews.sendError')
   } finally {
     f.sending = false
   }
@@ -69,13 +70,15 @@ const minPayout = computed(() => money(summary.value?.payout_min))
 const canWithdraw = computed(() => balance.value > 0 && balance.value >= minPayout.value)
 const leftToMin = computed(() => Math.max(0, minPayout.value - balance.value))
 
-const WITHDRAW_ERROR = {
-  no_funds: 'Пока нечего выводить.',
-  below_min: 'Накопленного ещё не хватает для перевода.',
-  no_token: 'Выплаты временно недоступны — уже разбираемся.',
-  too_small: 'Сумма пока мала для перевода — она подождёт следующих продаж.',
-  failed: 'Перевод не прошёл — подробности пришли в чат с ботом.',
-}
+// словари надписей строятся как computed, чтобы переключение языка
+// в профиле обновляло кабинет без перезахода
+const WITHDRAW_ERROR = computed(() => ({
+  no_funds: t('withdraw.no_funds'),
+  below_min: t('withdraw.below_min'),
+  no_token: t('withdraw.no_token'),
+  too_small: t('withdraw.too_small'),
+  failed: t('withdraw.failed'),
+}))
 
 // Единственный отказ, который продавец может исправить сам: @CryptoBot ещё
 // не открыт. Заранее об этом не спрашиваем — API проверить не умеет, а сама
@@ -97,14 +100,14 @@ async function onWithdraw() {
     needsCryptobot.value = res.reason === 'cryptobot_not_started'
     withdrawFailed.value = !res.ok && !needsCryptobot.value
     withdrawNote.value = res.ok
-      ? `${Number(res.sent).toFixed(2)} USDT отправлены в @CryptoBot`
+      ? t('withdraw.sent', { sum: Number(res.sent).toFixed(2) })
       : needsCryptobot.value
         ? ''
-        : WITHDRAW_ERROR[res.reason] || 'Не получилось вывести.'
+        : WITHDRAW_ERROR.value[res.reason] || t('withdraw.generic')
     summary.value = await fetchShopSummary(botId.value)
   } catch {
     withdrawFailed.value = true
-    withdrawNote.value = 'Не получилось вывести — попробуй ещё раз.'
+    withdrawNote.value = t('withdraw.retryFailed')
   } finally {
     withdrawing.value = false
   }
@@ -119,21 +122,25 @@ function retryOnReturn() {
 onMounted(() => document.addEventListener('visibilitychange', retryOnReturn))
 onUnmounted(() => document.removeEventListener('visibilitychange', retryOnReturn))
 
-const STATUS = {
-  pending_payment: '⏳ Ждёт оплаты',
-  paid: '✅ Оплачен — пора отправлять',
-  fulfilled: '📦 Отправлен',
-  delivered: '🎉 Доставлен',
-  cancelled: '✖️ Отменён',
-}
+const STATUS = computed(() => ({
+  pending_payment: t('seller.statusPending'),
+  paid: t('seller.statusPaid'),
+  fulfilled: t('seller.statusFulfilled'),
+  delivered: t('seller.statusDelivered'),
+  cancelled: t('seller.statusCancelled'),
+}))
 // у оплаченных заказов есть чат с покупателем (закрывается сам через 72ч после доставки)
 const CHAT_STATUSES = ['paid', 'fulfilled', 'delivered']
-const TYPE_LABEL = { physical: 'товар', digital: 'digital', service: 'услуга' }
+const TYPE_LABEL = computed(() => ({
+  physical: t('type.physical'),
+  digital: t('type.digital'),
+  service: t('type.service'),
+}))
 const TYPE_EMOJI = { physical: '📦', digital: '📕', service: '🛎' }
 
 // заказы приходят без данных покупателя (анонимность) — вместо них дата
 const fmtDateTime = (iso) =>
-  new Date(iso).toLocaleString('ru-RU', {
+  new Date(iso).toLocaleString(intlLocale(), {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
@@ -143,8 +150,8 @@ const fmtDateTime = (iso) =>
 // что продавец отправил при выполнении — одной строкой для карточки
 const fulfillmentLine = (f) =>
   [
-    f?.tracking ? `Трек: ${f.tracking}` : '',
-    f?.url ? `Ссылка: ${f.url}` : '',
+    f?.tracking ? t('fulfill.tracking', { v: f.tracking }) : '',
+    f?.url ? t('fulfill.url', { v: f.url }) : '',
     f?.note || '',
   ]
     .filter(Boolean)
@@ -169,7 +176,7 @@ onMounted(async () => {
     await fetchMe()  // проверка сессии продавца
     await reload()
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Не удалось загрузить магазин'
+    error.value = e.response?.data?.detail || t('seller.loadError')
   }
 })
 
@@ -229,7 +236,7 @@ async function submitMailing() {
     <template v-else-if="summary">
       <header>
         <div class="title">
-          <h2>Магазин</h2>
+          <h2>{{ t('seller.shop') }}</h2>
           <div class="bot-line">
             <span class="dot" :class="{ off: !summary.is_active }" />
             <span>@{{ summary.bot_username }}</span>
@@ -237,32 +244,32 @@ async function submitMailing() {
         </div>
         <!-- выход в кабинет есть всегда: оттуда видно статусы всех магазинов -->
         <button class="switch" @click="router.push('/shops')">
-          Кабинет
+          {{ t('seller.cabinetBtn') }}
         </button>
       </header>
 
       <div class="stats">
         <div class="card stat">
-          <b class="num">{{ summary.customers_count }}</b><span>покупателей</span>
+          <b class="num">{{ summary.customers_count }}</b><span>{{ t('stat.customers') }}</span>
         </div>
         <div class="card stat">
-          <b class="num">{{ summary.orders_count }}</b><span>заказов</span>
+          <b class="num">{{ summary.orders_count }}</b><span>{{ t('stat.orders') }}</span>
         </div>
         <div class="card stat green">
-          <b class="num">{{ balance.toFixed(2) }}</b><span>USDT баланс</span>
+          <b class="num">{{ balance.toFixed(2) }}</b><span>{{ t('wallet.balanceShort') }}</span>
         </div>
       </div>
 
       <nav>
-        <button :class="{ active: tab === 'products' }" @click="tab = 'products'">Товары</button>
-        <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">Заказы</button>
-        <button :class="{ active: tab === 'mailings' }" @click="tab = 'mailings'">Рассылки</button>
-        <button :class="{ active: tab === 'stats' }" @click="tab = 'stats'">Статистика</button>
+        <button :class="{ active: tab === 'products' }" @click="tab = 'products'">{{ t('tab.products') }}</button>
+        <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">{{ t('tab.orders') }}</button>
+        <button :class="{ active: tab === 'mailings' }" @click="tab = 'mailings'">{{ t('tab.mailings') }}</button>
+        <button :class="{ active: tab === 'stats' }" @click="tab = 'stats'">{{ t('tab.stats') }}</button>
       </nav>
 
       <template v-if="tab === 'products'">
         <button class="btn add" @click="router.push(`/shop/${botId}/product`)">
-          + Добавить товар или услугу
+          {{ t('seller.addProduct') }}
         </button>
         <div v-for="p in products" :key="p.id" class="card row" :class="{ inactive: !p.is_active }">
           <div class="row-left">
@@ -272,7 +279,7 @@ async function submitMailing() {
               <b>{{ p.title }}</b>
               <span class="muted">
                 {{ Number(p.price) }} USDT · {{ TYPE_LABEL[p.type] }}
-                <template v-if="!p.is_active"> · скрыт</template>
+                <template v-if="!p.is_active"> · {{ t('seller.hidden') }}</template>
               </span>
             </div>
           </div>
@@ -281,7 +288,7 @@ async function submitMailing() {
             <button @click="removeProduct(p)">🗑</button>
           </div>
         </div>
-        <p v-if="!products.length" class="empty">Товаров пока нет.</p>
+        <p v-if="!products.length" class="empty">{{ t('seller.noProducts') }}</p>
       </template>
 
       <template v-else-if="tab === 'orders'">
@@ -308,109 +315,109 @@ async function submitMailing() {
             class="btn btn-soft chat-btn"
             @click="router.push(`/shop/${botId}/orders/${o.id}/chat`)"
           >
-            💬 Чат с покупателем
+            {{ t('seller.chatWithBuyer') }}
           </button>
           <button
             v-if="o.status === 'paid' && fulfillForm.orderId !== o.id"
             class="btn btn-green fulfill-btn"
             @click="openFulfill(o)"
           >
-            Отправить покупателю
+            {{ t('seller.fulfill') }}
           </button>
           <div v-if="fulfillForm.orderId === o.id" class="fulfill-form">
-            <input v-model="fulfillForm.tracking" placeholder="Трек-номер" />
-            <input v-model="fulfillForm.url" placeholder="Ссылка (файл / инвайт)" />
-            <input v-model="fulfillForm.note" placeholder="Примечание" />
+            <input v-model="fulfillForm.tracking" :placeholder="t('seller.trackPh')" />
+            <input v-model="fulfillForm.url" :placeholder="t('seller.urlPh')" />
+            <input v-model="fulfillForm.note" :placeholder="t('seller.notePh')" />
             <div class="pair">
-              <button class="btn btn-soft" @click="fulfillForm.orderId = null">Отмена</button>
+              <button class="btn btn-soft" @click="fulfillForm.orderId = null">{{ t('common.cancel') }}</button>
               <button
                 class="btn btn-green"
                 :disabled="fulfillForm.sending || !(fulfillForm.tracking || fulfillForm.url || fulfillForm.note)"
                 @click="submitFulfill"
               >
-                {{ fulfillForm.sending ? '…' : 'Отправить' }}
+                {{ fulfillForm.sending ? '…' : t('seller.send') }}
               </button>
             </div>
           </div>
         </div>
-        <p v-if="!orders.length" class="empty">Заказов пока нет.</p>
+        <p v-if="!orders.length" class="empty">{{ t('seller.noOrders') }}</p>
       </template>
 
       <template v-else-if="tab === 'mailings'">
         <div class="card mailing-form">
-          <textarea v-model="mailingForm.text" rows="4" placeholder="Текст рассылки по базе этого магазина" />
-          <input v-model="mailingForm.button_text" placeholder="Текст кнопки (опционально)" />
-          <input v-model="mailingForm.button_url" placeholder="Ссылка кнопки" />
+          <textarea v-model="mailingForm.text" rows="4" :placeholder="t('seller.mailingTextPh')" />
+          <input v-model="mailingForm.button_text" :placeholder="t('seller.mailingBtnTextPh')" />
+          <input v-model="mailingForm.button_url" :placeholder="t('seller.mailingBtnUrlPh')" />
           <button
             class="btn btn-primary"
             :disabled="mailingForm.sending || !mailingForm.text || (!!mailingForm.button_text !== !!mailingForm.button_url)"
             @click="submitMailing"
           >
-            {{ mailingForm.sending ? '…' : 'Отправить всем' }}
+            {{ mailingForm.sending ? '…' : t('seller.sendAll') }}
           </button>
         </div>
         <div v-for="m in mailings" :key="m.id" class="card row">
           <div class="info">
             <b>{{ m.text.slice(0, 60) }}{{ m.text.length > 60 ? '…' : '' }}</b>
             <span class="muted">
-              {{ { pending: '⏳ В очереди', sending: '📤 Отправляется', done: '✅ Отправлена' }[m.status] || m.status }}
-              <template v-if="m.status === 'done'"> · доставлено {{ m.sent_count }}</template>
+              {{ { pending: t('mailing.pending'), sending: t('mailing.sending'), done: t('mailing.done') }[m.status] || m.status }}
+              <template v-if="m.status === 'done'"> {{ t('seller.deliveredN', { n: m.sent_count }) }}</template>
             </span>
           </div>
         </div>
-        <p v-if="!mailings.length" class="empty">Рассылок пока не было.</p>
+        <p v-if="!mailings.length" class="empty">{{ t('seller.noMailings') }}</p>
       </template>
 
       <template v-else>
         <div v-if="stats" class="stats-grid">
           <div class="card metric">
-            <b class="num">{{ stats.telegram_users }}</b><span>пользователей Telegram</span>
+            <b class="num">{{ stats.telegram_users }}</b><span>{{ t('stat.telegramUsers') }}</span>
           </div>
           <div class="card metric">
-            <b class="num">{{ stats.product_views }}</b><span>просмотров товаров</span>
+            <b class="num">{{ stats.product_views }}</b><span>{{ t('stat.productViews') }}</span>
           </div>
           <div class="card metric">
-            <b class="num">{{ stats.checkout_starts }}</b><span>переходов к оплате</span>
+            <b class="num">{{ stats.checkout_starts }}</b><span>{{ t('stat.checkoutStarts') }}</span>
           </div>
           <div class="card metric">
-            <b class="num">{{ stats.purchases }}</b><span>покупок</span>
+            <b class="num">{{ stats.purchases }}</b><span>{{ t('stat.purchases') }}</span>
           </div>
           <div class="card metric green">
-            <b class="num">{{ Number(stats.total_sales).toFixed(2) }}</b><span>USDT оборот</span>
+            <b class="num">{{ Number(stats.total_sales).toFixed(2) }}</b><span>{{ t('stat.turnover') }}</span>
           </div>
           <div class="card metric">
-            <b class="num">{{ stats.repeat_customers }}</b><span>повторных покупателей</span>
+            <b class="num">{{ stats.repeat_customers }}</b><span>{{ t('stat.repeatCustomers') }}</span>
           </div>
         </div>
 
         <div class="card wallet">
-          <span class="wallet-label">Баланс магазина</span>
+          <span class="wallet-label">{{ t('wallet.label') }}</span>
           <div class="wallet-sum">
             <b class="num">{{ balance.toFixed(2) }}</b><span>USDT</span>
           </div>
           <!-- Про @CryptoBot говорим только когда он реально понадобился:
                после отказа перевода. В обычном случае экран о нём молчит. -->
           <template v-if="needsCryptobot">
-            <p class="wallet-state wait">Деньги придут в @CryptoBot — открой его и нажми Start</p>
+            <p class="wallet-state wait">{{ t('wallet.cryptobotHint') }}</p>
             <button class="btn btn-green wallet-btn" @click="openCryptobot">
-              Открыть @CryptoBot
+              {{ t('wallet.openCryptobot') }}
             </button>
-            <p class="hint">Вернёшься сюда — вывод повторится сам.</p>
+            <p class="hint">{{ t('wallet.returnHint') }}</p>
           </template>
           <template v-else>
             <p class="wallet-state" :class="canWithdraw ? 'ready' : 'wait'">
-              <template v-if="canWithdraw">Готово к выводу</template>
+              <template v-if="canWithdraw">{{ t('wallet.ready') }}</template>
               <template v-else-if="balance > 0">
-                Ещё <span class="num">{{ leftToMin.toFixed(2) }}</span> USDT до вывода
+                {{ t('wallet.needMore', { n: leftToMin.toFixed(2) }) }}
               </template>
-              <template v-else>Здесь копятся деньги с продаж</template>
+              <template v-else>{{ t('wallet.accumulates') }}</template>
             </p>
             <button
               class="btn btn-green wallet-btn"
               :disabled="!canWithdraw || withdrawing"
               @click="onWithdraw"
             >
-              {{ withdrawing ? 'Отправляем…' : 'Вывести' }}
+              {{ withdrawing ? t('wallet.withdrawing') : t('wallet.withdraw') }}
             </button>
             <p v-if="withdrawNote" class="wallet-note" :class="{ err: withdrawFailed }">
               {{ withdrawNote }}
@@ -419,24 +426,23 @@ async function submitMailing() {
 
           <div class="wallet-rows">
             <div class="plan-row">
-              <span>Всего заработано</span>
+              <span>{{ t('wallet.earnedTotal') }}</span>
               <span class="num">{{ earned.toFixed(2) }} USDT</span>
             </div>
             <div class="plan-row">
-              <span>Уже выплачено</span>
+              <span>{{ t('wallet.paidAlready') }}</span>
               <span class="num">{{ paidOut.toFixed(2) }} USDT</span>
             </div>
           </div>
 
           <p class="hint">
-            Комиссия {{ Number(summary.commission_pct) }}%. Минимальный порог вывода
-            {{ minPayout }} USDT
+            {{ t('wallet.feeHint', { pct: Number(summary.commission_pct), min: minPayout }) }}
           </p>
         </div>
 
         <!-- что говорят покупатели: личность не раскрывается, только псевдоним -->
         <div v-if="reviews.length" class="card reviews-block">
-          <b>Отзывы покупателей</b>
+          <b>{{ t('reviews.blockTitle') }}</b>
           <div v-for="r in reviews" :key="r.id" class="seller-review">
             <div class="sr-head">
               <span class="stars">
@@ -447,7 +453,7 @@ async function submitMailing() {
             <p v-if="r.body">{{ r.body }}</p>
 
             <div v-if="r.reply_body" class="sr-reply">
-              <b>Ваш ответ</b>
+              <b>{{ t('reviews.yourReply') }}</b>
               <p>{{ r.reply_body }}</p>
             </div>
 
@@ -457,38 +463,38 @@ async function submitMailing() {
                 class="reply-input"
                 rows="2"
                 maxlength="1000"
-                placeholder="Ответ на отзыв"
+                :placeholder="t('reviews.replyPh')"
               ></textarea>
               <p v-if="replyError" class="reply-error">{{ replyError }}</p>
               <div class="pair">
                 <button class="btn btn-green" :disabled="replyForm.sending" @click="sendReply">
-                  {{ replyForm.sending ? 'Отправляем…' : 'Ответить' }}
+                  {{ replyForm.sending ? t('wallet.withdrawing') : t('reviews.reply') }}
                 </button>
-                <button class="btn btn-soft" @click="replyForm.reviewId = null">Отмена</button>
+                <button class="btn btn-soft" @click="replyForm.reviewId = null">{{ t('common.cancel') }}</button>
               </div>
             </template>
             <a v-else class="sr-reply-link" @click="openReply(r)">
-              {{ r.reply_body ? 'Изменить ответ' : 'Ответить' }}
+              {{ r.reply_body ? t('reviews.editReply') : t('reviews.reply') }}
             </a>
           </div>
         </div>
 
         <div v-if="summary.limits" class="card plan">
           <div class="plan-head">
-            <b>Тариф: {{ summary.limits.plan === 'pro' ? 'Pro' : 'Бесплатный' }}</b>
-            <span v-if="!summary.limits.enforced" class="muted">лимиты пока не действуют</span>
+            <b>{{ t('plan.title') }}: {{ summary.limits.plan === 'pro' ? 'Pro' : t('plan.free') }}</b>
+            <span v-if="!summary.limits.enforced" class="muted">{{ t('plan.limitsOff') }}</span>
           </div>
           <div class="plan-row">
-            <span>Товары</span>
-            <span>{{ summary.limits.products_used }}{{ summary.limits.products_cap ? ' из ' + summary.limits.products_cap : '' }}</span>
+            <span>{{ t('plan.productsRow') }}</span>
+            <span>{{ summary.limits.products_used }}{{ summary.limits.products_cap ? ` ${t('plan.ofN', { n: summary.limits.products_cap })}` : '' }}</span>
           </div>
           <div class="plan-row">
-            <span>Услуги</span>
-            <span>{{ summary.limits.services_used }}{{ summary.limits.services_cap ? ' из ' + summary.limits.services_cap : '' }}</span>
+            <span>{{ t('plan.servicesRow') }}</span>
+            <span>{{ summary.limits.services_used }}{{ summary.limits.services_cap ? ` ${t('plan.ofN', { n: summary.limits.services_cap })}` : '' }}</span>
           </div>
           <div class="plan-row">
-            <span>Рассылка</span>
-            <span>{{ summary.limits.mailing_recipients_cap ? 'до ' + summary.limits.mailing_recipients_cap + ' получателей' : 'без лимита' }}</span>
+            <span>{{ t('plan.mailingRow') }}</span>
+            <span>{{ summary.limits.mailing_recipients_cap ? t('plan.upToN', { n: summary.limits.mailing_recipients_cap }) : t('plan.unlimited') }}</span>
           </div>
         </div>
       </template>

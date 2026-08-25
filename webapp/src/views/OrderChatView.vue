@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { t } from '../i18n'
 import OrderChat from '../components/OrderChat.vue'
 
 const route = useRoute()
@@ -14,16 +15,22 @@ const orderId = computed(() => route.params.orderId)
     <a
       class="back"
       @click="router.push({ path: `/shop/${botId}`, query: { tab: 'orders' } })"
-    >← К заказам</a>
-    <h2>Заказ #{{ orderId }} · Чат</h2>
-    <p class="sub">Покупатель анонимен: переписка привязана к заказу, а не к личности.</p>
+    >{{ t('chat.back') }}</a>
+    <h2>{{ t('chat.title', { n: orderId }) }}</h2>
+    <p class="sub">{{ t('chat.anonymousSub') }}</p>
 
     <OrderChat :bot-id="botId" :order-id="orderId" />
   </div>
 </template>
 
 <style scoped>
-.order-chat-view { padding: 18px 16px 36px; }
+/* Экран во всю высоту, чат растягивается и прижимает композер к низу */
+.order-chat-view {
+  padding: 18px 16px calc(16px + env(safe-area-inset-bottom));
+  min-height: 100dvh; box-sizing: border-box;
+  display: flex; flex-direction: column;
+}
+.order-chat-view .back, .order-chat-view h2, .order-chat-view .sub { flex-shrink: 0; }
 .back {
   display: inline-block; margin-bottom: 14px;
   color: var(--sub); font-size: 14px; font-weight: 700; cursor: pointer;

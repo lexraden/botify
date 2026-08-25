@@ -2,6 +2,7 @@
 import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchProducts, saveProduct, uploadProductImage } from '../api'
+import { t } from '../i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,7 +51,7 @@ async function onPickImage(e) {
   if (!file) return
   imageError.value = ''
   if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
-    imageError.value = `Файл больше ${MAX_IMAGE_MB} МБ`
+    imageError.value = t('form.fileTooBig', { n: MAX_IMAGE_MB })
     return
   }
   uploadingImage.value = true
@@ -59,7 +60,7 @@ async function onPickImage(e) {
     const res = await uploadProductImage(botId.value, file)
     form.value.image_url = res.url
   } catch (err) {
-    imageError.value = err.response?.data?.detail || 'Не удалось загрузить фото'
+    imageError.value = err.response?.data?.detail || t('form.uploadError')
   } finally {
     uploadingImage.value = false
   }
@@ -108,7 +109,7 @@ async function submit() {
     })
     router.push(`/shop/${botId.value}`)
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Не удалось сохранить'
+    error.value = e.response?.data?.detail || t('form.saveError')
   } finally {
     saving.value = false
   }
@@ -117,35 +118,39 @@ async function submit() {
 
 <template>
   <div class="form">
-    <h2>{{ form.id ? 'Редактировать' : 'Новый товар или услуга' }}</h2>
+    <h2>{{ form.id ? t('form.edit') : t('form.new') }}</h2>
 
-    <label>Тип</label>
+    <label>{{ t('form.typeLabel') }}</label>
     <div class="types">
       <button
-        v-for="(label, t) in { physical: '📦 Товар', digital: '📕 Digital', service: '🛎 Услуга' }"
-        :key="t"
-        :class="{ active: form.type === t }"
-        @click="form.type = t"
+        v-for="(label, key) in {
+          physical: t('form.typePhysical'),
+          digital: t('form.typeDigital'),
+          service: t('form.typeService'),
+        }"
+        :key="key"
+        :class="{ active: form.type === key }"
+        @click="form.type = key"
       >{{ label }}</button>
     </div>
 
-    <label>Название</label>
-    <input v-model="form.title" maxlength="256" placeholder="Капучино / Гайд по обжарке" />
+    <label>{{ t('form.titleLabel') }}</label>
+    <input v-model="form.title" maxlength="256" :placeholder="t('form.titlePh')" />
 
-    <label>Описание</label>
-    <textarea v-model="form.description" rows="3" placeholder="Что получит покупатель" />
+    <label>{{ t('form.descLabel') }}</label>
+    <textarea v-model="form.description" rows="3" :placeholder="t('form.descPh')" />
 
-    <label>Цена, USDT</label>
+    <label>{{ t('form.priceLabel') }}</label>
     <input v-model="form.price" inputmode="decimal" placeholder="9.99" />
 
     <template v-if="form.type === 'physical'">
-      <label>Кол-во на складе</label>
-      <input v-model="form.stock" inputmode="numeric" placeholder="пусто — без ограничения" />
-      <p v-if="stockInvalid" class="error">Кол-во — целое число или пустое поле.</p>
+      <label>{{ t('form.stockLabel') }}</label>
+      <input v-model="form.stock" inputmode="numeric" :placeholder="t('form.stockPh')" />
+      <p v-if="stockInvalid" class="error">{{ t('form.stockInvalid') }}</p>
     </template>
 
-    <label>Фото (опционально)</label>
-    <p class="hint">Лучше всего смотрится квадратный PNG с прозрачным фоном.</p>
+    <label>{{ t('form.photoLabel') }}</label>
+    <p class="hint">{{ t('form.photoHint') }}</p>
     <input
       ref="fileInput"
       type="file"
@@ -161,7 +166,7 @@ async function submit() {
       :disabled="uploadingImage"
       @click="fileInput.click()"
     >
-      {{ uploadingImage ? 'Загружаем…' : 'Выбрать фото' }}
+      {{ uploadingImage ? t('form.uploading') : t('form.pickPhoto') }}
     </button>
 
     <div v-else class="image-box">
@@ -170,39 +175,39 @@ async function submit() {
         <img
           v-show="!uploadingImage && !imgLoading"
           :src="form.image_url"
-          alt="Фото товара"
+          :alt="t('form.photoAlt')"
           @load="imgLoading = false"
           @error="imgLoading = false"
         />
       </div>
       <div class="image-actions">
         <button class="btn btn-soft act" type="button" :disabled="uploadingImage" @click="fileInput.click()">
-          {{ uploadingImage ? '…' : 'Заменить' }}
+          {{ uploadingImage ? '…' : t('form.replace') }}
         </button>
-        <button class="btn btn-soft act" type="button" @click="dropImage">Убрать</button>
+        <button class="btn btn-soft act" type="button" @click="dropImage">{{ t('form.remove') }}</button>
       </div>
     </div>
     <p v-if="imageError" class="error">{{ imageError }}</p>
 
     <template v-if="form.type !== 'physical'">
-      <label>Ссылка для выдачи после оплаты</label>
-      <input v-model="form.digital_url" placeholder="https://… (файл, инвайт в чат)" />
+      <label>{{ t('form.digitalUrlLabel') }}</label>
+      <input v-model="form.digital_url" placeholder="https://…" />
     </template>
 
     <label class="check">
-      <input type="checkbox" v-model="form.is_active" /> Показывать на витрине
+      <input type="checkbox" v-model="form.is_active" /> {{ t('form.showOnStorefront') }}
     </label>
 
     <p v-if="error" class="error">{{ error }}</p>
 
     <div class="actions">
-      <button class="btn btn-soft" @click="router.push(`/shop/${botId}`)">Отмена</button>
+      <button class="btn btn-soft" @click="router.push(`/shop/${botId}`)">{{ t('common.cancel') }}</button>
       <button
         class="btn btn-primary"
         :disabled="!form.title || !form.price || stockInvalid || saving"
         @click="submit"
       >
-        {{ saving ? '…' : 'Сохранить' }}
+        {{ saving ? '…' : t('form.save') }}
       </button>
     </div>
   </div>

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { t } from '../i18n'
 import { useCartStore } from '../stores/cart'
 
 const props = defineProps({ product: { type: Object, required: true } })
@@ -56,8 +57,8 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
       <button class="minus" @click.stop="cart.remove(product)">−</button>
       <button class="plus" :disabled="maxed" @click.stop="cart.add(product)">+</button>
     </div>
-    <button v-else-if="!soldOut" class="add" @click.stop="cart.add(product)">В корзину</button>
-    <button v-else class="add soldout" disabled>Нет в наличии</button>
+    <button v-else-if="!soldOut" class="add" @click.stop="cart.add(product)">{{ t('card.addToCart') }}</button>
+    <button v-else class="add soldout" disabled>{{ t('card.soldOut') }}</button>
   </div>
 </template>
 

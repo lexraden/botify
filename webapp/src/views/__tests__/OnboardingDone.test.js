@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 const { replaceMock, query } = vi.hoisted(() => ({
@@ -12,6 +12,10 @@ vi.mock('vue-router', () => ({
 }))
 
 import OnboardingDone from '../OnboardingDone.vue'
+import { setLocale } from '../../services/locale'
+
+// в happy-dom navigator.language = en-US, а тест про русский UI
+beforeEach(() => setLocale('ru'))
 
 describe('OnboardingDone — поздравление после создания магазина', () => {
   it('показывает username магазина и уводит «Далее» в магазин', async () => {

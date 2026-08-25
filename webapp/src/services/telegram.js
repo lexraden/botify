@@ -3,14 +3,12 @@
 // это единственный источник истины о том, кто открыл Mini App и из какого бота.
 export const tg = window.Telegram?.WebApp ?? null
 
+// Применение темы (body.tg-dark) переехало в services/theme.js — там же
+// выбор покупателя из профиля.
 export function initTelegram() {
   if (!tg) return
   tg.ready()
   tg.expand()
-  if (tg.colorScheme === 'dark') document.body.classList.add('tg-dark')
-  tg.onEvent?.('themeChanged', () => {
-    document.body.classList.toggle('tg-dark', tg.colorScheme === 'dark')
-  })
 }
 
 export function getInitData() {

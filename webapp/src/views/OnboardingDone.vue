@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { t } from '../i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,14 +17,14 @@ function next() {
 <template>
   <div class="step">
     <div class="emoji">🎉</div>
-    <h2>Магазин создан!</h2>
+    <h2>{{ t('done.title') }}</h2>
     <p class="lead">
-      {{ username ? `@${username} готов принимать заказы` : 'Магазин готов принимать заказы' }}
+      {{ username ? t('done.readyUser', { n: username }) : t('done.ready') }}
     </p>
-    <p class="sub">Осталось наполнить каталог — и можно продавать.</p>
+    <p class="sub">{{ t('done.sub') }}</p>
 
     <div class="actions">
-      <button class="btn btn-primary" @click="next">Далее</button>
+      <button class="btn btn-primary" @click="next">{{ t('done.next') }}</button>
     </div>
   </div>
 </template>
@@ -45,7 +46,7 @@ h2 { font-size: 23px; margin: 0 0 10px; line-height: 1.2; }
 .lead { font-size: 15px; color: var(--sub); line-height: 1.5; margin: 0; }
 .sub { font-size: 14px; color: var(--sub); line-height: 1.5; margin: 8px 0 0; }
 .actions {
-  position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 18px 24px;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 14px 18px 24px;
   display: flex; flex-direction: column; gap: 10px; background: var(--bg);
 }
 </style>

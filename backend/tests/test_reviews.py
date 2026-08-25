@@ -5,7 +5,15 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from tests.test_api import BUYER, buyer_headers, client, seller_headers, setup_shop
+from tests.test_api import (
+    BUYER,
+    SELLER_BOT_TOKEN,
+    buyer_headers,
+    client,
+    init_data_for,
+    seller_headers,
+    setup_shop,
+)
 from tests.test_fulfillment import paid_physical_order
 
 
@@ -78,9 +86,9 @@ async def test_product_reviews_flow(db):
             review = r.json()[0]
             assert review["rating"] == 5
             assert review["created_at"]
-            # у отзыва есть псевдоним автора, личность по-прежнему не светится
+            # автор — Telegram-имя покупателя; юзернейм по-прежнему не светится
             author = review["author_name"]
-            assert author and len(author) > 3
+            assert author == "Петя"
             assert "petya" not in str(review) and BUYER["username"] not in str(review)
             # пуш продавцу — ровно один, о создании
             review_push.assert_awaited_once()
@@ -137,6 +145,66 @@ async def test_product_reviews_flow(db):
                 headers=buyer_headers(),
             )
             assert r.status_code == 200 and r.json() == []
+
+
+@pytest.mark.asyncio
+async def test_review_author_falls_back_to_pseudonym_without_name(db):
+    """Покупатель без first_name в Telegram — остаётся случайный псевдоним."""
+    bot_id = await setup_shop(db)
+    anon_headers = {
+        "X-Init-Data": init_data_for({"id": 888, "username": "noname"}, SELLER_BOT_TOKEN)
+    }
+
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={"type": "physical", "title": "Кружка", "price": "7"},
+        )
+        pid = r.json()["id"]
+        r = await c.post(
+            f"/api/store/{bot_id}/orders",
+            headers=anon_headers,
+            json={"items": [{"product_id": pid, "qty": 1}]},
+        )
+        order_id = r.json()["id"]
+
+    from app.db import get_session
+    from app.models import Order
+
+    async with get_session() as session:
+        order = await session.get(Order, order_id)
+        order.invoice_id = 700200
+        await session.commit()
+
+    from tests.test_payments import patched_notifications
+
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        from app.payments.service import handle_invoice_paid
+
+        assert await handle_invoice_paid(700200, None)
+
+    with patch("app.payments.service._notify", new=AsyncMock()):
+        async with client() as c:
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
+                headers=seller_headers(),
+                json={"note": "Выдано"},
+            )
+            assert r.status_code == 200, r.text
+
+            r = await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/reviews",
+                headers=anon_headers,
+                json={"items": [{"product_id": pid, "rating": 3}]},
+            )
+            assert r.status_code == 200, r.text
+            body = str(r.json())
+            # вместо пустого имени — псевдоним вида «Анна К.», юзернейм не светится
+            author = r.json()[0]["author_name"]
+            assert author and author.endswith(".")
+            assert "noname" not in body
 
 
 @pytest.mark.asyncio

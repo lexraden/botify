@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { deleteShop, disableShop, enableShop, fetchMe } from '../api'
+import { t } from '../i18n'
 
 const router = useRouter()
 const bots = ref(null)
@@ -32,8 +33,8 @@ async function onToggle(bot) {
   const res = bot.is_active ? await disableShop(bot.id) : await enableShop(bot.id)
   menuBotId.value = null
   note.value = res.is_active
-    ? `Магазин @${res.bot_username} включён — бот снова работает`
-    : `Магазин @${res.bot_username} отключён`
+    ? t('shops.enabledNote', { n: res.bot_username })
+    : t('shops.disabledNote', { n: res.bot_username })
   await reload()
 }
 
@@ -44,16 +45,16 @@ async function onDelete(bot) {
   menuBotId.value = null
   note.value =
     res.status === 'deleted'
-      ? `Магазин @${bot.bot_username} удалён вместе с базой покупателей`
-      : `У покупателей @${bot.bot_username} есть заказы — историю продаж удалять нельзя, магазин отключён`
+      ? t('shops.deletedNote', { n: bot.bot_username })
+      : t('shops.hasOrdersNote', { n: bot.bot_username })
   await reload()
 }
 </script>
 
 <template>
   <div class="shops">
-    <h2>Кабинет</h2>
-    <p class="lead">Каждый бот — отдельный магазин со своим каталогом и базой покупателей.</p>
+    <h2>{{ t('shops.title') }}</h2>
+    <p class="lead">{{ t('shops.lead') }}</p>
 
     <p v-if="note" class="note">{{ note }}</p>
 
@@ -63,7 +64,7 @@ async function onDelete(bot) {
         <div class="info">
           <b>@{{ bot.bot_username }}</b>
           <span :class="bot.is_active ? 'on' : 'off'">
-            {{ bot.is_active ? 'работает' : 'отключён' }}
+            {{ bot.is_active ? t('shops.works') : t('shops.off') }}
           </span>
         </div>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--sub)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -74,29 +75,29 @@ async function onDelete(bot) {
 
       <!-- подтверждение удаления раскрывается на месте карточки -->
       <template v-if="confirmDeleteId === bot.id">
-        <p class="danger-q">Удалить @{{ bot.bot_username }} вместе с базой покупателей?</p>
+        <p class="danger-q">{{ t('shops.deleteQ', { n: bot.bot_username }) }}</p>
         <div class="actions">
-          <button class="btn danger" @click="onDelete(bot)">Да, удалить</button>
-          <button class="btn btn-soft" @click="confirmDeleteId = null">Отмена</button>
+          <button class="btn danger" @click="onDelete(bot)">{{ t('shops.yesDelete') }}</button>
+          <button class="btn btn-soft" @click="confirmDeleteId = null">{{ t('common.cancel') }}</button>
         </div>
       </template>
       <template v-else-if="menuBotId === bot.id">
         <div class="actions">
           <button class="btn btn-soft" @click="onToggle(bot)">
-            {{ bot.is_active ? '🔌 Отключить' : '🔁 Включить' }}
+            {{ bot.is_active ? t('shops.disableBtn') : t('shops.enableBtn') }}
           </button>
-          <button class="btn btn-soft" @click="askDelete(bot)">🗑 Удалить</button>
+          <button class="btn btn-soft" @click="askDelete(bot)">{{ t('shops.deleteBtn') }}</button>
         </div>
       </template>
     </div>
 
-    <p v-if="bots !== null && !bots.length" class="empty">Пока нет магазинов.</p>
+    <p v-if="bots !== null && !bots.length" class="empty">{{ t('shops.none') }}</p>
 
     <button class="btn add" @click="router.push('/onboarding/bot')">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
         <path d="M12 5v14" /><path d="M5 12h14" />
       </svg>
-      Добавить магазин
+      {{ t('shops.add') }}
     </button>
   </div>
 </template>

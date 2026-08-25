@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createOrder, trackEvent } from '../api'
+import { t } from '../i18n'
 import { useCartStore } from '../stores/cart'
 
 const router = useRouter()
@@ -26,7 +27,7 @@ async function pay() {
     }
     router.push({ name: 'my-orders', query: { created: order.id, pay: order.payment_url ? 1 : 0 } })
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Не удалось оформить заказ'
+    error.value = e.response?.data?.detail || t('checkout.error')
   } finally {
     submitting.value = false
   }
@@ -36,8 +37,8 @@ async function pay() {
 <template>
   <div class="checkout">
     <header>
-      <h2>YOUR ORDER</h2>
-      <a class="edit" @click="router.push('/')">Edit</a>
+      <h2>{{ t('checkout.title') }}</h2>
+      <a class="edit" @click="router.push('/')">{{ t('checkout.edit') }}</a>
     </header>
 
     <div v-for="entry in Object.values(cart.items)" :key="entry.product.id" class="row">
@@ -48,14 +49,14 @@ async function pay() {
       <div class="price">{{ (Number(entry.product.price) * entry.qty).toFixed(2) }} USDT</div>
     </div>
 
-    <p v-if="!cart.count" class="empty">Корзина пуста. <a @click="router.push('/')">В каталог</a></p>
+    <p v-if="!cart.count" class="empty">{{ t('checkout.empty') }} <a @click="router.push('/')">{{ t('common.toCatalog') }}</a></p>
 
-    <textarea v-model="comment" placeholder="Комментарий к заказу — детали, пожелания…" rows="3" />
+    <textarea v-model="comment" :placeholder="t('checkout.commentPh')" rows="3" />
 
     <p v-if="error" class="error">{{ error }}</p>
 
     <button class="pay" :disabled="!cart.count || submitting" @click="pay">
-      {{ submitting ? '…' : `PAY ${cart.total.toFixed(2)} USDT` }}
+      {{ submitting ? '…' : t('checkout.pay', { sum: cart.total.toFixed(2) }) }}
     </button>
   </div>
 </template>
@@ -93,6 +94,7 @@ textarea {
 .pay {
   position: fixed;
   left: 0; right: 0; bottom: 0;
+  z-index: 20; /* поверх плашки «Сделано через Botify» */
   border: 0;
   background: var(--green);
   color: #fff;

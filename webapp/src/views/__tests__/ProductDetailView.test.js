@@ -12,6 +12,7 @@ vi.mock('../../api', () => ({
   trackEvent: (...args) => trackEvent(...args),
 }))
 const { default: ProductDetailView } = await import('../ProductDetailView.vue')
+const { setLocale } = await import('../../services/locale')
 
 const product = {
   id: 7,
@@ -36,6 +37,7 @@ describe('ProductDetailView — рейтинг и отзывы на страни
   })
 
   beforeEach(() => {
+    setLocale('ru') // в jsdom navigator.language = en-US, а тесты про русский UI
     fetchShop.mockReset()
     fetchProductReviews.mockReset()
     trackEvent.mockReset()

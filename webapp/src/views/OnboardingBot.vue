@@ -1,7 +1,8 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { connectBot, fetchMe } from '../api'
+import { t, tList } from '../i18n'
 import { openTelegramLink } from '../services/telegram'
 
 const router = useRouter()
@@ -21,12 +22,14 @@ onMounted(async () => {
   }
 })
 
-const ERRORS = {
-  bad_format: 'Это не похоже на токен. Он выглядит так: 1234567890:AAEhBOweik6ad9r_QXMEN…',
-  get_me_failed: 'Telegram не принял этот токен — возможно, он отозван или скопирован с ошибкой.',
-  taken_by_other: 'Этот бот уже подключён к платформе другим продавцом.',
-  already_yours: 'Этот бот уже подключён к твоему аккаунту.',
-}
+// словарь ошибок подключения — computed, чтобы переключение языка
+// в кабинете меняло и будущие сообщения об ошибках
+const ERRORS = computed(() => ({
+  bad_format: t('bot.err.bad_format'),
+  get_me_failed: t('bot.err.get_me_failed'),
+  taken_by_other: t('bot.err.taken_by_other'),
+  already_yours: t('bot.err.already_yours'),
+}))
 
 const tokenInput = ref(null)
 const keyboardOpen = ref(false)
@@ -61,10 +64,10 @@ async function submit() {
         router.replace(`/onboarding/done?${query}`)
       }
     } else {
-      error.value = ERRORS[res.error] || 'Не удалось подключить бота. Попробуй ещё раз.'
+      error.value = ERRORS.value[res.error] || t('bot.err.generic')
     }
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Не удалось подключить бота. Попробуй ещё раз.'
+    error.value = e.response?.data?.detail || t('bot.err.generic')
   } finally {
     saving.value = false
   }
@@ -73,13 +76,14 @@ async function submit() {
 
 <template>
   <div class="step" :class="{ 'kb-open': keyboardOpen }">
-    <h2>{{ addingMore ? 'Подключи ещё одного бота' : 'Подключи своего бота' }}</h2>
-    <p class="lead">Через него покупатели будут заходить в твой магазин и получать рассылки</p>
+    <h2>{{ addingMore ? t('bot.titleMore') : t('bot.titleNew') }}</h2>
+    <p class="lead">{{ t('bot.lead') }}</p>
 
+    <!-- строки шагов — наш словарь с <b>-разметкой, поэтому v-html безопасен -->
     <ol class="steps">
-      <li><span class="num">1</span><span>Открой <b>@BotFather</b>, отправь <b>/newbot</b></span></li>
-      <li><span class="num">2</span><span>Придумай имя и username бота</span></li>
-      <li><span class="num">3</span><span>Скопируй токен и вставь его ниже</span></li>
+      <li v-for="(step, i) in tList('bot.steps')" :key="i">
+        <span class="num">{{ i + 1 }}</span><span v-html="step" />
+      </li>
     </ol>
 
     <input
@@ -97,27 +101,24 @@ async function submit() {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--sub)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="4" y="10" width="16" height="10" rx="2.5" /><path d="M8 10V7a4 4 0 0 1 8 0v3" />
       </svg>
-      <span>Токен хранится только в зашифрованном виде</span>
+      <span>{{ t('bot.tokenHint') }}</span>
     </div>
 
     <div class="alert">
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="9" /><path d="M12 8v4" /><path d="M12 16h.01" />
       </svg>
-      <span>
-        Уже есть бот? Отключи его от других конструкторов и вставь его токен — новый создавать
-        не нужно.
-      </span>
+      <span>{{ t('bot.alert') }}</span>
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>
 
     <div class="actions">
       <button class="btn btn-soft" @click="openTelegramLink('https://t.me/BotFather')">
-        Открыть @BotFather
+        {{ t('bot.openBotfather') }}
       </button>
       <button class="btn btn-primary" :disabled="saving || !token.trim()" @click="submit">
-        {{ saving ? 'Проверяю…' : 'Подключить бота' }}
+        {{ saving ? t('bot.checking') : t('bot.connect') }}
       </button>
     </div>
   </div>
@@ -144,7 +145,7 @@ h2 { font-size: 21px; margin: 18px 0 10px; }
 .hint { display: flex; gap: 8px; align-items: center; margin-top: 9px; font-size: 12px; color: var(--sub); }
 .error { color: var(--red); }
 .actions {
-  position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 18px 24px;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 14px 18px 24px;
   display: flex; flex-direction: column; gap: 10px; background: var(--bg);
 }
 </style>

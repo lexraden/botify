@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import BuyerContext, get_buyer
 from app.models import (
+    BotAvatar,
     Customer,
     Order,
     OrderChat,
@@ -20,6 +21,7 @@ from app.models import (
     Seller,
     ShopEvent,
 )
+from app.services.bot_avatars import refresh_bot_avatar
 from app.services.reviews import notify_new_review, random_author_name
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,8 @@ class ProductOut(BaseModel):
 
 class ShopOut(BaseModel):
     shop_name: str
+    # фото бота из Telegram — логотип магазина в шапке витрины; None — нет фото
+    shop_avatar_url: str | None = None
     products: list[ProductOut]
 
 
@@ -88,6 +92,22 @@ class OrderOut(BaseModel):
 
 @router.get("", response_model=ShopOut)
 async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
+    avatar = (
+        await ctx.session.execute(
+            select(BotAvatar.token).where(BotAvatar.bot_id == ctx.bot.id)
+        )
+    ).scalar_one_or_none()
+    if avatar is None:
+        # магазину, подключённому до появления аватаров, докачиваем фото лениво;
+        # неудача (нет фото, Telegram недоступен) витрину не ломает
+        await refresh_bot_avatar(ctx.session, ctx.bot)
+        await ctx.session.commit()
+        avatar = (
+            await ctx.session.execute(
+                select(BotAvatar.token).where(BotAvatar.bot_id == ctx.bot.id)
+            )
+        ).scalar_one_or_none()
+
     result = await ctx.session.execute(
         select(Product)
         .where(Product.bot_id == ctx.bot.id, Product.is_active.is_(True))
@@ -119,6 +139,7 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
         out.append(product_out)
     return ShopOut(
         shop_name=f"@{ctx.bot.bot_username}",
+        shop_avatar_url=f"/api/bot-avatars/{avatar}" if avatar else None,
         products=out,
     )
 
@@ -470,6 +491,9 @@ async def leave_review(
     for item in payload.items:
         review = by_product.get(item.product_id)
         if review is None:
+            # автор — Telegram-имя покупателя (не юзернейм); без имени в профиле
+            # остаётся случайный псевдоним
+            display_name = (ctx.customer.first_name or "").strip()[:64]
             review = ProductReview(
                 bot_id=ctx.bot.id,
                 product_id=item.product_id,
@@ -477,7 +501,7 @@ async def leave_review(
                 customer_id=ctx.customer.id,
                 rating=item.rating,
                 body=item.body,
-                author_name=random_author_name(),
+                author_name=display_name or random_author_name(),
             )
             ctx.session.add(review)
             await ctx.session.flush()

@@ -1,6 +1,7 @@
 <script setup>
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { fetchOrderChat, sendOrderChatMessage, sendOrderChatPhoto } from '../api'
+import { t, intlLocale } from '../i18n'
 
 const props = defineProps({
   botId: { type: [String, Number], required: true },
@@ -19,7 +20,7 @@ async function reload() {
     chat.value = await fetchOrderChat(props.botId, props.orderId)
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Не удалось загрузить чат'
+    error.value = e.response?.data?.detail || t('chat.loadError')
   }
 }
 
@@ -46,11 +47,11 @@ watch(
 
 function sendErrorText(e) {
   const detail = e.response?.data?.detail
-  if (detail === 'chat_locked') return 'Чат уже закрыт для новых сообщений.'
-  if (detail === 'too_many_messages') return 'Слишком много сообщений подряд — подожди немного.'
-  if (e.response?.status === 413) return 'Фото больше 5 МБ — выбери поменьше.'
-  if (e.response?.status === 400) return 'Это не похоже на фото — выбери JPEG, PNG, WebP или GIF.'
-  return 'Не получилось отправить — попробуй ещё раз.'
+  if (detail === 'chat_locked') return t('chat.errLocked')
+  if (detail === 'too_many_messages') return t('chat.errRate')
+  if (e.response?.status === 413) return t('chat.errBigPhoto')
+  if (e.response?.status === 400) return t('chat.errNotPhoto')
+  return t('chat.errGeneric')
 }
 
 async function send() {
@@ -92,7 +93,7 @@ async function onFileChange(e) {
 }
 
 const fmtTime = (iso) =>
-  new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  new Date(iso).toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' })
 </script>
 
 <template>
@@ -102,24 +103,24 @@ const fmtTime = (iso) =>
       <div v-for="m in chat?.messages ?? []" :key="m.id" class="msg" :class="m.sender">
         <div class="bubble" :class="{ 'with-photo': m.image_url }">
           <a v-if="m.image_url" :href="m.image_url" target="_blank" rel="noopener">
-            <img class="photo" :src="m.image_url" alt="Фото" />
+            <img class="photo" :src="m.image_url" :alt="t('chat.photoAlt')" />
           </a>
           <span v-if="m.body">{{ m.body }}</span>
         </div>
         <span class="time">{{ fmtTime(m.created_at) }}</span>
       </div>
-      <p v-if="chat && !chat.messages.length" class="empty">Сообщений пока нет.</p>
-      <p v-if="!chat && !error" class="empty">Загружаем…</p>
+      <p v-if="chat && !chat.messages.length" class="empty">{{ t('chat.empty') }}</p>
+      <p v-if="!chat && !error" class="empty">{{ t('chat.loading') }}</p>
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>
 
     <template v-if="chat">
       <div v-if="!chat.can_send" class="locked">
-        Этот чат закрыт для новых сообщений — окно для обсуждения заказа истекло.
+        {{ t('chat.lockedBanner') }}
       </div>
       <div v-else class="composer">
-        <button class="plus" :disabled="sending" title="Прикрепить фото" @click="pickPhoto">+</button>
+        <button class="plus" :disabled="sending" :title="t('chat.attachPhoto')" @click="pickPhoto">+</button>
         <input
           ref="fileInput"
           type="file"
@@ -130,7 +131,7 @@ const fmtTime = (iso) =>
         <input
           v-model="draft"
           :maxlength="1000"
-          placeholder="Сообщение…"
+          :placeholder="t('chat.messagePh')"
           @keydown.enter.prevent="send"
         />
         <button class="send" :disabled="sending || !draft.trim()" @click="send">➤</button>
@@ -140,10 +141,13 @@ const fmtTime = (iso) =>
 </template>
 
 <style scoped>
-.chat { display: flex; flex-direction: column; gap: 10px; }
+.chat {
+  display: flex; flex-direction: column; gap: 10px;
+  flex: 1; min-height: 0; /* растягиваемся на остаток экрана, композер внизу */
+}
 .messages {
   display: flex; flex-direction: column; gap: 8px;
-  max-height: 60vh; overflow-y: auto; padding: 4px 2px;
+  flex: 1; min-height: 0; overflow-y: auto; padding: 4px 2px;
 }
 .msg { display: flex; flex-direction: column; align-items: flex-start; max-width: 82%; }
 .msg.seller { align-self: flex-end; align-items: flex-end; }
