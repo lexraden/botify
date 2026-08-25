@@ -14,6 +14,9 @@ const error = ref('')
 onMounted(async () => {
   try {
     shop.value = await fetchShop()
+    // корзина могла пережить закрытие приложения — сверяем её с каталогом:
+    // удалённые товары выкидываем, цены и сток обновляем
+    cart.syncWithShop(shop.value.products)
     trackEvent('shop_open')
   } catch (e) {
     error.value = e.response?.data?.detail || 'Не удалось загрузить магазин'
@@ -28,7 +31,7 @@ onMounted(async () => {
       <header>
         <div class="shop-name">
           <div class="avatar">{{ shop.shop_name.replace('@', '').charAt(0).toUpperCase() }}</div>
-          <div>
+          <div class="titles">
             <h2>{{ shop.shop_name }}</h2>
             <span class="muted">каталог</span>
           </div>
@@ -65,15 +68,19 @@ onMounted(async () => {
 
 <style scoped>
 .store { padding: 18px 16px 96px; }
-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.shop-name { display: flex; align-items: center; gap: 12px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 16px; }
+/* min-width:0 — иначе длинный @username не даёт шапке сжаться и выталкивает
+   кнопку «Мои покупки» за экран на узких телефонах */
+.shop-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.titles { min-width: 0; }
 .avatar {
   width: 38px; height: 38px; border-radius: 13px; background: var(--accent); color: #fff;
-  display: flex; align-items: center; justify-content: center; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0;
 }
-h2 { font-size: 15px; margin: 0; }
+h2 { font-size: 15px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .muted { font-size: 12px; }
 .orders {
+  flex-shrink: 0;
   height: 38px; padding: 0 14px; border-radius: 13px; border: 0; background: var(--surface2);
   color: var(--text); display: flex; align-items: center; gap: 8px;
   font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer;

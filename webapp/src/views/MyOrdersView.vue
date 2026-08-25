@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchMyOrders } from '../api'
 import BrandBadge from '../components/BrandBadge.vue'
@@ -17,8 +17,32 @@ const STATUS = {
   cancelled: ['✖️ Отменён', 'bad'],
 }
 
+// Статусы меняются на бэкенде (вебхук оплаты, отправка продавцом) — обновляем
+// сами, без перезахода: раз в 10 секунд и при возврате в приложение.
+let timer = null
+
+async function refresh() {
+  try {
+    // тихо: прошлые данные остаются на экране, ошибки сети не роняем
+    orders.value = await fetchMyOrders()
+  } catch {
+    /* покажем данные прошлой загрузки */
+  }
+}
+
+function refreshOnReturn() {
+  if (!document.hidden) refresh()
+}
+
 onMounted(async () => {
-  orders.value = await fetchMyOrders()
+  await refresh()
+  timer = setInterval(refresh, 10_000)
+  document.addEventListener('visibilitychange', refreshOnReturn)
+})
+
+onBeforeUnmount(() => {
+  clearInterval(timer)
+  document.removeEventListener('visibilitychange', refreshOnReturn)
 })
 </script>
 
