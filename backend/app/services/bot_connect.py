@@ -14,7 +14,6 @@ from app.bots.runner import remove_seller_webhook, setup_seller_webhook
 from app.db import get_session
 from app.models import Order, Seller, SellerBot
 from app.security import encrypt_bot_token
-from app.services.bot_avatars import refresh_bot_avatar
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +61,6 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
             existing.is_active = True
             webhook_ok = await setup_seller_webhook(existing)
             existing.webhook_status = "active" if webhook_ok else "pending"
-            # свежий аватар для витрины; неудача подключению не мешает
-            await refresh_bot_avatar(session, existing, force=True)
             await session.commit()
             return ConnectResult(ok=True, bot_record=existing, bot_username=existing.bot_username)
 
@@ -79,9 +76,6 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
 
         webhook_ok = await setup_seller_webhook(record)
         record.webhook_status = "active" if webhook_ok else "pending"
-
-        # аватар для витрины магазина; неудача подключению не мешает
-        await refresh_bot_avatar(session, record, force=True)
 
         seller = await session.get(Seller, seller_id)
         if seller is not None:

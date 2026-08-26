@@ -46,28 +46,18 @@ describe('StoreView — шапка магазина и поиск', () => {
     })
   }
 
-  it('шапка показывает аватар магазина и @username', async () => {
-    fetchShop.mockResolvedValue({
-      shop_name: '@petshop',
-      shop_avatar_url: '/api/bot-avatars/tok123',
-      products: PRODUCTS,
-    })
+  it('шапка показывает букву магазина и @username', async () => {
+    fetchShop.mockResolvedValue({ shop_name: '@petshop', products: PRODUCTS })
     const wrapper = await mountView()
     await flushPromises()
     expect(wrapper.text()).toContain('@petshop')
-    expect(wrapper.find('.shop-id img.avatar').attributes('src')).toBe('/api/bot-avatars/tok123')
-  })
-
-  it('без фото бота — буквенный фолбэк вместо аватара', async () => {
-    fetchShop.mockResolvedValue({ shop_name: '@petshop', shop_avatar_url: null, products: [] })
-    const wrapper = await mountView()
-    await flushPromises()
+    // фото бота из Telegram не тянем — Bot API не отдаёт боту его аватарку
     expect(wrapper.find('.shop-id img').exists()).toBe(false)
     expect(wrapper.find('.avatar.letter').text()).toBe('P')
   })
 
   it('поиск фильтрует каталог по названию и описанию', async () => {
-    fetchShop.mockResolvedValue({ shop_name: '@petshop', shop_avatar_url: null, products: PRODUCTS })
+    fetchShop.mockResolvedValue({ shop_name: '@petshop', products: PRODUCTS })
     const wrapper = await mountView()
     await flushPromises()
     expect(wrapper.findAll('.stub-card')).toHaveLength(2)
@@ -87,7 +77,7 @@ describe('StoreView — шапка магазина и поиск', () => {
   })
 
   it('крестик сбрасывает поиск и возвращает весь каталог', async () => {
-    fetchShop.mockResolvedValue({ shop_name: '@petshop', shop_avatar_url: null, products: PRODUCTS })
+    fetchShop.mockResolvedValue({ shop_name: '@petshop', products: PRODUCTS })
     const wrapper = await mountView()
     await flushPromises()
 

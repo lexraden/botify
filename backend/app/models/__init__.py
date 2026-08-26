@@ -1,5 +1,5 @@
 from app.models.base import Base
-from app.models.bots import BotAvatar, SellerBot
+from app.models.bots import SellerBot
 from app.models.catalog import Category, Product, ProductImage
 from app.models.channels import Channel
 from app.models.chat import ChatImage, ChatMessage, OrderChat
@@ -14,7 +14,6 @@ __all__ = [
     "Base",
     "Seller",
     "SellerBot",
-    "BotAvatar",
     "Customer",
     "Channel",
     "Mailing",
