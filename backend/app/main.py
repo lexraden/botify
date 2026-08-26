@@ -68,7 +68,7 @@ async def maintenance_loop() -> None:
     from app.services.bot_health import check_revoked_tokens
     from app.services.images import purge_orphan_images
     from app.services.mailing import revive_stuck_mailings
-    from app.services.order_health import remind_stuck_orders
+    from app.services.order_health import auto_confirm_delivery, remind_stuck_orders
 
     settings = get_settings()
     tick = 600
@@ -80,6 +80,7 @@ async def maintenance_loop() -> None:
             ("сверка оплат", reconcile_paid_invoices),
             ("оживление рассылок", revive_stuck_mailings),
             ("напоминания по заказам", remind_stuck_orders),
+            ("авто-подтверждение получения", auto_confirm_delivery),
             ("чистка осиротевших фото", purge_orphan_images),
         ):
             try:

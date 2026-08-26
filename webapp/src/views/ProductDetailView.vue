@@ -67,7 +67,7 @@ onMounted(async () => {
 
       <section v-if="reviews.length" class="reviews">
         <h3>{{ t('product.reviews') }}</h3>
-        <!-- вместо личности — случайный псевдоним, сервис анонимный -->
+        <!-- подпись: имя из Telegram; у безымянных профилей — псевдоним -->
         <div v-for="r in reviews" :key="r.created_at + String(r.rating)" class="review">
           <!-- шапка отзыва: имя слева, дата здесь же; звёзды — строкой ниже -->
           <div class="review-head">

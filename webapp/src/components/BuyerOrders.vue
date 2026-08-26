@@ -4,6 +4,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   cancelOrder,
+  confirmReceived,
   deleteOrderReview,
   fetchMyOrders,
   payOrder,
@@ -111,6 +112,21 @@ async function retryPay(o) {
   }
 }
 
+// Отправка и получение — разные события: пока покупатель не подтвердил, чат
+// с продавцом остаётся открытым, а оценивать ещё нечего.
+async function confirmDelivery(o) {
+  busyId.value = o.id
+  actionError.value = { id: null, text: '' }
+  try {
+    await confirmReceived(o.id)
+    await refresh()
+  } catch (e) {
+    actionError.value = { id: o.id, text: apiError(e, 'orders.receivedError') }
+  } finally {
+    busyId.value = null
+  }
+}
+
 async function doCancel(o) {
   if (!window.confirm(t('orders.cancelConfirm', { n: o.id }))) return
   busyId.value = o.id
@@ -180,6 +196,15 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="actionError.id === o.id" class="action-error">{{ actionError.text }}</p>
       </template>
+      <!-- отправлен, но ещё не получен: отметку ставит покупатель -->
+      <template v-if="o.status === 'fulfilled'">
+        <div class="pay-actions">
+          <button class="pay-btn" :disabled="busyId === o.id" @click="confirmDelivery(o)">
+            {{ t('orders.received') }}
+          </button>
+        </div>
+        <p v-if="actionError.id === o.id" class="action-error">{{ actionError.text }}</p>
+      </template>
       <div v-for="i in o.items" :key="i.product_id" class="item">
         {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
         <span v-if="i.reviewed" class="reviewed-mark">{{ t('orders.reviewedMark') }}</span>
@@ -214,6 +239,8 @@ onBeforeUnmount(() => {
             maxlength="1000"
           />
         </div>
+        <!-- подпись отзыва не анонимна: говорим об этом до отправки -->
+        <p class="rate-note">{{ t('orders.reviewNameNote') }}</p>
         <p v-if="sendError" class="rate-error">{{ sendError }}</p>
         <div class="form-actions">
           <button class="btn btn-primary" :disabled="sending" @click="submit(o)">
@@ -314,6 +341,7 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 .rate-error { color: var(--red); font-size: 12.5px; margin: 0; }
+.rate-note { font-size: 12px; color: var(--sub); margin: 6px 0 0; }
 .form-actions {
   display: flex;
   align-items: center;

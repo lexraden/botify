@@ -38,6 +38,9 @@ export const payOrder = (orderId) =>
   api.post(`/store/${getBotId()}/orders/${orderId}/pay`).then((r) => r.data)
 export const cancelOrder = (orderId) =>
   api.post(`/store/${getBotId()}/orders/${orderId}/cancel`).then((r) => r.data)
+// «Доставлен» ставит покупатель: отправка и получение — разные события
+export const confirmReceived = (orderId) =>
+  api.post(`/store/${getBotId()}/orders/${orderId}/received`).then((r) => r.data)
 // отзывы: список у товара, оценка — только по своему доставленному заказу
 export const fetchProductReviews = (productId) =>
   api.get(`/store/${getBotId()}/products/${productId}/reviews`).then((r) => r.data)

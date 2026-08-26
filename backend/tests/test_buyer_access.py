@@ -119,3 +119,70 @@ async def test_hidden_catalog_still_lets_buyers_reach_their_orders(db):
 
         # тем, кто ничего не покупал, каталог не навязываем — кнопки нет
         assert await catalog_keyboard(shop, SimpleNamespace(id=stranger_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_shipped_is_not_delivered_until_buyer_says_so(db):
+    """Отправка и получение — разные события. Раньше «Доставлен» ставился в
+    момент отправки, и 72-часовое окно чата тикало, пока посылка ещё едет."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.services.chat import chat_is_open
+    from tests.test_fulfillment import paid_physical_order
+
+    bot_id, order_id = await paid_physical_order(db)
+    async with client() as c:
+        with patch("app.payments.service._notify", new=AsyncMock()):
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
+                headers=seller_headers(),
+                json={"tracking": "RA1"},
+            )
+        assert r.json()["status"] == "fulfilled"
+
+        async with db() as session:
+            order = await session.get(Order, order_id)
+            assert order.delivered_at is None
+            # окно чата ещё не начиналось — писать продавцу можно
+            assert chat_is_open(order) is True
+
+        r = await c.post(f"/api/store/{bot_id}/orders/{order_id}/received", headers=buyer_headers())
+        assert r.status_code == 200, r.text
+
+    async with db() as session:
+        order = await session.get(Order, order_id)
+        assert order.status == "delivered"
+        assert order.delivered_at is not None
+
+
+@pytest.mark.asyncio
+async def test_forgotten_confirmation_closes_itself(db):
+    """Часть людей кнопку просто не нажмёт: без страховки заказ навис бы
+    навсегда — окно чата не начинается, оценить покупку нельзя."""
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import AsyncMock, patch
+
+    from app.services.order_health import auto_confirm_delivery
+    from tests.test_fulfillment import paid_physical_order
+
+    bot_id, order_id = await paid_physical_order(db)
+    async with client() as c:
+        with patch("app.payments.service._notify", new=AsyncMock()):
+            await c.post(
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
+                headers=seller_headers(),
+                json={"tracking": "RA1"},
+            )
+
+    assert await auto_confirm_delivery() == 0  # свежий заказ не трогаем
+
+    async with db() as session:
+        order = await session.get(Order, order_id)
+        order.paid_at = datetime.now(timezone.utc) - timedelta(days=30)
+        await session.commit()
+
+    assert await auto_confirm_delivery() == 1
+    async with db() as session:
+        order = await session.get(Order, order_id)
+        assert order.status == "delivered"
+        assert order.delivered_at is not None

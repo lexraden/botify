@@ -324,6 +324,27 @@ async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer_any_
     return {"status": "cancelled"}
 
 
+@router.post("/orders/{order_id}/received")
+async def confirm_received(
+    order_id: int, ctx: BuyerContext = Depends(get_buyer_any_shop)
+) -> dict:
+    """Покупатель получил заказ.
+
+    Отметку ставит он, а не продавец: «Отправлен» и «Доставлен» — разные
+    события, между ними дни пути. От `delivered_at` считается окно чата, и
+    начинать его в момент отправки значит закрывать связь с продавцом ровно
+    тогда, когда посылка может потеряться. Оценить покупку тоже можно только
+    после получения — раньше и оценивать нечего.
+    """
+    order = await _own_order(ctx, order_id)
+    if order.status != "fulfilled":
+        raise HTTPException(status_code=409, detail=f"order is {order.status}")
+    order.status = "delivered"
+    order.delivered_at = func.now()
+    await ctx.session.commit()
+    return {"status": "delivered"}
+
+
 @router.get("/orders/my", response_model=list[OrderOut])
 async def my_orders(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> list[OrderOut]:
     result = await ctx.session.execute(
@@ -476,15 +497,16 @@ async def send_order_chat_message(
 
 # --------------------------------------------------------------------------
 # Отзывы: оценка товара доступна только покупателю его доставленного заказа.
-# Наружу идут оценка, текст, случайный псевдоним автора и ответ продавца —
-# но никакие реальные данные о покупателе.
+# Наружу идут оценка, текст, имя автора и ответ продавца. Имя — настоящее,
+# из профиля Telegram (без юзернейма): живые подписи вызывают больше доверия
+# к отзывам. Покупателя об этом предупреждают в форме оценки.
 # --------------------------------------------------------------------------
 
 
 class PublicReviewOut(BaseModel):
     rating: int
     body: str | None
-    # случайный псевдоним («Анна К.»), к личности не привязан
+    # имя автора: first_name из Telegram, у безымянных — псевдоним «Анна К.»
     author_name: str | None
     reply_body: str | None
     reply_at: datetime | None
@@ -572,8 +594,8 @@ async def leave_review(
     for item in payload.items:
         review = by_product.get(item.product_id)
         if review is None:
-            # автор — Telegram-имя покупателя (не юзернейм); без имени в профиле
-            # остаётся случайный псевдоним
+            # автор — Telegram-имя покупателя (не юзернейм); у тех, у кого имени
+            # в профиле нет, подпись остаётся псевдонимом
             display_name = (ctx.customer.first_name or "").strip()[:64]
             review = ProductReview(
                 bot_id=ctx.bot.id,

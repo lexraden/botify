@@ -8,12 +8,14 @@ const submitOrderReviews = vi.fn()
 const deleteOrderReview = vi.fn()
 const payOrder = vi.fn()
 const cancelOrder = vi.fn()
+const confirmReceived = vi.fn()
 vi.mock('../../api', () => ({
   fetchMyOrders: (...args) => fetchMyOrders(...args),
   submitOrderReviews: (...args) => submitOrderReviews(...args),
   deleteOrderReview: (...args) => deleteOrderReview(...args),
   payOrder: (...args) => payOrder(...args),
   cancelOrder: (...args) => cancelOrder(...args),
+  confirmReceived: (...args) => confirmReceived(...args),
 }))
 const openTelegramLink = vi.fn()
 vi.mock('../../services/telegram', () => ({
@@ -269,5 +271,22 @@ describe('BuyerOrders — живые статусы', () => {
     await flushPromises()
     expect(cancelOrder).toHaveBeenCalledTimes(1)
     wrapper.unmount()
+  })
+
+  it('отправленный заказ покупатель отмечает полученным сам', async () => {
+    fetchMyOrders
+      .mockResolvedValueOnce(order('fulfilled'))
+      .mockResolvedValueOnce(order('delivered'))
+    confirmReceived.mockResolvedValue({ status: 'delivered' })
+
+    const w = await mountList()
+    await flushPromises()
+    const btn = w.findAll('button').find((b) => b.text().includes('Я получил'))
+    expect(btn).toBeTruthy()
+
+    await btn.trigger('click')
+    await flushPromises()
+    expect(confirmReceived).toHaveBeenCalledWith(1)
+    expect(w.text()).toContain('Доставлен')
   })
 })

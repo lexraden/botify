@@ -760,7 +760,7 @@ async def list_orders(
 class SellerReviewOut(BaseModel):
     id: int
     product_title: str
-    # случайный псевдоним автора — тот же, что видят покупатели
+    # имя автора — то же, что видят покупатели на странице товара
     author_name: str | None
     rating: int
     body: str | None
@@ -857,11 +857,12 @@ async def fulfill_order(
         raise HTTPException(status_code=400, detail=f"order is {order.status}")
 
     order.fulfillment = payload.model_dump(exclude_none=True)
-    # одним коммитом: статус и метка доставки меняются вместе. Раньше между
-    # двумя коммитами было окно — упади процесс в нём, и заказ остался бы
-    # в fulfilled без delivered_at, от которого считается окно чата (72ч)
-    order.status = "delivered"
-    order.delivered_at = func.now()
+    # «Отправлен», а не «Доставлен»: посылка едет днями, а от delivered_at
+    # тикает окно чата. Раньше покупатель видел «Доставлен» в первый же день,
+    # а на четвёртый, когда посылка потерялась, писать продавцу было уже
+    # нельзя. «Доставлен» ставит сам покупатель кнопкой «Получил» — или
+    # фоновая задача, если он про неё забыл (app/services/order_health.py).
+    order.status = "fulfilled"
     await session.commit()
 
     customer = await session.get(Customer, order.customer_id)
@@ -878,8 +879,7 @@ async def fulfill_order(
         lines.append(f"Ссылка: {html.escape(payload.url)}")
     if payload.note:
         lines.append(html.escape(payload.note))
-    # заказ теперь delivered — можно оценивать; подводим к разделу с формой
-    lines.append("\n⭐ Как всё прошло? Оцени покупки в разделе «Мои покупки».")
+    lines.append("\n📬 Получишь — отметь в «Моих покупках», там же можно оценить.")
     await _notify(
         decrypt_bot_token(shop.bot_token_encrypted),
         customer.telegram_id,

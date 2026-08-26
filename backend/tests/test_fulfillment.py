@@ -61,7 +61,8 @@ async def test_fulfill_flow(db):
                 json={"tracking": "RA123456789CN", "note": "Отправлено CDEK"},
             )
             assert r.status_code == 200, r.text
-            assert r.json()["status"] == "delivered"
+            # «Отправлен», а не «Доставлен»: посылка ещё едет
+            assert r.json()["status"] == "fulfilled"
 
             # в списке заказов видно, что именно отправили покупателю
             orders = (
@@ -72,7 +73,22 @@ async def test_fulfill_flow(db):
             assert sent["fulfillment"]["tracking"] == "RA123456789CN"
             assert sent["fulfillment"]["note"] == "Отправлено CDEK"
 
-            # повторная отправка уже доставленного — отказ
+            # трек можно поправить, пока заказ в пути — опечатка не фатальна
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
+                headers=seller_headers(),
+                json={"tracking": "RA987654321CN"},
+            )
+            assert r.status_code == 200, r.text
+
+            # покупатель подтверждает получение — только теперь «Доставлен»
+            r = await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/received", headers=buyer_headers()
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["status"] == "delivered"
+
+            # после получения отправлять уже нечего
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
@@ -81,7 +97,7 @@ async def test_fulfill_flow(db):
             assert r.status_code == 400
 
     buyer_text = notify_mock.call_args.args[2]
-    assert "RA123456789CN" in buyer_text and "CDEK" in buyer_text
+    assert "RA987654321CN" in buyer_text
 
 
 @pytest.mark.asyncio

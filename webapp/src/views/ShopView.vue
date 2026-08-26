@@ -134,6 +134,9 @@ const STATUS = computed(() => ({
 }))
 // у оплаченных заказов есть чат с покупателем (закрывается сам через 72ч после доставки)
 const CHAT_STATUSES = ['paid', 'fulfilled', 'delivered']
+// Отправить можно оплаченный, а отправленный — переотправить: опечатку
+// в треке продавец должен уметь поправить, пока посылка едет.
+const FULFILLABLE = ['paid', 'fulfilled']
 const TYPE_LABEL = computed(() => ({
   physical: t('type.physical'),
   digital: t('type.digital'),
@@ -349,7 +352,7 @@ async function submitMailing() {
             {{ t('seller.chatWithBuyer') }}
           </button>
           <button
-            v-if="o.status === 'paid' && fulfillForm.orderId !== o.id"
+            v-if="FULFILLABLE.includes(o.status) && fulfillForm.orderId !== o.id"
             class="btn btn-green fulfill-btn"
             @click="openFulfill(o)"
           >
