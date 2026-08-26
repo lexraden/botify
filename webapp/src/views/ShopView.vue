@@ -267,10 +267,19 @@ async function submitMailing() {
             <span>@{{ summary.bot_username }}</span>
           </div>
         </div>
-        <!-- выход в кабинет есть всегда: оттуда видно статусы всех магазинов -->
-        <button class="switch" @click="router.push('/shops')">
-          {{ t('seller.cabinetBtn') }}
-        </button>
+        <!-- назад — вернуться на экран, откуда пришли (список магазинов
+             или онбординг); профиль — те же настройки, что и у покупателя -->
+        <div class="controls">
+          <button class="icon-btn" @click="router.go(-1)" :aria-label="t('common.back')">
+            ←
+          </button>
+          <button class="icon-btn" :aria-label="t('store.profile')" @click="router.push('/profile')">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <div class="stats">
@@ -543,9 +552,11 @@ h2 { font-size: 18px; margin: 0 0 4px; }
 .bot-line { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sub); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
 .dot.off { background: var(--sub); }
-.switch {
-  border: 0; background: var(--surface2); color: var(--text); border-radius: 12px;
-  padding: 9px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
+.controls { display: flex; gap: 8px; align-items: center; }
+.icon-btn {
+  width: 42px; height: 42px; border-radius: 13px; border: 0; background: var(--surface2);
+  color: var(--text); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 18px; line-height: 1;
 }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .stat { padding: 12px 10px; display: flex; flex-direction: column; gap: 3px; }
