@@ -3,7 +3,7 @@
 import pytest
 from sqlalchemy import select
 
-from app.models import Mailing, Seller, SellerBot
+from app.models import Mailing, Order, Seller, SellerBot
 from app.security import encrypt_bot_token
 from tests.test_api import client, init_data_for, seller_headers
 
@@ -72,6 +72,12 @@ async def test_two_shops_of_one_seller_are_isolated(db):
             json={"items": [{"product_id": product_b, "qty": 1}]},
         )
         assert r.status_code == 200
+
+        # «вебхук» оплатил единственный заказ — сводка считает оплаченное
+        async with db() as session:
+            order = (await session.execute(select(Order))).scalars().first()
+            order.status = "paid"
+            await session.commit()
 
         # покупатель и заказ учтены только во втором магазине
         r = await c.get(f"/api/seller/bots/{shop_a}/summary", headers=seller_headers())

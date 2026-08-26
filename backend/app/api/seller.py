@@ -374,9 +374,13 @@ async def shop_summary(
             select(func.count()).select_from(Customer).where(Customer.bot_id == shop.id)
         )
     ).scalar_one()
+    # как в списке заказов и в выручке ниже: считаем только оплаченные —
+    # корзины до оплаты и отменённые до оплаты цифру не растят
     orders_count = (
         await session.execute(
-            select(func.count()).select_from(Order).where(Order.bot_id == shop.id)
+            select(func.count())
+            .select_from(Order)
+            .where(Order.bot_id == shop.id, Order.status.in_(PAID_STATUSES))
         )
     ).scalar_one()
     revenue = (

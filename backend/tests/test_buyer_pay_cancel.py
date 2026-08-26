@@ -121,3 +121,30 @@ async def test_seller_list_hides_pending_only_paid_workflows(db):
         r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
         by_id = {o["id"]: o["status"] for o in r.json()}
         assert by_id == {paid: "paid", cancelled: "cancelled"}
+
+
+@pytest.mark.asyncio
+async def test_summary_counts_only_paid_orders(db):
+    """Сводка магазина совпадает со списком: orders_count и revenue считают
+    только оплаченное — висящая корзина и отмена до оплаты цифру не растят."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        cancelled = await create_order(c, bot_id)
+        paid = await create_order(c, bot_id)
+        await create_order(c, bot_id)  # третья корзина так и остаётся неоплаченной
+        r = await c.post(
+            f"/api/store/{bot_id}/orders/{cancelled}/cancel", headers=buyer_headers()
+        )
+        assert r.status_code == 200
+        async with db() as session:
+            order = await session.get(Order, paid)
+            order.status = "paid"
+            await session.commit()
+
+        summary = (
+            await c.get(f"/api/seller/bots/{bot_id}/summary", headers=seller_headers())
+        ).json()
+        assert summary["orders_count"] == 1
+        # выручка живёт на том же наборе статусов PAID_STATUSES — цифры не
+        # разъезжаются: три корзины по 5, засчитана одна
+        assert float(summary["revenue"]) == pytest.approx(5)
