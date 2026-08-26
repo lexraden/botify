@@ -77,6 +77,26 @@ async def test_events_feed_shop_stats(db):
 
 
 @pytest.mark.asyncio
+async def test_event_with_unknown_product_kept_without_link(db):
+    """Подставленный product_id (чужой или уже удалённый товар) не роняет
+    событие и не попадает в запись: витрина не должна уметь 500-ить на id."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        r = await c.post(
+            f"/api/store/{bot_id}/events",
+            headers=buyer_headers(),
+            json={"type": "product_view", "product_id": 424242},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "ok"
+
+    async with db() as session:
+        event = (await session.execute(select(ShopEvent))).scalar_one()
+        assert event.type == "product_view"
+        assert event.product_id is None
+
+
+@pytest.mark.asyncio
 async def test_stats_count_purchases_and_repeat_customers(db):
     bot_id = await setup_shop(db)
     async with db() as session:

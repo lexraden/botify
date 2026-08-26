@@ -164,3 +164,43 @@ async def test_other_transfer_errors_stay_generic(db):
 
     assert result.ok is False
     assert result.reason == "failed"
+
+
+@pytest.mark.asyncio
+async def test_finalizer_never_downgrades_sent_batch(db):
+    """Гонка двойного нажатия «Вывести»: обе попытки финализируют одну и ту же
+    пачку по очереди. Проигравшая (SPEND_ID_ALREADY_USED от провайдера) не
+    должна переписывать честный «sent» на «failed» — иначе пачка ломалась бы
+    навсегда и каждое следующее «Вывести» падало бы, не начавшись."""
+    from app.models import Payout, PayoutBatch
+    from app.payments.payouts import _finalize_transfer
+
+    bot_id = await _shop_with_funds(db)
+    async with db() as session:
+        payout = (
+            await session.execute(select(Payout).where(Payout.status == "pending"))
+        ).scalar_one()
+        # состояние посреди гонки: пачка заявлена, выплаты к ней прицеплены,
+        # обе попытки уже сходили в Crypto Pay с одним spend_id
+        batch = PayoutBatch(seller_id=payout.seller_id, bot_id=bot_id, amount=payout.amount)
+        session.add(batch)
+        await session.flush()
+        payout.batch_id = batch.id
+        await session.commit()
+        batch_id, payout_id = batch.id, payout.id
+
+    # попытка-победитель: перевод прошёл, финализация записала sent
+    assert await _finalize_transfer(batch_id, True, 4242, None) == "sent"
+    # догнавшая её вторая попытка того же нажатия: transfer отбился как дубликат
+    assert (
+        await _finalize_transfer(
+            batch_id, False, None, "CodeErrorFactory_400: [400] SPEND_ID_ALREADY_USED"
+        )
+        == "already_sent"
+    )
+
+    async with db() as session:
+        batch = await session.get(PayoutBatch, batch_id)
+        assert batch.status == "sent" and batch.last_error is None
+        payout = await session.get(Payout, payout_id)
+        assert payout.status == "sent" and payout.last_error is None

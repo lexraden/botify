@@ -186,3 +186,41 @@ async def test_image_addresses_are_never_reused(db):
             # базы даст другие адреса, а не совпадёт со старыми
             assert image.token != str(image.id)
             assert len(image.token) >= 20
+
+
+@pytest.mark.asyncio
+async def test_purge_removes_orphans_and_keeps_referenced(db):
+    """Чистка сирот: фото без товара удаляется (байты иначе копились в БД
+    вечно), а привязанная к товару картинка и свежая загрузка («форма ещё
+    не сохранена») остаются."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.models import ProductImage
+    from app.services.images import purge_orphan_images
+
+    bot_id = await setup_shop(db)
+    referenced_url = (await _upload(bot_id, PNG_BYTES)).json()["url"]
+    orphan_url = (await _upload(bot_id, PNG_BYTES)).json()["url"]
+
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={"type": "physical", "title": "Кружка", "price": "10", "image_url": referenced_url},
+        )
+        assert r.status_code == 200
+
+    async with db() as session:
+        for image in (await session.execute(select(ProductImage))).scalars():
+            image.created_at = datetime.now(timezone.utc) - timedelta(hours=25)
+        await session.commit()
+
+    # свежая загрузка поверх «состаренных» — её гард суток и оберегает
+    fresh_url = (await _upload(bot_id, PNG_BYTES)).json()["url"]
+
+    assert await purge_orphan_images() == 1
+
+    async with client() as c:
+        assert (await c.get(orphan_url)).status_code == 404
+        assert (await c.get(referenced_url)).status_code == 200
+        assert (await c.get(fresh_url)).status_code == 200

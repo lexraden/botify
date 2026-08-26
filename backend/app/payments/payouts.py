@@ -18,6 +18,7 @@ transfer идёт на Telegram user_id продавца (баланс внут�
 пачки, не её номер), поэтому двойной выплаты не будет.
 """
 
+import html
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
@@ -70,7 +71,8 @@ def _failure_message(amount: Decimal | float, error: str | None) -> str:
         hint = "На стороне платформы не хватило баланса — попробуй вывести позже."
     else:
         hint = "Деньги на месте: нажми «Вывести» ещё раз, когда проблема уйдёт."
-    detail = f"\n\n<code>{error}</code>" if error else ""
+    # текст ошибки приходит от провайдера и уходит продавцу с parse_mode=HTML
+    detail = f"\n\n<code>{html.escape(error)}</code>" if error else ""
     return f"⚠️ Выплата {fmt(amount)} USDT пока не ушла.\n{hint}{detail}"
 
 
@@ -102,9 +104,10 @@ async def _claim_batch(session, bot_id: int, minimum: Decimal) -> PayoutBatch | 
     """Пачка к отправке: незавершённая существующая или новая, если набралось.
 
     Возвращает None, если отправлять нечего — тогда доли просто копятся дальше
-    и продавца мы не тревожим. Выплаты выбираются с FOR UPDATE: продавец может
-    нажать «Вывести» в двух вкладках сразу, и без блокировки получилось бы два
-    перевода по одним и тем же деньгам.
+    и продавца мы не тревожим. Обе ветки — существующая пачка и выплаты под
+    новую — берутся с FOR UPDATE: продавец может нажать «Вывести» в двух
+    вкладках сразу, и без блокировки получилось бы два перевода по одним и
+    тем же деньгам.
     """
     batch = (
         await session.execute(
@@ -112,6 +115,7 @@ async def _claim_batch(session, bot_id: int, minimum: Decimal) -> PayoutBatch | 
             .where(PayoutBatch.bot_id == bot_id, PayoutBatch.status.in_(UNSENT))
             .order_by(PayoutBatch.id)
             .limit(1)
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if batch is not None:
@@ -179,11 +183,56 @@ async def flush_shop_payouts(bot_id: int) -> PayoutResult:
         logger.exception("Transfer не прошёл для batch=%s (seller_tg=%s)", batch_id, seller_tg)
         ok, transfer_id, error = False, None, f"{type(exc).__name__}: {exc}"[:512]
 
+    outcome = await _finalize_transfer(batch_id, ok, transfer_id, error)
+
+    if outcome == "sent":
+        # @CryptoBot открыт — это доказано состоявшимся переводом, а не
+        # словами продавца; больше спрашивать об этом не нужно
+        async with get_session() as session:
+            seller = await session.get(Seller, seller_id)
+            if seller is not None and not seller.cryptobot_connected:
+                seller.cryptobot_connected = True
+                await session.commit()
+        await _notify_seller(
+            seller_tg,
+            f"💸 Выплата <b>{fmt(amount)} USDT</b> по магазину @{shop_name} "
+            "отправлена в @CryptoBot.",
+        )
+        return PayoutResult(ok=True)
+
+    if outcome == "already_sent":
+        # та же пачка ушла параллельной попыткой того же нажатия: деньги
+        # отправлены, уведомление продавец уже получил — дублей не делаем
+        return PayoutResult(ok=True)
+
+    if outcome != "too_small":
+        await _notify_seller(seller_tg, _failure_message(amount, error))
+    if _is_not_started(error):
+        return PayoutResult(ok=False, reason="cryptobot_not_started")
+    return PayoutResult(ok=False, reason=outcome)  # too_small | failed
+
+
+async def _finalize_transfer(
+    batch_id: int, ok: bool, transfer_id: int | None, error: str | None
+) -> str:
+    """Записать итог попытки перевода в пачку и её выплаты.
+
+    Перевод идёт вне транзакции, поэтому две параллельные попытки одного
+    нажатия «Вывести» финализируют одну и ту же пачку по очереди. Пачку,
+    которая уже ушла sent, не трогаем ни при каком исходе: её spend_id
+    израсходован победившей попыткой, и запись «failed» поверх честного
+    «sent» ломала бы пачку навсегда — каждое следующее «Вывести» падало бы
+    со SPEND_ID_ALREADY_USED. Возвращает фактический итог:
+    sent | already_sent | too_small | failed.
+    """
     too_small = not ok and _is_too_small(error)
-    not_started = not ok and _is_not_started(error)
 
     async with get_session() as session:
         batch = await session.get(PayoutBatch, batch_id)
+        if batch is None:
+            return "failed"
+        if batch.status == "sent":
+            return "already_sent"
         payouts = list(
             (await session.execute(select(Payout).where(Payout.batch_id == batch_id)))
             .scalars()
@@ -206,35 +255,16 @@ async def flush_shop_payouts(bot_id: int) -> PayoutResult:
             for payout in payouts:
                 payout.batch_id, payout.last_error = None, error
             logger.warning(
-                "Crypto Pay считает %s USDT слишком малой суммой — поднимите MIN_PAYOUT_USDT",
-                amount,
+                "Crypto Pay считает пачку #%s (%s USDT) слишком малой — поднимите MIN_PAYOUT_USDT",
+                batch_id,
+                fmt(Decimal(batch.amount)),
             )
         else:
             batch.status, batch.last_error = "failed", error
             for payout in payouts:
                 payout.status, payout.last_error = "failed", error
         await session.commit()
-
-    if ok:
-        # @CryptoBot открыт — это доказано состоявшимся переводом, а не
-        # словами продавца; больше спрашивать об этом не нужно
-        async with get_session() as session:
-            seller = await session.get(Seller, seller_id)
-            if seller is not None and not seller.cryptobot_connected:
-                seller.cryptobot_connected = True
-                await session.commit()
-        await _notify_seller(
-            seller_tg,
-            f"💸 Выплата <b>{fmt(amount)} USDT</b> по магазину @{shop_name} "
-            "отправлена в @CryptoBot.",
-        )
-        return PayoutResult(ok=True)
-
-    if not too_small:
-        await _notify_seller(seller_tg, _failure_message(amount, error))
-    if not_started:
-        return PayoutResult(ok=False, reason="cryptobot_not_started")
-    return PayoutResult(ok=False, reason="too_small" if too_small else "failed")
+    return "sent" if ok else ("too_small" if too_small else "failed")
 
 
 async def _notify_seller(seller_tg: int, text: str) -> None:

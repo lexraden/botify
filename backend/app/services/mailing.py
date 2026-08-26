@@ -142,6 +142,9 @@ async def send_mailing(mailing_id: int) -> None:
                 sent += 1
             except TelegramRetryAfter as e:
                 await asyncio.sleep(e.retry_after + 1)
+                # пауза может быть длинной (до часов) — без отметки живости
+                # оживление сочло бы идущую рассылку застрявшей
+                await _touch_heartbeat(mailing_id)
                 try:
                     await bot.send_message(customer.telegram_id, text, reply_markup=keyboard)
                     sent += 1

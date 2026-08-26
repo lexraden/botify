@@ -196,7 +196,9 @@ async def confirm_disconnect(callback: types.CallbackQuery) -> None:
     kb.button(text="Да, отключить", callback_data=f"mybots:off_yes:{bot_id}")
     kb.button(text="Отмена", callback_data=f"mybots:back:{bot_id}")
     kb.adjust(2)
-    if callback.message:
+    # бот мог исчезнуть между списком и нажатием (удалён из другой вкладки) —
+    # без гарда подтверждение падало бы на bot_username
+    if callback.message and bot is not None:
         await callback.message.edit_text(
             f"Отключить <b>@{bot.bot_username}</b>?\n\n"
             "Бот перестанет отвечать покупателям и принимать заявки в каналы. "
@@ -241,7 +243,8 @@ async def confirm_delete(callback: types.CallbackQuery) -> None:
     kb.button(text="🗑 Да, удалить навсегда", callback_data=f"mybots:del_yes:{bot_id}")
     kb.button(text="Отмена", callback_data=f"mybots:back:{bot_id}")
     kb.adjust(1)
-    if callback.message:
+    # тот же гард, что и в confirm_disconnect: бота могли уже удалить
+    if callback.message and bot is not None:
         await callback.message.edit_text(
             f"Удалить <b>@{bot.bot_username}</b> навсегда?\n\n"
             "⚠️ Вместе с ботом удалится его база покупателей и история рассылок. "

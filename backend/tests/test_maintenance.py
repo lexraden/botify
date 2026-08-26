@@ -97,6 +97,39 @@ async def test_unauthorized_from_telegram_reads_as_revoked():
         assert await _token_is_alive("x") is True
 
 
+@pytest.mark.asyncio
+async def test_webhook_restart_keeps_revoked_status(db):
+    """Рестарт ставит вебхуки заново, но отозванный токен это не лечит:
+    revoked нельзя понижать до failed — после каждого деплоя статус терял бы
+    точность, а продавца снова звали переподключать уже отключённый магазин."""
+    await make_order(db)
+    from app.bots import runner
+
+    async with db() as session:
+        bot = (await session.execute(select(SellerBot))).scalars().first()
+        bot.webhook_status = "revoked"
+        await session.commit()
+
+    setup = AsyncMock(return_value=False)
+    with patch("app.bots.runner.setup_seller_webhook", new=setup):
+        await runner.setup_all_seller_webhooks()
+
+    async with db() as session:
+        assert (await session.get(SellerBot, bot.id)).webhook_status == "revoked"
+    setup.assert_not_awaited()
+
+    # обычный (не отозванный) бот при рестарте обновляется как раньше
+    async with db() as session:
+        bot = await session.get(SellerBot, bot.id)
+        bot.webhook_status = "failed"
+        await session.commit()
+    setup = AsyncMock(return_value=True)
+    with patch("app.bots.runner.setup_seller_webhook", new=setup):
+        await runner.setup_all_seller_webhooks()
+    async with db() as session:
+        assert (await session.get(SellerBot, bot.id)).webhook_status == "active"
+
+
 # --------------------------------------------------------------------------
 # Зависшие оплаченные заказы
 # --------------------------------------------------------------------------

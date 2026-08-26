@@ -97,6 +97,11 @@ async def setup_all_seller_webhooks() -> None:
         )
         records = result.scalars().all()
         for record in records:
+            if record.webhook_status == "revoked":
+                # токен отозван (401, см. bot_health) — рестарт это не лечит.
+                # Не понижаем до failed: иначе после каждого деплоя статус
+                # терял бы точность, а продавца снова звали переподключать
+                continue
             ok = await setup_seller_webhook(record)
             record.webhook_status = "active" if ok else "failed"
         await session.commit()

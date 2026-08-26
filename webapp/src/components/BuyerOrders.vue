@@ -84,7 +84,8 @@ async function removeReview(o, productId) {
 }
 
 // Статусы меняются на бэкенде (вебхук оплаты, отправка продавцом) — обновляем
-// сами, без перезахода: раз в 10 секунд и при возврате в приложение.
+// сами, без перезахода. Опрос только пока вкладка видима, как в OrderChat:
+// в свёрнутом Telegram таймер не нужен.
 let timer = null
 
 async function refresh() {
@@ -96,19 +97,19 @@ async function refresh() {
   }
 }
 
-function refreshOnReturn() {
-  if (!document.hidden) refresh()
+function refreshIfVisible() {
+  if (document.visibilityState === 'visible') refresh()
 }
 
 onMounted(async () => {
   await refresh()
-  timer = setInterval(refresh, 10_000)
-  document.addEventListener('visibilitychange', refreshOnReturn)
+  timer = setInterval(refreshIfVisible, 10_000)
+  document.addEventListener('visibilitychange', refreshIfVisible)
 })
 
 onBeforeUnmount(() => {
   clearInterval(timer)
-  document.removeEventListener('visibilitychange', refreshOnReturn)
+  document.removeEventListener('visibilitychange', refreshIfVisible)
 })
 </script>
 

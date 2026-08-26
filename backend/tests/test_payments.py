@@ -15,6 +15,7 @@ async def make_order(
     digital_url="https://guide.example/x",
     total=Decimal("100"),
     invoice_id=555001,
+    title="Гайд",
 ):
     """Заказ в ожидании оплаты. Повторный вызов вешает заказ на того же продавца."""
     async with db() as session:
@@ -39,7 +40,7 @@ async def make_order(
             seller_id=seller.id,
             bot_id=bot.id,
             type=product_type,
-            title="Гайд",
+            title=title,
             price=total,
             digital_content={"url": digital_url} if digital_url else None,
         )

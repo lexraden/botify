@@ -134,11 +134,18 @@ async def track_event(payload: EventIn, ctx: BuyerContext = Depends(get_buyer)) 
     игнорируется, чтобы старые клиенты не получали ошибок после обновлений."""
     if payload.type not in EVENT_TYPES:
         return {"status": "ignored"}
+    product_id = payload.product_id
+    if product_id is not None:
+        # чужой/удалённый товар в статистику не попадает: событие остаётся,
+        # но без привязки к товару — витрина не должна уметь 500-ить на id
+        product = await ctx.session.get(Product, product_id)
+        if product is None or product.bot_id != ctx.bot.id:
+            product_id = None
     ctx.session.add(
         ShopEvent(
             bot_id=ctx.bot.id,
             customer_id=ctx.customer.id,
-            product_id=payload.product_id,
+            product_id=product_id,
             type=payload.type,
         )
     )

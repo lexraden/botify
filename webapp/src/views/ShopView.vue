@@ -182,9 +182,22 @@ onMounted(async () => {
 
 watch(botId, reload)
 
+// Ошибки действий кабинета: удаление товара, выполнение заказа, рассылка.
+// Без catch они гасли молча — продавец ждал срабатывания, а его не было.
+const actionError = ref('')
+
+watch(tab, () => {
+  actionError.value = ''
+})
+
 async function removeProduct(p) {
-  await deleteProduct(botId.value, p.id)
-  await reload()
+  actionError.value = ''
+  try {
+    await deleteProduct(botId.value, p.id)
+    await reload()
+  } catch (e) {
+    actionError.value = e.response?.data?.detail || t('seller.deleteError')
+  }
 }
 
 const fulfillForm = ref({ orderId: null, tracking: '', url: '', note: '', sending: false })
@@ -197,6 +210,7 @@ async function submitFulfill() {
   const f = fulfillForm.value
   if (f.sending || !(f.tracking || f.url || f.note)) return
   f.sending = true
+  actionError.value = ''
   try {
     await fulfillOrder(botId.value, f.orderId, {
       tracking: f.tracking || null,
@@ -205,6 +219,8 @@ async function submitFulfill() {
     })
     fulfillForm.value.orderId = null
     await reload()
+  } catch (e) {
+    actionError.value = e.response?.data?.detail || t('seller.fulfillError')
   } finally {
     f.sending = false
   }
@@ -216,6 +232,7 @@ async function submitMailing() {
   const f = mailingForm.value
   if (f.sending || !f.text) return
   f.sending = true
+  actionError.value = ''
   try {
     await createMailing(botId.value, {
       text: f.text,
@@ -224,6 +241,8 @@ async function submitMailing() {
     })
     mailingForm.value = { text: '', button_text: '', button_url: '', sending: false }
     await reload()
+  } catch (e) {
+    actionError.value = e.response?.data?.detail || t('seller.mailingError')
   } finally {
     f.sending = false
   }
@@ -266,6 +285,8 @@ async function submitMailing() {
         <button :class="{ active: tab === 'mailings' }" @click="tab = 'mailings'">{{ t('tab.mailings') }}</button>
         <button :class="{ active: tab === 'stats' }" @click="tab = 'stats'">{{ t('tab.stats') }}</button>
       </nav>
+
+      <p v-if="actionError" class="error-line">{{ actionError }}</p>
 
       <template v-if="tab === 'products'">
         <button class="btn add" @click="router.push(`/shop/${botId}/product`)">
@@ -621,4 +642,5 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .wallet .hint { margin: 10px 0 0; font-size: 12px; line-height: 1.45; color: var(--sub); }
 .empty { text-align: center; color: var(--sub); margin-top: 24px; }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
+.error-line { color: var(--red); font-size: 13px; font-weight: 600; margin: 0 0 10px; }
 </style>

@@ -97,3 +97,27 @@ async def test_fulfillment_push_survives_angle_brackets(db):
     text = notify_mock.call_args.args[2]
     assert "RA&lt;1&gt;CN" in text and "размер &lt;M&gt;" in text
     assert "<M>" not in text
+
+
+@pytest.mark.asyncio
+async def test_payment_push_survives_angle_brackets_in_title_and_url(db):
+    """Сообщение об оплате — единственное, где покупатель получает digital-
+    контент. «<» в названии товара или в ссылке выдачи роняло отправку целиком:
+    деньги приняты, а покупатель не получал ни подтверждения, ни товар."""
+    from tests.test_payments import make_order, patched_notifications
+    from app.payments.service import handle_invoice_paid
+
+    await make_order(
+        db,
+        title="Гайд <по настройке>",
+        digital_url="https://guide.example/x?utm=a<b&c=d",
+    )
+    p1, p2 = patched_notifications()
+    with p1 as notify_mock, p2:
+        assert await handle_invoice_paid(555001, None) is True
+
+    text = notify_mock.call_args.args[2]
+    assert "Гайд &lt;по настройке&gt;" in text
+    assert "https://guide.example/x?utm=a&lt;b&amp;c=d" in text
+    # сырые «<» от данных продавца в текст не попадают (теги разметки — можно)
+    assert "<по настройке>" not in text and "a<b" not in text

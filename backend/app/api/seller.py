@@ -383,7 +383,7 @@ async def shop_summary(
         await session.execute(
             select(func.coalesce(func.sum(Order.total), 0)).where(
                 Order.bot_id == shop.id,
-                Order.status.in_(("paid", "fulfilled", "delivered")),
+                Order.status.in_(PAID_STATUSES),
             )
         )
     ).scalar_one()
@@ -842,7 +842,11 @@ async def fulfill_order(
         raise HTTPException(status_code=400, detail=f"order is {order.status}")
 
     order.fulfillment = payload.model_dump(exclude_none=True)
-    order.status = "fulfilled"
+    # одним коммитом: статус и метка доставки меняются вместе. Раньше между
+    # двумя коммитами было окно — упади процесс в нём, и заказ остался бы
+    # в fulfilled без delivered_at, от которого считается окно чата (72ч)
+    order.status = "delivered"
+    order.delivered_at = func.now()
     await session.commit()
 
     customer = await session.get(Customer, order.customer_id)
@@ -866,10 +870,6 @@ async def fulfill_order(
         customer.telegram_id,
         "\n".join(lines),
     )
-
-    order.status = "delivered"
-    order.delivered_at = func.now()
-    await session.commit()
 
     return {"status": order.status}
 
@@ -1064,7 +1064,7 @@ class MailingOut(BaseModel):
     status: str
     sent_count: int
     failed_count: int
-    scheduled_at: object | None
+    scheduled_at: datetime | None
 
     model_config = {"from_attributes": True}
 

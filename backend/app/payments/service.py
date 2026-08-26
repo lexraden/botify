@@ -1,6 +1,7 @@
 """Платёжный флоу: инвойс на заказ -> invoice_paid -> уведомления, выдача digital,
 запись Payout (сам transfer продавцу — этап 6)."""
 
+import html
 import logging
 from decimal import Decimal
 
@@ -142,9 +143,12 @@ async def handle_invoice_paid(
                     qty,
                 )
 
-        # Digital/услуги с настроенной выдачей доставляются сразу
+        # Digital/услуги с настроенной выдачей доставляются сразу.
+        # Название и ссылка — от продавца, а сообщение уходит с parse_mode=HTML:
+        # один «<» в названии оставил бы покупателя без подтверждения оплаты
+        # и без самого контента (см. tests/test_html_safety.py)
         digital_lines = [
-            f"• {product.title}: {product.digital_content['url']}"
+            f"• {html.escape(product.title)}: {html.escape(product.digital_content['url'])}"
             for _, product in items
             if product.type in ("digital", "service")
             and product.digital_content
@@ -157,7 +161,7 @@ async def handle_invoice_paid(
             order.delivered_at = func.now()
 
         order_summary = "\n".join(
-            f"• {product.title} × {item.qty}" for item, product in items
+            f"• {html.escape(product.title)} × {item.qty}" for item, product in items
         )
         await session.commit()
 
