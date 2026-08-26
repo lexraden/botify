@@ -144,10 +144,16 @@ async def handle_invoice_paid(
         # UPDATE атомарен — два заказа на последнюю штуку не уведут сток в минус.
         # Товары со стоком NULL учёту штук не подлежат.
         qty_by_product: dict[int, int] = {}
+        titles: dict[int, str] = {}
         for item, product in items:
+            titles[item.product_id] = product.title
             if product.stock is None:
                 continue
             qty_by_product[item.product_id] = qty_by_product.get(item.product_id, 0) + item.qty
+        # Товары, которых не хватило: деньги уже приняты, отправить их нечем.
+        # Молча это оставлять нельзя — возврата в MVP нет, разбираться сторонам
+        # придётся вручную, и узнать о проблеме они должны сразу.
+        sold_out: list[str] = []
         for product_id, qty in qty_by_product.items():
             spent = await session.execute(
                 update(Product)
@@ -161,6 +167,7 @@ async def handle_invoice_paid(
             if spent.rowcount == 0:
                 # гонка «чекнулись, пока сток кончился»: деньги уже приняты,
                 # заказ не разворачиваем, но и отрицательный сток не пишем
+                sold_out.append(titles.get(product_id, str(product_id)))
                 logger.error(
                     "Недостаточно стока товара id=%s для заказа %s (нужно %s) — сток не списан",
                     product_id,
@@ -208,7 +215,16 @@ async def handle_invoice_paid(
             else "\nПродавец готовит заказ — детали доставки придут сюда."
         )
         # доставленные цифровые заказы можно оценивать — подводим к форме отзыва
-        + ("\n⭐ Как всё прошло? Оцени покупки в разделе «Мои покупки»." if all_digital else ""),
+        + ("\n⭐ Как всё прошло? Оцени покупки в разделе «Мои покупки»." if all_digital else "")
+        # закончился между заказом и оплатой: честнее сказать сразу, чем дать
+        # человеку ждать посылку, которой не будет
+        + (
+            "\n\n⚠️ Пока шла оплата, закончилось: "
+            + ", ".join(html.escape(t) for t in sold_out)
+            + ".\nПродавец свяжется с тобой в чате заказа — напиши ему прямо здесь."
+            if sold_out
+            else ""
+        ),
     )
 
     from app.bots.hub import hub_bot
@@ -221,6 +237,13 @@ async def handle_invoice_paid(
                 "Digital-контент выдан автоматически."
                 if digital_lines and all_digital
                 else "Открой кабинет, чтобы отправить заказ и прикрепить трек/ссылку."
+            )
+            + (
+                "\n\n⚠️ Не хватило остатка: "
+                + ", ".join(html.escape(t) for t in sold_out)
+                + ".\nДеньги за заказ уже приняты — свяжись с покупателем в чате заказа."
+                if sold_out
+                else ""
             ),
         )
     except Exception:
