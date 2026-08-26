@@ -54,16 +54,17 @@ async def chat_maintenance_loop() -> None:
 
 
 async def maintenance_loop() -> None:
-    """Обслуживание раз в 10 минут: застрявшие рассылки, зависшие заказы,
-    отозванные токены ботов и осиротевшие фото товаров.
+    """Обслуживание раз в 10 минут: недоехавшие оплаты, застрявшие рассылки,
+    зависшие заказы, отозванные токены ботов и осиротевшие фото товаров.
 
-    Всё это — про то, что ломается молча: рассылка вечно «идёт», оплаченный
-    заказ никто не отправляет, бот перестал получать апдейты, брошенная форма
-    оставила фото в БД навсегда. Каждая задача ловит свои ошибки сама, чтобы
-    падение одной не уносило остальные вместе с циклом. Проверка токенов
-    ходит в Telegram по каждому боту, поэтому у неё свой, более редкий,
-    интервал.
+    Всё это — про то, что ломается молча: вебхук об оплате не дошёл, рассылка
+    вечно «идёт», оплаченный заказ никто не отправляет, бот перестал получать
+    апдейты, брошенная форма оставила фото в БД навсегда. Каждая задача ловит
+    свои ошибки сама, чтобы падение одной не уносило остальные вместе с циклом.
+    Проверка токенов ходит в Telegram по каждому боту, поэтому у неё свой,
+    более редкий, интервал.
     """
+    from app.payments.reconcile import reconcile_paid_invoices
     from app.services.bot_health import check_revoked_tokens
     from app.services.images import purge_orphan_images
     from app.services.mailing import revive_stuck_mailings
@@ -76,6 +77,7 @@ async def maintenance_loop() -> None:
     while True:
         await asyncio.sleep(tick)
         for name, job in (
+            ("сверка оплат", reconcile_paid_invoices),
             ("оживление рассылок", revive_stuck_mailings),
             ("напоминания по заказам", remind_stuck_orders),
             ("чистка осиротевших фото", purge_orphan_images),
@@ -166,7 +168,13 @@ async def cryptopay_webhook(request: Request) -> dict:
                 fee_amount=Decimal(str(fee)) if fee is not None else None,
             )
     except Exception:
-        logger.exception("Ошибка обработки вебхука Crypto Pay")
+        # 5xx, а не 200: Crypto Pay повторит доставку. Раньше любой сбой до
+        # коммита (недоступна БД, дедлок на FOR UPDATE) выглядел для него
+        # успехом — деньги приняты, заказ навсегда в pending_payment, и
+        # восстановить это было нечем. Повторная доставка безопасна: обработка
+        # идемпотентна (FOR UPDATE + гард статуса в handle_invoice_paid).
+        logger.exception("Ошибка обработки вебхука Crypto Pay — просим повторить")
+        raise HTTPException(status_code=500, detail="retry later") from None
     return {"status": "ok"}
 
 

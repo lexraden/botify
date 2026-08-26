@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # После скольких минут без признака жизни рассылка в статусе sending
     # считается застрявшей и возвращается в очередь
     mailing_stuck_minutes: int = 10
+    # Глубина сверки оплаченных счетов (app/payments/reconcile.py): счёт
+    # живёт час, окно — с запасом на задержки вебхука и наши рестарты.
+    reconcile_window_hours: float = 6.0
 
     @field_validator("database_url")
     @classmethod

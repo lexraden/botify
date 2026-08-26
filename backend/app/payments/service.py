@@ -18,6 +18,31 @@ from app.security import decrypt_bot_token
 logger = logging.getLogger(__name__)
 
 
+async def discard_invoice(invoice_id: int | None) -> bool:
+    """Снять неоплаченный счёт в Crypto Pay, чтобы по нему нельзя было заплатить.
+
+    Нужно везде, где заказ перестаёт ждать оплату по этой ссылке: отмена и
+    выдача новой ссылки. Иначе покупатель платит по мёртвой ссылке из
+    переписки с @CryptoBot, вебхук приходит на отменённый (или уже
+    переоформленный) заказ и молча ничего не делает — деньги приняты, товара
+    нет, никто не уведомлён.
+
+    Побочно это держит инвариант «у заказа не больше одного оплачиваемого
+    счёта», на который опирается сверка (app/payments/reconcile.py).
+
+    Неудача не критична и наверх не идёт: счёт протухнет сам через час.
+    """
+    crypto = get_crypto_pay()
+    if crypto is None or invoice_id is None:
+        return False
+    try:
+        await crypto.delete_invoice(invoice_id)
+        return True
+    except Exception:
+        logger.warning("Не удалось снять счёт %s — истечёт сам", invoice_id, exc_info=True)
+        return False
+
+
 async def create_invoice_for_order(order_id: int, total: Decimal) -> str | None:
     """Создаёт инвойс Crypto Pay. Возвращает ссылку на оплату (или None без токена)."""
     crypto = get_crypto_pay()

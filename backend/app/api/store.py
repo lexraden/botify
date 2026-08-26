@@ -248,14 +248,20 @@ async def _own_order(ctx: BuyerContext, order_id: int) -> Order:
 async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> PayOut:
     """Свежая ссылка на оплату своего неоплаченного заказа. Инвойс создаётся
     новый: у ссылки из чекаута час жизни, к моменту «Оплатить» она уже может
-    быть мертва. Старый инвойс истечёт сам — сток он не держит."""
-    from app.payments.service import create_invoice_for_order
+    быть мертва.
+
+    Предыдущий счёт снимается, а не оставляется дотлевать: иначе у заказа
+    оказывается несколько живых ссылок, и оплата второй из них проходит мимо
+    заказа — деньги приняты, не сделано ничего.
+    """
+    from app.payments.service import create_invoice_for_order, discard_invoice
 
     order = await _own_order(ctx, order_id)
     if order.status != "pending_payment":
         raise HTTPException(
             status_code=409, detail=f"order is {order.status}, not awaiting payment"
         )
+    await discard_invoice(order.invoice_id)
     try:
         payment_url = await create_invoice_for_order(order.id, Decimal(order.total))
     except Exception:
@@ -267,8 +273,14 @@ async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> Pa
 @router.post("/orders/{order_id}/cancel")
 async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> dict:
     """Покупатель передумал: свой неоплаченный заказ отменяется им сам.
+
     Статус проверяется под блокировкой строки — заказ, который вебхук успел
-    оплатить между нажатиями «Оплатить» и «Отменить», не отменится."""
+    оплатить между нажатиями «Оплатить» и «Отменить», не отменится. Счёт
+    снимается в Crypto Pay, иначе по оставшейся в переписке ссылке можно
+    заплатить за отменённый заказ, и деньги уйдут в никуда.
+    """
+    from app.payments.service import discard_invoice
+
     result = await ctx.session.execute(
         select(Order).where(Order.id == order_id).with_for_update()
     )
@@ -278,7 +290,12 @@ async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) ->
     if order.status != "pending_payment":
         raise HTTPException(status_code=409, detail=f"order is {order.status}")
     order.status = "cancelled"
+    invoice_id = order.invoice_id
     await ctx.session.commit()
+
+    # после коммита: снятие счёта — сетевой вызов, и его неудача не должна
+    # откатывать уже принятую отмену
+    await discard_invoice(invoice_id)
     return {"status": "cancelled"}
 
 
