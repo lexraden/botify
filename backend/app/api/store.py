@@ -54,9 +54,19 @@ class CartItemIn(BaseModel):
     qty: int = Field(ge=1, le=99)
 
 
+class DeliveryIn(BaseModel):
+    """Куда везти. Обязательна, если в заказе есть физический товар: без неё
+    продавец не может отправить посылку и идёт выяснять адрес в чат."""
+
+    name: str = Field(min_length=1, max_length=128)
+    phone: str = Field(min_length=1, max_length=32)
+    address: str = Field(min_length=1, max_length=512)
+
+
 class OrderIn(BaseModel):
     items: list[CartItemIn] = Field(min_length=1)
     comment: str | None = Field(default=None, max_length=1000)
+    delivery: DeliveryIn | None = None
 
 
 class BuyerOwnReviewOut(BaseModel):
@@ -168,6 +178,12 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     if missing:
         raise HTTPException(status_code=400, detail=f"products not available: {sorted(missing)}")
 
+    # Физический товар без адреса отправить некуда — это единственные данные
+    # покупателя, которые видит продавец. У цифровых заказов адрес не спрашиваем.
+    needs_delivery = any(products[i.product_id].type == "physical" for i in payload.items)
+    if needs_delivery and payload.delivery is None:
+        raise HTTPException(status_code=400, detail="delivery_required")
+
     # Сток проверяем по суммарному qty (товар может прийти двумя строками).
     # Финальная проверка — в вебхуке оплаты; здесь отсекаем очевидный оверселл
     qty_by_product: dict[int, int] = {}
@@ -191,6 +207,7 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         total=total,
         currency="USDT",
         comment=payload.comment,
+        delivery=payload.delivery.model_dump() if needs_delivery and payload.delivery else None,
     )
     ctx.session.add(order)
     await ctx.session.flush()

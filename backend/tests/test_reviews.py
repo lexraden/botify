@@ -165,7 +165,7 @@ async def test_review_author_falls_back_to_pseudonym_without_name(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=anon_headers,
-            json={"items": [{"product_id": pid, "qty": 1}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 1}]},
         )
         order_id = r.json()["id"]
 

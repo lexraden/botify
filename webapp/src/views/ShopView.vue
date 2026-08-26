@@ -328,6 +328,13 @@ async function submitMailing() {
               <span>{{ (Number(i.price) * i.qty).toFixed(2) }} USDT</span>
             </div>
           </div>
+          <!-- адрес нужен, чтобы отправить: показываем отдельным блоком,
+               а не в общем ряду примечаний -->
+          <div v-if="o.delivery" class="delivery">
+            <b>{{ t('seller.deliveryTitle') }}</b>
+            <span>{{ o.delivery.name }} · {{ o.delivery.phone }}</span>
+            <span>{{ o.delivery.address }}</span>
+          </div>
           <div v-if="o.comment" class="comment">💬 {{ o.comment }}</div>
           <div v-if="o.fulfillment" class="comment">📤 {{ fulfillmentLine(o.fulfillment) }}</div>
 
@@ -567,6 +574,13 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
   font-size: 11px; font-weight: 800;
 }
 .comment { background: var(--surface2); border-radius: 11px; padding: 9px 11px; font-size: 13px; }
+.delivery {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface2); border-radius: 10px;
+  padding: 8px 10px; margin-top: 8px; font-size: 13px;
+  b { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--sub); }
+  span { word-break: break-word; }
+}
 .items {
   display: flex; flex-direction: column; gap: 5px;
   border-top: 1px solid var(--surface2); border-bottom: 1px solid var(--surface2);

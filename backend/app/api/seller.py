@@ -698,6 +698,10 @@ class SellerOrderOut(BaseModel):
     items: list[SellerOrderItemOut]
     # то, что продавец отправил покупателю при выполнении (трек/ссылка/note)
     fulfillment: dict | None = None
+    # куда везти: {name, phone, address}. Единственные данные покупателя,
+    # которые видит продавец, и только у физических заказов — без них
+    # отправить посылку физически нельзя
+    delivery: dict | None = None
 
 
 @router.get("/bots/{bot_id}/orders", response_model=list[SellerOrderOut])
@@ -742,6 +746,7 @@ async def list_orders(
             created_at=order.created_at,
             items=items_by_order.get(order.id, []),
             fulfillment=order.fulfillment,
+            delivery=order.delivery,
         )
         for order in orders
     ]

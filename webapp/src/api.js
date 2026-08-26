@@ -24,8 +24,8 @@ api.interceptors.response.use(
 
 // --- витрина покупателя (контекст seller-бота из query-параметра) ---
 export const fetchShop = () => api.get(`/store/${getBotId()}`).then((r) => r.data)
-export const createOrder = (items, comment) =>
-  api.post(`/store/${getBotId()}/orders`, { items, comment }).then((r) => r.data)
+export const createOrder = (items, comment, delivery = null) =>
+  api.post(`/store/${getBotId()}/orders`, { items, comment, delivery }).then((r) => r.data)
 export const fetchMyOrders = () => api.get(`/store/${getBotId()}/orders/my`).then((r) => r.data)
 // неоплаченный заказ: свежая ссылка на оплату или отмена покупателем
 export const payOrder = (orderId) =>

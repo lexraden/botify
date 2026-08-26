@@ -78,6 +78,12 @@ export const DICT = {
     'checkout.commentPh': 'Комментарий к заказу — детали, пожелания…',
     'checkout.pay': 'PAY {sum} USDT',
     'checkout.error': 'Не удалось оформить заказ',
+    'checkout.deliveryTitle': 'Куда доставить',
+    'checkout.deliveryHint': 'Продавец увидит это, чтобы отправить заказ.',
+    'checkout.namePh': 'Имя и фамилия',
+    'checkout.phonePh': 'Телефон для курьера',
+    'checkout.addressPh': 'Адрес или пункт выдачи',
+    'checkout.deliveryRequired': 'Заполни имя, телефон и адрес — без них продавцу некуда отправить заказ.',
 
     // чат заказа
     'chat.back': '← К заказам',
@@ -133,6 +139,7 @@ export const DICT = {
     'seller.hidden': 'скрыт',
     'seller.noProducts': 'Товаров пока нет.',
     'seller.statusPending': '⏳ Ждёт оплаты',
+    'seller.deliveryTitle': 'Доставка',
     'seller.statusPaid': '✅ Оплачен',
     'seller.statusFulfilled': '📦 Отправлен',
     'seller.statusDelivered': '🎉 Доставлен',
@@ -358,6 +365,12 @@ export const DICT = {
     'checkout.commentPh': 'Order comment — details, wishes…',
     'checkout.pay': 'PAY {sum} USDT',
     'checkout.error': 'Could not place the order',
+    'checkout.deliveryTitle': 'Delivery details',
+    'checkout.deliveryHint': 'The seller sees this to ship your order.',
+    'checkout.namePh': 'Full name',
+    'checkout.phonePh': 'Phone for the courier',
+    'checkout.addressPh': 'Address or pickup point',
+    'checkout.deliveryRequired': 'Fill in name, phone and address — the seller has nowhere to ship without them.',
 
     // order chat
     'chat.back': '← To orders',
@@ -415,6 +428,7 @@ export const DICT = {
     'seller.hidden': 'hidden',
     'seller.noProducts': 'No products yet.',
     'seller.statusPending': '⏳ Awaiting payment',
+    'seller.deliveryTitle': 'Delivery',
     'seller.statusPaid': '✅ Paid',
     'seller.statusFulfilled': '📦 Shipped',
     'seller.statusDelivered': '🎉 Delivered',

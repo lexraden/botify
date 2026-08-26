@@ -49,6 +49,11 @@ class Order(Base, CreatedAtMixin):
 
     fulfillment: Mapped[dict | None] = mapped_column(JsonB)  # трек-номер / ссылка / файл
 
+    # Куда везти: {name, phone, address}. Только у заказов с физическими
+    # позициями; у цифровых остаётся None. Единственные данные покупателя,
+    # которые видит продавец, — без них он физически не может отправить товар.
+    delivery: Mapped[dict | None] = mapped_column(JsonB)
+
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     payout = relationship("Payout", back_populates="order", uselist=False)
 

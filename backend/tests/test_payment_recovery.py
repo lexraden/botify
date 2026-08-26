@@ -27,7 +27,10 @@ async def _pending_order(c, bot_id: int, invoice_id: int = 900100) -> int:
     r = await c.post(
         f"/api/store/{bot_id}/orders",
         headers=buyer_headers(),
-        json={"items": [{"product_id": pid, "qty": 1}]},
+        json={
+            "items": [{"product_id": pid, "qty": 1}],
+            "delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"},
+        },
     )
     assert r.status_code == 200, r.text
     order_id = r.json()["id"]
@@ -249,3 +252,79 @@ async def test_reconcile_survives_crypto_pay_outage(db):
     fake = SimpleNamespace(get_invoices=AsyncMock(side_effect=Exception("503")))
     with patch("app.payments.reconcile.get_crypto_pay", return_value=fake):
         assert await reconcile_paid_invoices() == 0
+
+
+# --------------------------------------------------------------------------
+# 5. Физический заказ без адреса не оформляется
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_physical_order_requires_delivery(db):
+    """Без адреса продавец не может отправить посылку и идёт выяснять его в
+    чат с каждым покупателем."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={"type": "physical", "title": "Кружка", "price": "5"},
+        )
+        pid = r.json()["id"]
+        r = await c.post(
+            f"/api/store/{bot_id}/orders",
+            headers=buyer_headers(),
+            json={"items": [{"product_id": pid, "qty": 1}]},
+        )
+        assert r.status_code == 400
+        assert r.json()["detail"] == "delivery_required"
+
+        r = await c.post(
+            f"/api/store/{bot_id}/orders",
+            headers=buyer_headers(),
+            json={
+                "items": [{"product_id": pid, "qty": 1}],
+                "delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"},
+            },
+        )
+        assert r.status_code == 200, r.text
+        order_id = r.json()["id"]
+
+        # продавец видит адрес — иначе весь смысл теряется
+        r = await c.get(f"/api/seller/bots/{bot_id}/orders", headers=seller_headers())
+        assert r.status_code == 200
+    async with db() as session:
+        order = await session.get(Order, order_id)
+        assert order.delivery == {
+            "name": "Аня",
+            "phone": "+79990001122",
+            "address": "Тверская 1",
+        }
+
+
+@pytest.mark.asyncio
+async def test_digital_order_does_not_ask_for_address(db):
+    """Цифровой заказ везти некуда — лишние поля в чекауте стоят конверсии."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={
+                "type": "digital",
+                "title": "Гайд",
+                "price": "5",
+                "digital_content": {"url": "https://x.example/g"},
+            },
+        )
+        pid = r.json()["id"]
+        r = await c.post(
+            f"/api/store/{bot_id}/orders",
+            headers=buyer_headers(),
+            json={"items": [{"product_id": pid, "qty": 1}]},
+        )
+        assert r.status_code == 200, r.text
+        order_id = r.json()["id"]
+
+    async with db() as session:
+        assert (await session.get(Order, order_id)).delivery is None

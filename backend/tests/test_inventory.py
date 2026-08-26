@@ -33,7 +33,7 @@ async def stocked_order(db, bot_id: int, stock: int | None, qty: int, invoice_id
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": pid, "qty": qty}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": qty}]},
         )
         assert r.status_code == 200, r.text
         order_id = r.json()["id"]
@@ -78,10 +78,11 @@ async def test_two_lines_of_same_product_decrement_once_by_sum(db):
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
             json={
+                "delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"},
                 "items": [
                     {"product_id": pid, "qty": 1},
                     {"product_id": pid, "qty": 2},
-                ]
+                ],
             },
         )
         assert r.status_code == 200, r.text
@@ -128,7 +129,7 @@ async def test_checkout_rejects_more_than_stock(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": pid, "qty": 3}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 3}]},
         )
         assert r.status_code == 400
         assert "insufficient stock" in r.json()["detail"]
@@ -136,7 +137,7 @@ async def test_checkout_rejects_more_than_stock(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": pid, "qty": 2}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 2}]},
         )
         assert r.status_code == 200
 
@@ -160,7 +161,7 @@ async def test_zero_stock_is_visible_but_not_buyable(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": pid, "qty": 1}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 1}]},
         )
         assert r.status_code == 400
 
