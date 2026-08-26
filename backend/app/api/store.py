@@ -233,6 +233,55 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     )
 
 
+class PayOut(BaseModel):
+    payment_url: str | None = None
+
+
+async def _own_order(ctx: BuyerContext, order_id: int) -> Order:
+    order = await ctx.session.get(Order, order_id)
+    if order is None or order.bot_id != ctx.bot.id or order.customer_id != ctx.customer.id:
+        raise HTTPException(status_code=403, detail="foreign order")
+    return order
+
+
+@router.post("/orders/{order_id}/pay")
+async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> PayOut:
+    """Свежая ссылка на оплату своего неоплаченного заказа. Инвойс создаётся
+    новый: у ссылки из чекаута час жизни, к моменту «Оплатить» она уже может
+    быть мертва. Старый инвойс истечёт сам — сток он не держит."""
+    from app.payments.service import create_invoice_for_order
+
+    order = await _own_order(ctx, order_id)
+    if order.status != "pending_payment":
+        raise HTTPException(
+            status_code=409, detail=f"order is {order.status}, not awaiting payment"
+        )
+    try:
+        payment_url = await create_invoice_for_order(order.id, Decimal(order.total))
+    except Exception:
+        logger.exception("Повторный инвойс для заказа %s создать не удалось", order.id)
+        raise HTTPException(status_code=502, detail="invoice_failed") from None
+    return PayOut(payment_url=payment_url)
+
+
+@router.post("/orders/{order_id}/cancel")
+async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> dict:
+    """Покупатель передумал: свой неоплаченный заказ отменяется им сам.
+    Статус проверяется под блокировкой строки — заказ, который вебхук успел
+    оплатить между нажатиями «Оплатить» и «Отменить», не отменится."""
+    result = await ctx.session.execute(
+        select(Order).where(Order.id == order_id).with_for_update()
+    )
+    order = result.scalar_one_or_none()
+    if order is None or order.bot_id != ctx.bot.id or order.customer_id != ctx.customer.id:
+        raise HTTPException(status_code=403, detail="foreign order")
+    if order.status != "pending_payment":
+        raise HTTPException(status_code=409, detail=f"order is {order.status}")
+    order.status = "cancelled"
+    await ctx.session.commit()
+    return {"status": "cancelled"}
+
+
 @router.get("/orders/my", response_model=list[OrderOut])
 async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
     result = await ctx.session.execute(

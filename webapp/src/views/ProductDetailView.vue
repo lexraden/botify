@@ -82,7 +82,9 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- покупка закреплена у нижнего края: видна при любом скролле -->
+      <!-- покупка закреплена у нижнего края и живёт в два этажа:
+           сверху — этот товар (добавить или количество), снизу — «В корзину»,
+           пока корзина непуста (хоть с этого товара, хоть с другого) -->
       <div class="buy-bar">
         <div v-if="!soldOut && qty" class="stepper">
           <button @click="cart.remove(product)">−</button>
@@ -105,8 +107,8 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* снизу запас под фиксированную панель покупки */
-.detail { padding: 18px 16px 86px; }
+/* снизу запас под двухэтажную фиксированную панель покупки */
+.detail { padding: 18px 16px 148px; }
 .back { display: inline-block; margin-bottom: 14px; color: var(--sub); font-size: 14px; font-weight: 700; cursor: pointer; }
 .photo {
   width: 100%; aspect-ratio: 1; border-radius: 18px; background: var(--surface2);
@@ -155,11 +157,10 @@ h2 { font-size: 19px; margin: 14px 0 6px; }
 }
 .stepper button:disabled { opacity: 0.35; }
 .stepper b { font-size: 16px; min-width: 20px; text-align: center; }
-/* панель покупки прижата к низу экрана — как cart-bar в StoreView */
+/* панель покупки прижата к низу экрана — как cart-bar в StoreView, но в два этажа */
 .buy-bar {
   position: fixed; left: 16px; right: 16px; bottom: 18px; z-index: 20;
-  display: flex; gap: 10px;
+  display: flex; flex-direction: column; gap: 10px;
 }
-.buy-bar > * { flex: 1; }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
 </style>

@@ -2,8 +2,15 @@
 // Список покупок покупателя: живые статусы, форма оценки, удаление отзыва.
 // Живёт и на отдельном экране /my-orders, и внутри профиля.
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { deleteOrderReview, fetchMyOrders, submitOrderReviews } from '../api'
+import {
+  cancelOrder,
+  deleteOrderReview,
+  fetchMyOrders,
+  payOrder,
+  submitOrderReviews,
+} from '../api'
 import { t } from '../i18n'
+import { openTelegramLink } from '../services/telegram'
 
 const orders = ref(null)
 
@@ -81,6 +88,43 @@ async function removeReview(o, productId) {
   }
 }
 
+// --- неоплаченный заказ: свежая ссылка на оплату или отмена покупателем ---
+const busyId = ref(null)
+const actionError = ref({ id: null, text: '' })
+
+async function retryPay(o) {
+  busyId.value = o.id
+  actionError.value = { id: null, text: '' }
+  try {
+    const { payment_url } = await payOrder(o.id)
+    if (payment_url) {
+      // тот же канал, что и сразу после чекаута — окно @CryptoBot
+      openTelegramLink(payment_url)
+    } else {
+      actionError.value = { id: o.id, text: t('orders.payUnavailable') }
+    }
+  } catch (e) {
+    actionError.value = { id: o.id, text: e.response?.data?.detail || t('orders.payError') }
+  } finally {
+    busyId.value = null
+  }
+}
+
+async function doCancel(o) {
+  if (!window.confirm(t('orders.cancelConfirm', { n: o.id }))) return
+  busyId.value = o.id
+  actionError.value = { id: null, text: '' }
+  try {
+    await cancelOrder(o.id)
+    // статус сменился на сервере — подтягиваем, не дожидаясь опроса
+    await refresh()
+  } catch (e) {
+    actionError.value = { id: o.id, text: e.response?.data?.detail || t('orders.cancelError') }
+  } finally {
+    busyId.value = null
+  }
+}
+
 // Статусы меняются на бэкенде (вебхук оплаты, отправка продавцом) — обновляем
 // сами, без перезахода. Опрос только пока вкладка видима, как в OrderChat:
 // в свёрнутом Telegram таймер не нужен.
@@ -123,6 +167,18 @@ onBeforeUnmount(() => {
           {{ STATUS_KEY[o.status] ? t(STATUS_KEY[o.status]) : o.status }}
         </span>
       </div>
+      <!-- неоплаченный: покупатель может доплатить заново или передумать -->
+      <template v-if="o.status === 'pending_payment'">
+        <div class="pay-actions">
+          <button class="pay-btn" :disabled="busyId === o.id" @click="retryPay(o)">
+            {{ t('orders.payNow') }}
+          </button>
+          <button class="cancel-btn" :disabled="busyId === o.id" @click="doCancel(o)">
+            {{ t('orders.cancelOrder') }}
+          </button>
+        </div>
+        <p v-if="actionError.id === o.id" class="action-error">{{ actionError.text }}</p>
+      </template>
       <div v-for="i in o.items" :key="i.product_id" class="item">
         {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
         <span v-if="i.reviewed" class="reviewed-mark">{{ t('orders.reviewedMark') }}</span>
@@ -180,6 +236,23 @@ onBeforeUnmount(() => {
   .total { margin-top: 6px; font-weight: 700; }
 }
 .empty { text-align: center; opacity: 0.6; margin-top: 40px; }
+.pay-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pay-actions button {
+  flex: 1;
+  height: 36px;
+  border: 0;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.pay-btn { background: var(--green); color: var(--on-green); }
+.cancel-btn { background: var(--surface2); color: var(--red); }
+.action-error { color: var(--red); font-size: 12px; margin: 6px 0 0; }
 .reviewed-mark {
   color: #f59e1b;
   font-size: 11px;

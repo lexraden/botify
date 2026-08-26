@@ -32,6 +32,11 @@ export const DICT = {
     'orders.payWindow':
       'Заверши оплату в открывшемся окне @CryptoBot — после оплаты придёт подтверждение в чат с ботом.',
     'orders.payUnavailable': 'Оплата временно недоступна — попробуй позже.',
+    'orders.payNow': 'Оплатить',
+    'orders.cancelOrder': 'Отменить',
+    'orders.cancelConfirm': 'Отменить заказ #{n} без оплаты?',
+    'orders.payError': 'Не удалось получить ссылку на оплату.',
+    'orders.cancelError': 'Не удалось отменить заказ.',
     'orders.empty': 'Покупок пока нет.',
     'orders.total': 'Итого: {sum}',
     'orders.reviewedMark': 'оценено ★',
@@ -307,6 +312,11 @@ export const DICT = {
     'orders.payWindow':
       'Finish the payment in the @CryptoBot window that opened — a confirmation will arrive in the bot chat.',
     'orders.payUnavailable': 'Payment is temporarily unavailable — try again later.',
+    'orders.payNow': 'Pay',
+    'orders.cancelOrder': 'Cancel',
+    'orders.cancelConfirm': 'Cancel order #{n} without paying?',
+    'orders.payError': 'Could not get a payment link.',
+    'orders.cancelError': 'Could not cancel the order.',
     'orders.empty': 'No purchases yet.',
     'orders.total': 'Total: {sum}',
     'orders.reviewedMark': 'rated ★',

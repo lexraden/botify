@@ -703,7 +703,13 @@ async def list_orders(
 ) -> list[SellerOrderOut]:
     result = await session.execute(
         select(Order)
-        .where(Order.bot_id == shop.id)
+        .where(
+            Order.bot_id == shop.id,
+            # рабочий список начинается с момента оплаты: неоплаченные корзины
+            # и заказы, отменённые покупателем до оплаты, не показываются.
+            # Отменённым может стать только неоплаченный — «lost» статусов нет
+            Order.status.notin_(("pending_payment", "cancelled")),
+        )
         .order_by(Order.id.desc())
         .limit(100)
     )

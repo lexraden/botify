@@ -6,10 +6,19 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 const fetchMyOrders = vi.fn()
 const submitOrderReviews = vi.fn()
 const deleteOrderReview = vi.fn()
+const payOrder = vi.fn()
+const cancelOrder = vi.fn()
 vi.mock('../../api', () => ({
   fetchMyOrders: (...args) => fetchMyOrders(...args),
   submitOrderReviews: (...args) => submitOrderReviews(...args),
   deleteOrderReview: (...args) => deleteOrderReview(...args),
+  payOrder: (...args) => payOrder(...args),
+  cancelOrder: (...args) => cancelOrder(...args),
+}))
+const openTelegramLink = vi.fn()
+vi.mock('../../services/telegram', () => ({
+  tg: null,
+  openTelegramLink: (...args) => openTelegramLink(...args),
 }))
 const { default: BuyerOrders } = await import('../BuyerOrders.vue')
 const { setLocale } = await import('../../services/locale')
@@ -29,6 +38,9 @@ describe('BuyerOrders — живые статусы', () => {
     fetchMyOrders.mockReset()
     submitOrderReviews.mockReset()
     deleteOrderReview.mockReset()
+    payOrder.mockReset()
+    cancelOrder.mockReset()
+    openTelegramLink.mockReset()
     setLocale('ru') // в jsdom navigator.language = en-US, а тесты про русский UI
     router.push('/') // без навигации isReady() не резолвится
   })
@@ -205,6 +217,57 @@ describe('BuyerOrders — живые статусы', () => {
     // форма закрылась, заказы перезагружены (первая загрузка + refresh)
     expect(wrapper.find('.review-form').exists()).toBe(false)
     expect(fetchMyOrders).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('неоплаченный заказ получает кнопки «Оплатить» и «Отменить»', async () => {
+    fetchMyOrders.mockResolvedValue(order('pending_payment'))
+    const wrapper = await mountList()
+    await flushPromises()
+    const actions = wrapper.find('.pay-actions')
+    expect(actions.exists()).toBe(true)
+    expect(actions.text()).toContain('Оплатить')
+    expect(actions.text()).toContain('Отменить')
+
+    // у оплаченного заказа кнопок нет
+    fetchMyOrders.mockResolvedValue(order('paid'))
+    await vi.advanceTimersByTimeAsync(10_000)
+    await flushPromises()
+    expect(wrapper.find('.pay-actions').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('«Оплатить» берёт свежую ссылку и открывает её как в чекауте', async () => {
+    fetchMyOrders.mockResolvedValue(order('pending_payment'))
+    payOrder.mockResolvedValue({ payment_url: 'https://t.me/CryptoBot?start=inv1' })
+    const wrapper = await mountList()
+    await flushPromises()
+
+    await wrapper.find('.pay-btn').trigger('click')
+    await flushPromises()
+    expect(payOrder).toHaveBeenCalledWith(1)
+    expect(openTelegramLink).toHaveBeenCalledWith('https://t.me/CryptoBot?start=inv1')
+    wrapper.unmount()
+  })
+
+  it('«Отменить» подтверждается, зовёт API и перезагружает список', async () => {
+    window.confirm = vi.fn().mockReturnValue(true)
+    fetchMyOrders.mockResolvedValue(order('pending_payment'))
+    cancelOrder.mockResolvedValue({ status: 'cancelled' })
+    const wrapper = await mountList()
+    await flushPromises()
+
+    await wrapper.find('.cancel-btn').trigger('click')
+    await flushPromises()
+    expect(cancelOrder).toHaveBeenCalledWith(1)
+    // первая загрузка + refresh после отмены
+    expect(fetchMyOrders).toHaveBeenCalledTimes(2)
+
+    // без подтверждения отмены запрос не уходит
+    window.confirm.mockReturnValue(false)
+    await wrapper.find('.cancel-btn').trigger('click')
+    await flushPromises()
+    expect(cancelOrder).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 })

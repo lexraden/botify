@@ -27,6 +27,11 @@ export const fetchShop = () => api.get(`/store/${getBotId()}`).then((r) => r.dat
 export const createOrder = (items, comment) =>
   api.post(`/store/${getBotId()}/orders`, { items, comment }).then((r) => r.data)
 export const fetchMyOrders = () => api.get(`/store/${getBotId()}/orders/my`).then((r) => r.data)
+// неоплаченный заказ: свежая ссылка на оплату или отмена покупателем
+export const payOrder = (orderId) =>
+  api.post(`/store/${getBotId()}/orders/${orderId}/pay`).then((r) => r.data)
+export const cancelOrder = (orderId) =>
+  api.post(`/store/${getBotId()}/orders/${orderId}/cancel`).then((r) => r.data)
 // отзывы: список у товара, оценка — только по своему доставленному заказу
 export const fetchProductReviews = (productId) =>
   api.get(`/store/${getBotId()}/products/${productId}/reviews`).then((r) => r.data)

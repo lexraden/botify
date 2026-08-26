@@ -38,6 +38,8 @@ describe('ProductDetailView — рейтинг и отзывы на страни
 
   beforeEach(() => {
     setLocale('ru') // в jsdom navigator.language = en-US, а тесты про русский UI
+    // корзина переживает приложение через localStorage — между тестами чистим
+    localStorage.clear()
     fetchShop.mockReset()
     fetchProductReviews.mockReset()
     trackEvent.mockReset()
@@ -97,6 +99,44 @@ describe('ProductDetailView — рейтинг и отзывы на страни
 
     expect(wrapper.find('.reviews').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('★')
+    wrapper.unmount()
+  })
+
+  it('панель покупки в два этажа: добавление сверху, зелёная «В корзину» снизу', async () => {
+    fetchShop.mockResolvedValue({ products: [product] })
+    fetchProductReviews.mockResolvedValue([])
+    const wrapper = await mountView()
+    await flushPromises()
+
+    // корзина пуста — только верхний этаж с добавлением
+    expect(wrapper.find('.buy-bar .btn-primary').exists()).toBe(true)
+    expect(wrapper.find('.buy-bar .stepper').exists()).toBe(false)
+    expect(wrapper.find('.buy-bar .btn-green').exists()).toBe(false)
+
+    // добавили — верхний этаж стал степпером количества, снизу появилась зелёная
+    await wrapper.find('.buy-bar .btn-primary').trigger('click')
+    const floors = [...wrapper.find('.buy-bar').element.children]
+    expect(floors[0].className).toBe('stepper')
+    expect(floors[1].className).toContain('btn-green')
+    wrapper.unmount()
+  })
+
+  it('чужой товар в корзине: сверху добавление этого товара, снизу — «В корзину»', async () => {
+    fetchShop.mockResolvedValue({ products: [product] })
+    fetchProductReviews.mockResolvedValue([])
+    await router.isReady()
+    // свой экземпляр pinia, чтобы наполнить корзину «другим» товаром
+    const pinia = createPinia()
+    const wrapper = mount(ProductDetailView, { global: { plugins: [router, pinia] } })
+    await flushPromises()
+
+    const { useCartStore } = await import('../../stores/cart')
+    useCartStore(pinia).add({ ...product, id: 999, title: 'Другой товар' })
+    await flushPromises()
+
+    const floors = [...wrapper.find('.buy-bar').element.children]
+    expect(floors[0].className).toContain('btn-primary')
+    expect(floors[1].className).toContain('btn-green')
     wrapper.unmount()
   })
 })

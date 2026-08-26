@@ -6,7 +6,7 @@ from httpx import ASGITransport, AsyncClient
 
 from sqlalchemy import select
 
-from app.models import Seller, SellerBot
+from app.models import Order, Seller, SellerBot
 from app.security import encrypt_bot_token
 from app.services.webapp_auth import sign_init_data, validate_init_data
 
@@ -110,11 +110,21 @@ async def test_full_buy_flow(db):
         assert order["status"] == "pending_payment"
         assert float(order["total"]) == pytest.approx(19.98)
 
-        # заказ виден покупателю и продавцу
+        # покупатель заказ видит сразу...
         r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
         assert [o["id"] for o in r.json()] == [order["id"]]
+        # ...а продавец нет: неоплаченная корзина в его список не попадает
+        r = await c.get(f"/api/seller/bots/{bot_id}/orders", headers=seller_headers())
+        assert r.json() == []
+
+        # «вебхук» оплаты перевёл заказ в paid — теперь он рабочий для продавца
+        async with db() as session:
+            paid_order = await session.get(Order, order["id"])
+            paid_order.status = "paid"
+            await session.commit()
         r = await c.get(f"/api/seller/bots/{bot_id}/orders", headers=seller_headers())
         seller_orders = r.json()
+        assert [o["id"] for o in seller_orders] == [order["id"]]
         assert seller_orders[0]["comment"] == "без лука"
         # сервис анонимный: личности покупателя в заказах продавца быть не должно
         assert "customer_username" not in seller_orders[0]
