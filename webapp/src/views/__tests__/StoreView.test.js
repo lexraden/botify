@@ -46,14 +46,14 @@ describe('StoreView — шапка магазина и поиск', () => {
     })
   }
 
-  it('шапка показывает букву магазина и @username', async () => {
+  it('шапка как в кабинете: «Магазин» крупно и @username под ним', async () => {
     fetchShop.mockResolvedValue({ shop_name: '@petshop', products: PRODUCTS })
     const wrapper = await mountView()
     await flushPromises()
-    expect(wrapper.text()).toContain('@petshop')
-    // фото бота из Telegram не тянем — Bot API не отдаёт боту его аватарку
-    expect(wrapper.find('.shop-id img').exists()).toBe(false)
-    expect(wrapper.find('.avatar.letter').text()).toBe('P')
+    // аватара нет вовсе — только заголовок раздела и юзернейм бота
+    expect(wrapper.find('.avatar').exists()).toBe(false)
+    expect(wrapper.find('.shop-id h2').text()).toBe('Магазин')
+    expect(wrapper.find('.bot-line').text()).toBe('@petshop')
   })
 
   it('поиск фильтрует каталог по названию и описанию', async () => {

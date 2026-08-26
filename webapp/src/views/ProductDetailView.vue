@@ -68,11 +68,11 @@ onMounted(async () => {
         <h3>{{ t('product.reviews') }}</h3>
         <!-- вместо личности — случайный псевдоним, сервис анонимный -->
         <div v-for="r in reviews" :key="r.created_at + String(r.rating)" class="review">
+          <p v-if="r.author_name" class="author">{{ r.author_name }}</p>
           <div class="review-head">
             <span class="stars">{{ '★'.repeat(r.rating) }}</span>
             <span class="date">{{ fmtDate(r.created_at) }}</span>
           </div>
-          <p v-if="r.author_name" class="author">{{ r.author_name }}</p>
           <p v-if="r.body">{{ r.body }}</p>
           <div v-if="r.reply_body" class="reply">
             <b>{{ t('product.sellerReply') }}</b>
@@ -88,7 +88,7 @@ onMounted(async () => {
       </div>
       <button
         v-else-if="!soldOut"
-        class="btn btn-primary"
+        class="btn btn-primary add-cart"
         @click="cart.add(product)"
       >
         {{ t('product.addToCart') }}
@@ -106,8 +106,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* нижний отступ с запасом под фиксированную плашку «Сделано через Botify» */
-.detail { padding: 18px 16px 76px; }
+.detail { padding: 18px 16px 24px; }
 .back { display: inline-block; margin-bottom: 14px; color: var(--sub); font-size: 14px; font-weight: 700; cursor: pointer; }
 .photo {
   width: 100%; aspect-ratio: 1; border-radius: 18px; background: var(--surface2);
@@ -131,7 +130,7 @@ h2 { font-size: 19px; margin: 14px 0 6px; }
 .review-head { display: flex; justify-content: space-between; align-items: baseline; }
 .stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; }
 .date { color: var(--sub); font-size: 11.5px; font-weight: 700; }
-.author { margin: 6px 0 0; font-size: 12px; font-weight: 700; color: var(--text); }
+.author { margin: 0 0 4px; font-size: 12px; font-weight: 700; color: var(--text); }
 .review p { margin: 5px 0 0; font-size: 13.5px; line-height: 1.45; }
 .reply {
   margin-top: 8px;
@@ -151,6 +150,7 @@ h2 { font-size: 19px; margin: 14px 0 6px; }
 }
 .stepper button:disabled { opacity: 0.35; }
 .stepper b { font-size: 16px; min-width: 20px; text-align: center; }
+.add-cart { margin-top: 20px; }
 .go-cart { margin-top: 10px; height: 44px; }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
 </style>

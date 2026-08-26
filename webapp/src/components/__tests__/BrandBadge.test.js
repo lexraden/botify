@@ -14,11 +14,11 @@ describe('BrandBadge — плашка «Сделано через Botify»', () 
     expect(link.text()).toContain('Botify')
   })
 
-  it('без закрашенной пилюли и ниже фиксированных панелей', () => {
+  it('живёт в потоке страницы, а не прибита к низу экрана', () => {
     const wrapper = mount(BrandBadge)
     const style = getComputedStyle(wrapper.find('a.made-with').element)
+    expect(style.position).not.toBe('fixed')
     expect(style.background).toBe('')
     expect(style.borderRadius).toBe('')
-    expect(Number(style.zIndex)).toBeLessThan(20) // .cart-bar / .pay = 20
   })
 })

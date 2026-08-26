@@ -60,13 +60,12 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
       <span class="muted">{{ t('profile.write') }}</span>
     </button>
 
-    <!-- нижний отступ с запасом под фиксированную плашку «Сделано через Botify» -->
     <BrandBadge />
   </div>
 </template>
 
 <style scoped lang="scss">
-.profile { padding: 18px 16px 76px; }
+.profile { padding: 18px 16px 24px; }
 .top {
   display: flex;
   align-items: center;

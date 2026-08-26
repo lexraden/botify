@@ -77,6 +77,10 @@ describe('ProductDetailView — рейтинг и отзывы на страни
     // звёзды отзыва соответствуют оценкам
     const stars = wrapper.findAll('.review .stars').map((s) => s.text())
     expect(stars).toEqual(['★★★★★', '★★★★'])
+    // имя автора идёт выше звёзд
+    const firstReview = wrapper.find('.review').element
+    const classes = [...firstReview.children].map((el) => el.className)
+    expect(classes.indexOf('author')).toBeLessThan(classes.indexOf('review-head'))
     wrapper.unmount()
   })
 

@@ -50,6 +50,16 @@ function entryRouteFor(me) {
   return '/shops'
 }
 
+// «Reload Page» в Telegram перезагружает текущий адрес, а bot_id в нём живёт
+// только пока его кто-то переносит: цели переходов пишутся чистым path.
+// Прокидываем параметр в каждый переход, где его нет, — тогда адрес всегда
+// остаётся с bot_id и перезагрузка витрины не уводит покупателя в онбординг.
+router.beforeEach((to, from) => {
+  const botId = to.query.bot_id ?? from.query.bot_id ?? getBotId()
+  if (!botId || to.query.bot_id === botId) return true
+  return { path: to.path, query: { ...to.query, bot_id: botId }, hash: to.hash }
+})
+
 let entryResolved = false
 
 router.beforeEach(async (to) => {

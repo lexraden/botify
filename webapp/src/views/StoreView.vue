@@ -45,16 +45,15 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="store">
+  <!-- с открытой корзиной снизу фиксированная панель — держим запас под неё -->
+  <div class="store" :class="{ 'has-cart': cart.count }">
     <p v-if="error" class="error">{{ error }}</p>
     <template v-else-if="shop">
       <header>
-        <!-- Личность магазина: буква юзернейма + @username. Фото бота из
-             Telegram сюда не тянем: Bot API не отдаёт боту его собственную
-             аватарку (getChat на себя — chat not found, getMyPhoto нет). -->
+        <!-- как в кабинете продавца: название раздела крупно, @username мельче под ним -->
         <div class="shop-id">
-          <div class="avatar letter">{{ shop.shop_name.charAt(1).toUpperCase() }}</div>
-          <b>{{ shop.shop_name }}</b>
+          <h2>{{ t('seller.shop') }}</h2>
+          <div class="bot-line">{{ shop.shop_name }}</div>
         </div>
         <div class="controls">
           <button
@@ -106,15 +105,12 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.store { padding: 18px 16px 96px; }
+.store { padding: 18px 16px 24px; }
+.store.has-cart { padding-bottom: 96px; }
 header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.shop-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.shop-id b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.avatar {
-  width: 40px; height: 40px; border-radius: 13px; flex-shrink: 0;
-  background: var(--accent); color: #fff;
-  display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px;
-}
+.shop-id { min-width: 0; }
+.shop-id h2 { font-size: 18px; margin: 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bot-line { font-size: 13px; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .controls { display: flex; gap: 8px; flex-shrink: 0; }
 .icon-btn {
   width: 42px; height: 42px; border-radius: 13px; border: 0; background: var(--surface2);

@@ -24,14 +24,12 @@ const router = useRouter()
       <template v-else>{{ t('orders.payUnavailable') }}</template>
     </p>
     <BuyerOrders />
-    <!-- нижний отступ с запасом под фиксированную плашку «Сделано через Botify» -->
     <BrandBadge />
   </div>
 </template>
 
 <style scoped lang="scss">
-/* нижний отступ с запасом под фиксированную плашку «Сделано через Botify» */
-.orders { padding: 16px 16px 76px; }
+.orders { padding: 16px 16px 24px; }
 header {
   display: flex;
   justify-content: space-between;

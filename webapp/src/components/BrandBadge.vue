@@ -1,9 +1,8 @@
 <script setup>
 // Единственная реклама платформы в витрине: покупатель видит её в каждом
-// магазине, клик ведёт на наш бот. Прибита к низу экрана (с safe-area);
-// страницы, где она показана, обязаны держать снизу свободное место — иначе
-// плашка ляжет поверх контента. Слой ниже фиксированных панелей (корзина,
-// кнопка оплаты): они перекрывают плашку, а не наоборот.
+// магазине, клик ведёт на наш бот. Плашка живёт в обычном потоке страницы —
+// просто последним элементом контента и скроллится вместе с ним; ставить её
+// нужно последним ребёнком вью, где она уместна.
 import { t } from '../i18n'
 
 const BOTIFY_URL = 'https://t.me/Botifyapp_bot'
@@ -17,13 +16,9 @@ const BOTIFY_URL = 'https://t.me/Botifyapp_bot'
 
 <style scoped>
 .made-with {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: calc(10px + env(safe-area-inset-bottom));
-  z-index: 1;
+  display: block;
   width: max-content;
-  margin: 0 auto;
+  margin: 18px auto 0;
   font-size: 12px;
   color: var(--sub);
   text-decoration: none;
