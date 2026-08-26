@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import BuyerContext, get_buyer
+from app.api.deps import BuyerContext, get_buyer, get_buyer_any_shop
 from app.config import get_settings
 from app.models import (
     Customer,
@@ -296,7 +296,7 @@ async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> Pa
 
 
 @router.post("/orders/{order_id}/cancel")
-async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> dict:
+async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer_any_shop)) -> dict:
     """Покупатель передумал: свой неоплаченный заказ отменяется им сам.
 
     Статус проверяется под блокировкой строки — заказ, который вебхук успел
@@ -325,7 +325,7 @@ async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) ->
 
 
 @router.get("/orders/my", response_model=list[OrderOut])
-async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
+async def my_orders(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> list[OrderOut]:
     result = await ctx.session.execute(
         select(Order)
         .where(Order.customer_id == ctx.customer.id)
@@ -431,7 +431,7 @@ async def _own_order_with_chat(ctx: BuyerContext, order_id: int) -> tuple[Order,
 
 
 @router.get("/orders/{order_id}/chat", response_model=BuyerOrderChatOut)
-async def get_order_chat(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> BuyerOrderChatOut:
+async def get_order_chat(order_id: int, ctx: BuyerContext = Depends(get_buyer_any_shop)) -> BuyerOrderChatOut:
     from app.services.chat import chat_is_open, closes_at, read_history
 
     order, chat = await _own_order_with_chat(ctx, order_id)
@@ -447,7 +447,7 @@ async def get_order_chat(order_id: int, ctx: BuyerContext = Depends(get_buyer)) 
 
 @router.post("/orders/{order_id}/chat/messages", response_model=BuyerChatMessageOut)
 async def send_order_chat_message(
-    order_id: int, payload: BuyerChatMessageIn, ctx: BuyerContext = Depends(get_buyer)
+    order_id: int, payload: BuyerChatMessageIn, ctx: BuyerContext = Depends(get_buyer_any_shop)
 ) -> BuyerChatMessageOut:
     """Сообщение покупателя. Пишется в историю сразу; продавцу уходит пуш в
     hub-бот без деталей личности, сам текст он увидит в кабинете."""
@@ -542,7 +542,7 @@ async def product_reviews(
 
 @router.post("/orders/{order_id}/reviews", response_model=list[BuyerReviewOut])
 async def leave_review(
-    order_id: int, payload: ReviewsIn, ctx: BuyerContext = Depends(get_buyer)
+    order_id: int, payload: ReviewsIn, ctx: BuyerContext = Depends(get_buyer_any_shop)
 ) -> list[BuyerReviewOut]:
     """Оценки позиций своего доставленного заказа. Повторная отправка по той же
     паре (заказ, товар) правит оценку — передумать можно. Пуш продавцу уходит
@@ -601,7 +601,7 @@ async def leave_review(
 
 @router.delete("/orders/{order_id}/reviews/{product_id}")
 async def delete_review(
-    order_id: int, product_id: int, ctx: BuyerContext = Depends(get_buyer)
+    order_id: int, product_id: int, ctx: BuyerContext = Depends(get_buyer_any_shop)
 ) -> dict:
     """Покупатель передумал: свой отзыв на позицию доставленного заказа можно
     снять целиком. Средний рейтинг пересчитается при следующей выдаче витрины."""
