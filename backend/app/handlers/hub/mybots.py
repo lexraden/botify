@@ -12,7 +12,7 @@ from app.services.bot_connect import delete_bot, disconnect_bot, enable_bot, get
 
 router = Router()
 
-STATUS_ICONS = {"active": "🟢", "pending": "🟡", "failed": "🔴"}
+STATUS_ICONS = {"active": "🟢", "pending": "🟡", "failed": "🔴", "revoked": "🔴"}
 
 SHOPS_PITCH = (
     "Каждый бот живёт своей жизнью: свой каталог, свои покупатели, своя касса."
@@ -23,10 +23,14 @@ NO_SHOPS = "У тебя пока нет подключённых магазин�
 
 def bot_status_line(bot: SellerBot) -> str:
     """Строка одного магазина в общем списке."""
-    if bot.is_active:
-        icon = STATUS_ICONS.get(bot.webhook_status, "⚪")
-        return f"{icon} <b>@{bot.bot_username}</b> — включён"
-    return f"⚪ <b>@{bot.bot_username}</b> — отключён"
+    if not bot.is_active:
+        return f"⚪ <b>@{bot.bot_username}</b> — отключён"
+    icon = STATUS_ICONS.get(bot.webhook_status, "⚪")
+    if bot.webhook_status == "revoked":
+        # отозванный токен чинится только переподключением, поэтому пишем
+        # прямо здесь, а не прячем за цветом кружка
+        return f"{icon} <b>@{bot.bot_username}</b> — токен отозван, подключи заново"
+    return f"{icon} <b>@{bot.bot_username}</b> — включён"
 
 
 def shops_menu_text(bots: list[SellerBot]) -> str:

@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -93,3 +94,45 @@ async def test_blocked_user_marked_banned_and_skipped_next_time(db):
         await process_due_mailings()
     assert send_mock2.await_count == 1
     assert send_mock2.call_args.args[0] == 1001
+
+
+@pytest.mark.asyncio
+async def test_long_mailing_marks_itself_alive_while_sending(db):
+    """Идущая рассылка отмечается живой по ходу отправки.
+
+    Без этого длинную рассылку по большой базе (0.06 с на сообщение — порог
+    в 10 минут набирается на ~10 тысячах покупателей) джоб оживления счёл бы
+    застрявшей и отправил заново, задвоив её части покупателей.
+    """
+    from app.services.mailing import revive_stuck_mailings
+
+    mailing_id = await setup_mailing(db, customer_ids=(2001, 2002, 2003, 2004))
+    seen: list[int] = []
+
+    async def spy(mid: int) -> None:
+        seen.append(mid)
+        # рассылка «идёт давно»: без отметки её бы оживили
+        async with get_session() as session:
+            m = await session.get(Mailing, mid)
+            m.heartbeat_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+            await session.commit()
+        await real_touch(mid)
+
+    from app.services.mailing import _touch_heartbeat as real_touch
+
+    with (
+        patch("app.services.mailing.make_seller_bot", return_value=fake_bot(AsyncMock())),
+        patch("app.services.mailing.SEND_DELAY_SEC", 0),
+        patch("app.services.mailing.HEARTBEAT_EVERY", 2),
+        patch("app.services.mailing._touch_heartbeat", new=spy),
+    ):
+        await process_due_mailings()
+
+    assert seen == [mailing_id, mailing_id]  # после 2-го и 4-го покупателя
+
+    # отметка свежая — оживлять нечего (рассылка уже done, но проверим явно)
+    async with get_session() as session:
+        mailing = await session.get(Mailing, mailing_id)
+        mailing.status = "sending"
+        await session.commit()
+    assert await revive_stuck_mailings() == 0
