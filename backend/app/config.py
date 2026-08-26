@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     # живёт час, окно — с запасом на задержки вебхука и наши рестарты.
     reconcile_window_hours: float = 6.0
 
+    # Куда ведёт «Поддержка» в профиле покупателя. Пусто — кнопки нет вовсе:
+    # раньше она вела в hub-бот, то есть покупателя с проблемой по заказу
+    # регистрировали продавцом и показывали ему рекламу конструктора ботов.
+    support_url: str = ""
+
     @field_validator("database_url")
     @classmethod
     def force_asyncpg(cls, v: str) -> str:

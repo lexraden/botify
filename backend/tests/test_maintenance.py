@@ -286,3 +286,39 @@ async def test_long_mailing_keeps_itself_alive(db):
     assert await mailing_service.revive_stuck_mailings() == 0
     async with db() as session:
         assert (await session.get(Mailing, mailing_id)).status == "sending"
+
+
+# --------------------------------------------------------------------------
+# Блокировка бота ≠ бан аккаунта
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_blocked_bot_does_not_take_away_purchases(db):
+    """Покупатель заглушил бота, чтобы не получать рассылки. Раньше это
+    закрывало ему весь Mini App — вместе с оплаченными заказами и перепиской."""
+    from app.api.deps import get_buyer  # noqa: F401  (проверяем поведение, не импорт)
+    from app.models import Customer
+    from app.services.channels import TgUserInfo, upsert_customer
+
+    await make_order(db)
+    async with db() as session:
+        bot = (await session.execute(select(SellerBot))).scalars().first()
+        customer = (await session.execute(select(Customer))).scalars().first()
+        customer.mailing_blocked = True  # рассылка не доставилась
+        await session.commit()
+        bot_id, customer_tg = bot.id, customer.telegram_id
+
+    # доступ остаётся: mailing_blocked про доставку, а не про права
+    async with db() as session:
+        customer = (await session.execute(select(Customer))).scalars().first()
+        assert customer.is_banned is False
+
+    # вернулся и написал боту — отметка снимается сама
+    async with db() as session:
+        bot = await session.get(SellerBot, bot_id)
+    await upsert_customer(bot, TgUserInfo(telegram_id=customer_tg, username=None, first_name="Аня"))
+
+    async with db() as session:
+        customer = (await session.execute(select(Customer))).scalars().first()
+        assert customer.mailing_blocked is False

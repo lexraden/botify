@@ -11,6 +11,7 @@ import {
 } from '../api'
 import { t } from '../i18n'
 import { openTelegramLink } from '../services/telegram'
+import { apiError } from '../services/apiError'
 
 const orders = ref(null)
 
@@ -71,7 +72,7 @@ async function submit(o) {
     // флаги и тексты отзывов приходят с сервера
     await refresh()
   } catch (e) {
-    sendError.value = e.response?.data?.detail || t('orders.sendError')
+    sendError.value = apiError(e, 'orders.sendError')
   } finally {
     sending.value = false
   }
@@ -84,7 +85,7 @@ async function removeReview(o, productId) {
     formFor.value = null
     await refresh()
   } catch (e) {
-    sendError.value = e.response?.data?.detail || t('orders.deleteError')
+    sendError.value = apiError(e, 'orders.deleteError')
   }
 }
 
@@ -104,7 +105,7 @@ async function retryPay(o) {
       actionError.value = { id: o.id, text: t('orders.payUnavailable') }
     }
   } catch (e) {
-    actionError.value = { id: o.id, text: e.response?.data?.detail || t('orders.payError') }
+    actionError.value = { id: o.id, text: apiError(e, 'orders.payError') }
   } finally {
     busyId.value = null
   }
@@ -119,7 +120,7 @@ async function doCancel(o) {
     // статус сменился на сервере — подтягиваем, не дожидаясь опроса
     await refresh()
   } catch (e) {
-    actionError.value = { id: o.id, text: e.response?.data?.detail || t('orders.cancelError') }
+    actionError.value = { id: o.id, text: apiError(e, 'orders.cancelError') }
   } finally {
     busyId.value = null
   }
@@ -130,17 +131,17 @@ async function doCancel(o) {
 // в свёрнутом Telegram таймер не нужен.
 let timer = null
 
-async function refresh() {
+async function refresh(silent = false) {
   try {
     // тихо: прошлые данные остаются на экране, ошибки сети не роняем
-    orders.value = await fetchMyOrders()
+    orders.value = await fetchMyOrders(silent)
   } catch {
     /* покажем данные прошлой загрузки */
   }
 }
 
 function refreshIfVisible() {
-  if (document.visibilityState === 'visible') refresh()
+  if (document.visibilityState === 'visible') refresh(true)  // фоновый — без оверлея
 }
 
 onMounted(async () => {

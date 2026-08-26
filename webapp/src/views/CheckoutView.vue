@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { createOrder, trackEvent } from '../api'
 import { t } from '../i18n'
 import { useCartStore } from '../stores/cart'
+import { apiError } from '../services/apiError'
 
 const router = useRouter()
 const cart = useCartStore()
@@ -53,7 +54,7 @@ async function pay() {
     }
     router.push({ name: 'my-orders', query: { created: order.id, pay: order.payment_url ? 1 : 0 } })
   } catch (e) {
-    error.value = e.response?.data?.detail || t('checkout.error')
+    error.value = apiError(e, 'checkout.error')
   } finally {
     submitting.value = false
   }

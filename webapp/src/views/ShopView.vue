@@ -78,6 +78,9 @@ const WITHDRAW_ERROR = computed(() => ({
   no_token: t('withdraw.no_token'),
   too_small: t('withdraw.too_small'),
   failed: t('withdraw.failed'),
+  // деньги на месте, но часть долей ждёт завершения прошлой пачки — самая
+  // нервная точка продукта, безымянного «не получилось» тут быть не должно
+  nothing_to_send: t('withdraw.nothing_to_send'),
 }))
 
 // Единственный отказ, который продавец может исправить сам: @CryptoBot ещё

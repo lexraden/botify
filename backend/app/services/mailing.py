@@ -121,7 +121,7 @@ async def send_mailing(mailing_id: int) -> None:
                 await session.execute(
                     select(Customer).where(
                         Customer.bot_id == mailing.bot_id,
-                        Customer.is_banned.is_(False),
+                        Customer.mailing_blocked.is_(False),
                     )
                 )
             )
@@ -174,7 +174,8 @@ async def send_mailing(mailing_id: int) -> None:
                 .all()
             )
             for customer in blocked:
-                customer.is_banned = True
+                # не доставляется — это про рассылку, а не про доступ
+                customer.mailing_blocked = True
         await session.commit()
 
     logger.info("Рассылка %s: отправлено %s, ошибок %s", mailing_id, sent, failed)

@@ -2,6 +2,7 @@
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { fetchOrderChat, sendOrderChatMessage, sendOrderChatPhoto } from '../api'
 import { t, intlLocale } from '../i18n'
+import { apiError } from '../services/apiError'
 
 const props = defineProps({
   botId: { type: [String, Number], required: true },
@@ -15,19 +16,19 @@ const sending = ref(false)
 const scroller = ref(null)
 const fileInput = ref(null)
 
-async function reload() {
+async function reload(silent = false) {
   try {
-    chat.value = await fetchOrderChat(props.botId, props.orderId)
+    chat.value = await fetchOrderChat(props.botId, props.orderId, silent)
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.detail || t('chat.loadError')
+    error.value = apiError(e, 'chat.loadError')
   }
 }
 
 // опрос, пока экран открыт; в свёрнутом Telegram поллинг не нужен
 let pollTimer = null
 function pollIfVisible() {
-  if (document.visibilityState === 'visible') reload()
+  if (document.visibilityState === 'visible') reload(true)  // фоновый — без оверлея
 }
 onMounted(() => {
   reload()

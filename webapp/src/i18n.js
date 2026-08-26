@@ -84,6 +84,12 @@ export const DICT = {
     'checkout.phonePh': 'Телефон для курьера',
     'checkout.addressPh': 'Адрес или пункт выдачи',
     'checkout.deliveryRequired': 'Заполни имя, телефон и адрес — без них продавцу некуда отправить заказ.',
+    'errors.banned': 'Этот магазин закрыл тебе доступ. Напиши продавцу в чат заказа.',
+    'errors.shopClosed': 'Магазин сейчас закрыт. Загляни позже.',
+    'errors.foreignOrder': 'Этот заказ не твой.',
+    'errors.invoiceFailed': 'Не получилось создать счёт. Попробуй ещё раз через минуту.',
+    'errors.orderChanged': 'Заказ уже изменился — обнови экран.',
+    'errors.tooBig': 'Файл слишком большой.',
 
     // чат заказа
     'chat.back': '← К заказам',
@@ -190,6 +196,7 @@ export const DICT = {
     'withdraw.too_small': 'Сумма пока мала для перевода — она подождёт следующих продаж.',
     'withdraw.failed': 'Перевод не прошёл — подробности пришли в чат с ботом.',
     'withdraw.generic': 'Не получилось вывести.',
+    'withdraw.nothing_to_send': 'Часть выплат ждёт завершения прошлого перевода — нажми «Вывести» ещё раз чуть позже.',
     'withdraw.retryFailed': 'Не получилось вывести — попробуй ещё раз.',
     'reviews.blockTitle': 'Отзывы покупателей',
     'reviews.yourReply': 'Ваш ответ',
@@ -235,6 +242,7 @@ export const DICT = {
     'form.showOnStorefront': 'Показывать на витрине',
     'form.save': 'Сохранить',
     'form.saveError': 'Не удалось сохранить',
+    'form.priceInvalid': 'Цена — число больше нуля, например 9.99 (можно и через запятую).',
 
     // онбординг: приветствие
     'welcome.title': 'Твой магазин внутри Telegram',
@@ -371,6 +379,12 @@ export const DICT = {
     'checkout.phonePh': 'Phone for the courier',
     'checkout.addressPh': 'Address or pickup point',
     'checkout.deliveryRequired': 'Fill in name, phone and address — the seller has nowhere to ship without them.',
+    'errors.banned': 'This shop has blocked your access. Message the seller in the order chat.',
+    'errors.shopClosed': 'The shop is closed right now. Check back later.',
+    'errors.foreignOrder': 'This order is not yours.',
+    'errors.invoiceFailed': 'Could not create the invoice. Try again in a minute.',
+    'errors.orderChanged': 'The order has already changed — refresh the screen.',
+    'errors.tooBig': 'The file is too large.',
 
     // order chat
     'chat.back': '← To orders',
@@ -480,6 +494,7 @@ export const DICT = {
       'The amount is still too small for a transfer — it will wait for more sales.',
     'withdraw.failed': 'The transfer failed — details were sent to the bot chat.',
     'withdraw.generic': "Couldn't withdraw.",
+    'withdraw.nothing_to_send': 'Some payouts are waiting for the previous transfer to finish — tap Withdraw again a bit later.',
     'withdraw.retryFailed': "Couldn't withdraw — try again.",
     'reviews.blockTitle': 'Customer reviews',
     'reviews.yourReply': 'Your reply',
@@ -525,6 +540,7 @@ export const DICT = {
     'form.showOnStorefront': 'Show on the storefront',
     'form.save': 'Save',
     'form.saveError': 'Could not save',
+    'form.priceInvalid': 'Price must be a number above zero, like 9.99.',
 
     // onboarding: welcome
     'welcome.title': 'Your shop inside Telegram',

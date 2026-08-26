@@ -55,7 +55,7 @@ async def test_mailing_sends_to_all_customers(db):
 
 
 @pytest.mark.asyncio
-async def test_blocked_user_marked_banned_and_skipped_next_time(db):
+async def test_blocked_user_skipped_next_time_but_keeps_access(db):
     mailing_id = await setup_mailing(db, customer_ids=(1001, 1002))
 
     async def send(chat_id, *args, **kwargs):
@@ -75,13 +75,15 @@ async def test_blocked_user_marked_banned_and_skipped_next_time(db):
         assert mailing.failed_count == 1
         seller = await session.get(Seller, mailing.seller_id)
 
-        # заблокировавший бота — is_banned, следующая рассылка его не тронет
+        # заблокировавший бота помечается только по доставке: следующая
+        # рассылка его не тронет, но доступ к своим покупкам он не теряет
         from sqlalchemy import select
 
-        banned = (
-            await session.execute(select(Customer).where(Customer.is_banned.is_(True)))
+        blocked = (
+            await session.execute(select(Customer).where(Customer.mailing_blocked.is_(True)))
         ).scalar_one()
-        assert banned.telegram_id == 1002
+        assert blocked.telegram_id == 1002
+        assert blocked.is_banned is False
 
         session.add(Mailing(seller_id=seller.id, bot_id=mailing.bot_id, text="Ещё раз"))
         await session.commit()

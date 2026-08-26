@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import BuyerContext, get_buyer
+from app.config import get_settings
 from app.models import (
     Customer,
     Order,
@@ -47,6 +48,9 @@ class ProductOut(BaseModel):
 class ShopOut(BaseModel):
     shop_name: str
     products: list[ProductOut]
+    # Куда писать, если проблема с заказом. Пусто — в профиле нет кнопки:
+    # лучше её отсутствие, чем ссылка не туда.
+    support_url: str | None = None
 
 
 class CartItemIn(BaseModel):
@@ -127,7 +131,11 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
         product_out = ProductOut.model_validate(p)
         product_out.avg_rating, product_out.reviews_count = ratings.get(p.id, (None, 0))
         out.append(product_out)
-    return ShopOut(shop_name=f"@{ctx.bot.bot_username}", products=out)
+    return ShopOut(
+        shop_name=f"@{ctx.bot.bot_username}",
+        products=out,
+        support_url=get_settings().support_url or None,
+    )
 
 
 class EventIn(BaseModel):

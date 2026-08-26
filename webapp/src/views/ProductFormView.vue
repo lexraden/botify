@@ -3,6 +3,7 @@ import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchProducts, saveProduct, uploadProductImage } from '../api'
 import { t } from '../i18n'
+import { apiError } from '../services/apiError'
 
 const route = useRoute()
 const router = useRouter()
@@ -60,7 +61,7 @@ async function onPickImage(e) {
     const res = await uploadProductImage(botId.value, file)
     form.value.image_url = res.url
   } catch (err) {
-    imageError.value = err.response?.data?.detail || t('form.uploadError')
+    imageError.value = apiError(err, 'form.uploadError')
   } finally {
     uploadingImage.value = false
   }
@@ -91,6 +92,15 @@ onMounted(async () => {
 
 async function submit() {
   if (saving.value) return
+  // Запятая как разделитель — самый естественный ввод с русской раскладки и
+  // с мобильной цифровой клавиатуры. Без нормализации сервер отвечал 422, а в
+  // форму печатался массив ошибок валидации Pydantic.
+  const price = String(form.value.price).trim().replace(',', '.')
+  if (!/^\d+(\.\d{1,2})?$/.test(price) || Number(price) <= 0) {
+    error.value = t('form.priceInvalid')
+    return
+  }
+
   saving.value = true
   error.value = ''
   try {
@@ -101,7 +111,7 @@ async function submit() {
       title: f.title,
       description: f.description || null,
       image_url: f.image_url || null,
-      price: f.price,
+      price,
       digital_content: f.type !== 'physical' && f.digital_url ? { url: f.digital_url } : null,
       // сток считаем только у товаров; у digital/услуг его нет
       stock: f.type === 'physical' && f.stock !== '' ? Number(f.stock) : null,
@@ -109,7 +119,7 @@ async function submit() {
     })
     router.push(`/shop/${botId.value}`)
   } catch (e) {
-    error.value = e.response?.data?.detail || t('form.saveError')
+    error.value = apiError(e, 'form.saveError')
   } finally {
     saving.value = false
   }

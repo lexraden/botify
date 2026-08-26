@@ -1105,7 +1105,13 @@ async def create_mailing(
                 await session.execute(
                     select(func.count())
                     .select_from(Customer)
-                    .where(Customer.bot_id == shop.id, Customer.is_banned.is_(False))
+                    .where(
+                        Customer.bot_id == shop.id,
+                        Customer.is_banned.is_(False),
+                        # тем, у кого бот заблокирован, рассылка всё равно не
+                        # уйдёт — в лимит тарифа они не считаются
+                        Customer.mailing_blocked.is_(False),
+                    )
                 )
             ).scalar_one()
             if recipients > cap:
