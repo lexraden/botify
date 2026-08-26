@@ -1,4 +1,5 @@
-"""Напоминание продавцу о заказах, которые оплачены, но не отправлены.
+"""Заказы, застрявшие между сторонами: не отправлен продавцом и не подтверждён
+покупателем.
 
 Отдельного признака «ручная доставка» в схеме нет и не нужно: цифровые заказы
 переходят в `delivered` прямо в момент оплаты (app/payments/service.py), так
@@ -13,13 +14,17 @@
 на продавца, даже если зависших заказов несколько: десять пушей подряд читаются
 как спам и работают хуже одного списка. Авто-отмена с возвратом денег сюда не
 входит — рефанд через Crypto Pay требует отдельной проработки.
+
+Вторая половина — обратная: заказ отправлен, но покупатель не нажал «Получил».
+Тогда его закрывает `auto_confirm_delivery`, иначе окно чата не начинается и
+оценить покупку нельзя.
 """
 
 import html
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.sql import func
 
 from app.config import get_settings
@@ -31,6 +36,40 @@ logger = logging.getLogger(__name__)
 
 # Сколько заказов перечислять поимённо, прежде чем свернуть в «и ещё N»
 MAX_LISTED = 5
+
+
+async def auto_confirm_delivery() -> int:
+    """Отметить полученными заказы, отправленные давно и без подтверждения.
+
+    «Доставлен» ставит покупатель кнопкой «Получил», но часть людей её просто
+    не нажмёт. Без страховки такой заказ навис бы навсегда: окно чата не
+    начинается, оценить покупку нельзя, статус вечно «Отправлен».
+
+    Срок берётся с большим запасом на долгую доставку (`auto_deliver_days`).
+    Возвращает число закрытых заказов.
+    """
+    days = get_settings().auto_deliver_days
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    async with get_session() as session:
+        result = await session.execute(
+            update(Order)
+            .where(
+                Order.status == "fulfilled",
+                Order.paid_at.is_not(None),
+                Order.paid_at < cutoff,
+            )
+            .values(status="delivered", delivered_at=func.now())
+            .execution_options(synchronize_session=False)
+        )
+        await session.commit()
+    if result.rowcount:
+        logger.info(
+            "Заказов отмечено полученными автоматически (спустя %s дней): %d",
+            days,
+            result.rowcount,
+        )
+    return result.rowcount
 
 
 async def remind_stuck_orders() -> int:

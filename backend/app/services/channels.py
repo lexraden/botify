@@ -120,6 +120,9 @@ async def upsert_customer(
         if customer is not None:
             customer.username = user.username
             customer.first_name = user.first_name
+            # Раз он снова здесь — бот разблокирован, рассылки опять доходят.
+            # Иначе отметка «не доставляется» осталась бы навсегда.
+            customer.mailing_blocked = False
             await session.commit()
             return customer, False
 

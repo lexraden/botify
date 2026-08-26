@@ -1,6 +1,7 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { fetchShop } from '../api'
 import { t } from '../i18n'
 import BrandBadge from '../components/BrandBadge.vue'
 import BuyerOrders from '../components/BuyerOrders.vue'
@@ -14,7 +15,17 @@ const router = useRouter()
 // него не берёт, авторизация — по подписанному initData на каждом запросе.
 const me = tg?.initDataUnsafe?.user ?? null
 
-const SUPPORT_URL = 'https://t.me/Botifyapp_bot'
+// Адрес поддержки приходит с сервера (SUPPORT_URL в окружении). Не задан —
+// пункта нет вовсе: раньше он вёл в hub-бот, и покупатель с проблемой по
+// заказу оказывался зарегистрирован продавцом и читал рекламу конструктора.
+const supportUrl = ref('')
+onMounted(async () => {
+  try {
+    supportUrl.value = (await fetchShop()).support_url || ''
+  } catch {
+    /* поддержка — не повод ронять профиль */
+  }
+})
 
 // тема: явный выбор покупателя, иначе как в клиенте Telegram
 const isDark = computed(() =>
@@ -55,7 +66,7 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
     <!-- покупки открыты прямо в профиле, отдельного пункта меню больше нет -->
     <BuyerOrders />
 
-    <button class="menu-item" @click="openTelegramLink(SUPPORT_URL)">
+    <button v-if="supportUrl" class="menu-item" @click="openTelegramLink(supportUrl)">
       <span>{{ t('profile.support') }}</span>
       <span class="muted">{{ t('profile.write') }}</span>
     </button>

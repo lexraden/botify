@@ -51,9 +51,15 @@ async def test_product_reviews_flow(db):
                 headers=seller_headers(),
                 json={"note": "Выдано на кассе"},
             )
+            # «Доставлен» ставит покупатель — оценивать можно только после
+            await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/received",
+                headers=buyer_headers(),
+            )
             assert r.status_code == 200, r.text
             push_text = notify_mock.call_args.args[2]
-            assert "Оцени покупки" in push_text
+            # после отправки зовём отметить получение, оценка — уже там
+            assert "отметь в «Моих покупках»" in push_text
 
             # чужой товар в payload не проходит целиком
             r = await c.post(
@@ -165,7 +171,7 @@ async def test_review_author_falls_back_to_pseudonym_without_name(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=anon_headers,
-            json={"items": [{"product_id": pid, "qty": 1}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 1}]},
         )
         order_id = r.json()["id"]
 
@@ -191,6 +197,10 @@ async def test_review_author_falls_back_to_pseudonym_without_name(db):
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
                 json={"note": "Выдано"},
+            )
+            # подтверждает получение сам покупатель этого заказа
+            await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/received", headers=anon_headers
             )
             assert r.status_code == 200, r.text
 
@@ -220,6 +230,11 @@ async def test_delete_own_review_recalculates_rating(db):
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
                 json={"note": "Выдано"},
+            )
+            # «Доставлен» ставит покупатель — оценивать можно только после
+            await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/received",
+                headers=buyer_headers(),
             )
             assert r.status_code == 200, r.text
 
@@ -270,6 +285,11 @@ async def test_seller_reply_visible_to_buyers(db):
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
                 json={"note": "Выдано"},
+            )
+            # «Доставлен» ставит покупатель — оценивать можно только после
+            await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/received",
+                headers=buyer_headers(),
             )
             assert r.status_code == 200, r.text
 

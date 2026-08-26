@@ -19,14 +19,23 @@ class BuyerContext:
     session: AsyncSession
 
 
-async def get_buyer(
-    bot_id: int = Path(),
-    x_init_data: str = Header(default=""),
-    session: AsyncSession = Depends(get_api_session),
+async def _buyer_context(
+    bot_id: int,
+    x_init_data: str,
+    session: AsyncSession,
+    *,
+    require_active: bool,
 ) -> BuyerContext:
-    """Покупатель: initData подписана токеном seller-бота, из которого открыта витрина."""
+    """Покупатель: initData подписана токеном seller-бота, из которого открыта витрина.
+
+    `require_active` разделяет две разные вещи. Витрина и оформление заказа у
+    отключённого магазина закрыты — покупать там нечего. А свои уже оплаченные
+    заказы, переписка с продавцом и отзывы остаются доступными: продавец нажал
+    «Отключить», а деньги покупателя уже у него, и отбирать вместе с витриной
+    историю покупок нельзя.
+    """
     bot = await session.get(SellerBot, bot_id)
-    if bot is None or not bot.is_active:
+    if bot is None or (require_active and not bot.is_active):
         raise HTTPException(status_code=404, detail="shop not found")
 
     token = decrypt_bot_token(bot.bot_token_encrypted)
@@ -48,6 +57,24 @@ async def get_buyer(
     if customer.is_banned:
         raise HTTPException(status_code=403, detail="banned")
     return BuyerContext(customer=customer, bot=bot, session=session)
+
+
+async def get_buyer(
+    bot_id: int = Path(),
+    x_init_data: str = Header(default=""),
+    session: AsyncSession = Depends(get_api_session),
+) -> BuyerContext:
+    """Витрина и покупка: только у работающего магазина."""
+    return await _buyer_context(bot_id, x_init_data, session, require_active=True)
+
+
+async def get_buyer_any_shop(
+    bot_id: int = Path(),
+    x_init_data: str = Header(default=""),
+    session: AsyncSession = Depends(get_api_session),
+) -> BuyerContext:
+    """Свои заказы, чат и отзывы — доступны и у отключённого магазина."""
+    return await _buyer_context(bot_id, x_init_data, session, require_active=False)
 
 
 async def get_seller(

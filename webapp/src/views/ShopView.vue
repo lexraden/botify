@@ -78,6 +78,9 @@ const WITHDRAW_ERROR = computed(() => ({
   no_token: t('withdraw.no_token'),
   too_small: t('withdraw.too_small'),
   failed: t('withdraw.failed'),
+  // деньги на месте, но часть долей ждёт завершения прошлой пачки — самая
+  // нервная точка продукта, безымянного «не получилось» тут быть не должно
+  nothing_to_send: t('withdraw.nothing_to_send'),
 }))
 
 // Единственный отказ, который продавец может исправить сам: @CryptoBot ещё
@@ -131,6 +134,9 @@ const STATUS = computed(() => ({
 }))
 // у оплаченных заказов есть чат с покупателем (закрывается сам через 72ч после доставки)
 const CHAT_STATUSES = ['paid', 'fulfilled', 'delivered']
+// Отправить можно оплаченный, а отправленный — переотправить: опечатку
+// в треке продавец должен уметь поправить, пока посылка едет.
+const FULFILLABLE = ['paid', 'fulfilled']
 const TYPE_LABEL = computed(() => ({
   physical: t('type.physical'),
   digital: t('type.digital'),
@@ -328,6 +334,13 @@ async function submitMailing() {
               <span>{{ (Number(i.price) * i.qty).toFixed(2) }} USDT</span>
             </div>
           </div>
+          <!-- адрес нужен, чтобы отправить: показываем отдельным блоком,
+               а не в общем ряду примечаний -->
+          <div v-if="o.delivery" class="delivery">
+            <b>{{ t('seller.deliveryTitle') }}</b>
+            <span>{{ o.delivery.name }} · {{ o.delivery.phone }}</span>
+            <span>{{ o.delivery.address }}</span>
+          </div>
           <div v-if="o.comment" class="comment">💬 {{ o.comment }}</div>
           <div v-if="o.fulfillment" class="comment">📤 {{ fulfillmentLine(o.fulfillment) }}</div>
 
@@ -339,7 +352,7 @@ async function submitMailing() {
             {{ t('seller.chatWithBuyer') }}
           </button>
           <button
-            v-if="o.status === 'paid' && fulfillForm.orderId !== o.id"
+            v-if="FULFILLABLE.includes(o.status) && fulfillForm.orderId !== o.id"
             class="btn btn-green fulfill-btn"
             @click="openFulfill(o)"
           >
@@ -567,6 +580,13 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
   font-size: 11px; font-weight: 800;
 }
 .comment { background: var(--surface2); border-radius: 11px; padding: 9px 11px; font-size: 13px; }
+.delivery {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface2); border-radius: 10px;
+  padding: 8px 10px; margin-top: 8px; font-size: 13px;
+  b { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--sub); }
+  span { word-break: break-word; }
+}
 .items {
   display: flex; flex-direction: column; gap: 5px;
   border-top: 1px solid var(--surface2); border-bottom: 1px solid var(--surface2);

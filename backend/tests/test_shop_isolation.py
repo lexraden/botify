@@ -62,14 +62,14 @@ async def test_two_shops_of_one_seller_are_isolated(db):
         r = await c.post(
             f"/api/store/{shop_a}/orders",
             headers={"X-Init-Data": init_data_for(BUYER_B, __import__("os").environ["HUB_BOT_TOKEN"])},
-            json={"items": [{"product_id": product_b, "qty": 1}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": product_b, "qty": 1}]},
         )
         assert r.status_code == 401  # чужая подпись вообще не проходит
 
         r = await c.post(
             f"/api/store/{shop_b}/orders",
             headers=buyer_b,
-            json={"items": [{"product_id": product_b, "qty": 1}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": product_b, "qty": 1}]},
         )
         assert r.status_code == 200
 

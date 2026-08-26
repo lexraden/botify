@@ -4,6 +4,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   cancelOrder,
+  confirmReceived,
   deleteOrderReview,
   fetchMyOrders,
   payOrder,
@@ -11,6 +12,7 @@ import {
 } from '../api'
 import { t } from '../i18n'
 import { openTelegramLink } from '../services/telegram'
+import { apiError } from '../services/apiError'
 
 const orders = ref(null)
 
@@ -71,7 +73,7 @@ async function submit(o) {
     // флаги и тексты отзывов приходят с сервера
     await refresh()
   } catch (e) {
-    sendError.value = e.response?.data?.detail || t('orders.sendError')
+    sendError.value = apiError(e, 'orders.sendError')
   } finally {
     sending.value = false
   }
@@ -84,7 +86,7 @@ async function removeReview(o, productId) {
     formFor.value = null
     await refresh()
   } catch (e) {
-    sendError.value = e.response?.data?.detail || t('orders.deleteError')
+    sendError.value = apiError(e, 'orders.deleteError')
   }
 }
 
@@ -104,7 +106,22 @@ async function retryPay(o) {
       actionError.value = { id: o.id, text: t('orders.payUnavailable') }
     }
   } catch (e) {
-    actionError.value = { id: o.id, text: e.response?.data?.detail || t('orders.payError') }
+    actionError.value = { id: o.id, text: apiError(e, 'orders.payError') }
+  } finally {
+    busyId.value = null
+  }
+}
+
+// Отправка и получение — разные события: пока покупатель не подтвердил, чат
+// с продавцом остаётся открытым, а оценивать ещё нечего.
+async function confirmDelivery(o) {
+  busyId.value = o.id
+  actionError.value = { id: null, text: '' }
+  try {
+    await confirmReceived(o.id)
+    await refresh()
+  } catch (e) {
+    actionError.value = { id: o.id, text: apiError(e, 'orders.receivedError') }
   } finally {
     busyId.value = null
   }
@@ -119,7 +136,7 @@ async function doCancel(o) {
     // статус сменился на сервере — подтягиваем, не дожидаясь опроса
     await refresh()
   } catch (e) {
-    actionError.value = { id: o.id, text: e.response?.data?.detail || t('orders.cancelError') }
+    actionError.value = { id: o.id, text: apiError(e, 'orders.cancelError') }
   } finally {
     busyId.value = null
   }
@@ -130,17 +147,17 @@ async function doCancel(o) {
 // в свёрнутом Telegram таймер не нужен.
 let timer = null
 
-async function refresh() {
+async function refresh(silent = false) {
   try {
     // тихо: прошлые данные остаются на экране, ошибки сети не роняем
-    orders.value = await fetchMyOrders()
+    orders.value = await fetchMyOrders(silent)
   } catch {
     /* покажем данные прошлой загрузки */
   }
 }
 
 function refreshIfVisible() {
-  if (document.visibilityState === 'visible') refresh()
+  if (document.visibilityState === 'visible') refresh(true)  // фоновый — без оверлея
 }
 
 onMounted(async () => {
@@ -179,6 +196,15 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="actionError.id === o.id" class="action-error">{{ actionError.text }}</p>
       </template>
+      <!-- отправлен, но ещё не получен: отметку ставит покупатель -->
+      <template v-if="o.status === 'fulfilled'">
+        <div class="pay-actions">
+          <button class="pay-btn" :disabled="busyId === o.id" @click="confirmDelivery(o)">
+            {{ t('orders.received') }}
+          </button>
+        </div>
+        <p v-if="actionError.id === o.id" class="action-error">{{ actionError.text }}</p>
+      </template>
       <div v-for="i in o.items" :key="i.product_id" class="item">
         {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
         <span v-if="i.reviewed" class="reviewed-mark">{{ t('orders.reviewedMark') }}</span>
@@ -213,6 +239,8 @@ onBeforeUnmount(() => {
             maxlength="1000"
           />
         </div>
+        <!-- подпись отзыва не анонимна: говорим об этом до отправки -->
+        <p class="rate-note">{{ t('orders.reviewNameNote') }}</p>
         <p v-if="sendError" class="rate-error">{{ sendError }}</p>
         <div class="form-actions">
           <button class="btn btn-primary" :disabled="sending" @click="submit(o)">
@@ -313,6 +341,7 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 .rate-error { color: var(--red); font-size: 12.5px; margin: 0; }
+.rate-note { font-size: 12px; color: var(--sub); margin: 6px 0 0; }
 .form-actions {
   display: flex;
   align-items: center;

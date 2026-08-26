@@ -3,8 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 const fetchMyOrders = vi.fn()
+const fetchShop = vi.fn()
 vi.mock('../../api', () => ({
   fetchMyOrders: (...args) => fetchMyOrders(...args),
+  fetchShop: (...args) => fetchShop(...args),
   submitOrderReviews: vi.fn(),
   deleteOrderReview: vi.fn(),
 }))
@@ -23,6 +25,8 @@ describe('ProfileView — профиль покупателя', () => {
 
   beforeEach(() => {
     fetchMyOrders.mockReset()
+    fetchShop.mockReset()
+    fetchShop.mockResolvedValue({ support_url: 'https://t.me/botify_support' })
     setLocale('ru')
     themePref.value = null
     router.push('/profile')
@@ -78,5 +82,20 @@ describe('ProfileView — профиль покупателя', () => {
     await prefs[0].trigger('click')
     expect(themePref.value).toBe('light')
     expect(prefs[0].text()).toBe('🌙')
+  })
+
+  it('без настроенной поддержки кнопки нет — лучше никакой, чем не туда', async () => {
+    fetchMyOrders.mockResolvedValue([])
+    fetchShop.mockResolvedValue({ support_url: null })
+    const w = await mountView()
+    await flushPromises()
+    expect(w.text()).not.toContain('Поддержка')
+  })
+
+  it('настроенная поддержка показывается пунктом меню', async () => {
+    fetchMyOrders.mockResolvedValue([])
+    const w = await mountView()
+    await flushPromises()
+    expect(w.text()).toContain('Поддержка')
   })
 })

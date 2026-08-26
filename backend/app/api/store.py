@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import BuyerContext, get_buyer
+from app.api.deps import BuyerContext, get_buyer, get_buyer_any_shop
+from app.config import get_settings
 from app.models import (
     Customer,
     Order,
@@ -47,6 +48,9 @@ class ProductOut(BaseModel):
 class ShopOut(BaseModel):
     shop_name: str
     products: list[ProductOut]
+    # Куда писать, если проблема с заказом. Пусто — в профиле нет кнопки:
+    # лучше её отсутствие, чем ссылка не туда.
+    support_url: str | None = None
 
 
 class CartItemIn(BaseModel):
@@ -54,9 +58,19 @@ class CartItemIn(BaseModel):
     qty: int = Field(ge=1, le=99)
 
 
+class DeliveryIn(BaseModel):
+    """Куда везти. Обязательна, если в заказе есть физический товар: без неё
+    продавец не может отправить посылку и идёт выяснять адрес в чат."""
+
+    name: str = Field(min_length=1, max_length=128)
+    phone: str = Field(min_length=1, max_length=32)
+    address: str = Field(min_length=1, max_length=512)
+
+
 class OrderIn(BaseModel):
     items: list[CartItemIn] = Field(min_length=1)
     comment: str | None = Field(default=None, max_length=1000)
+    delivery: DeliveryIn | None = None
 
 
 class BuyerOwnReviewOut(BaseModel):
@@ -117,7 +131,11 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
         product_out = ProductOut.model_validate(p)
         product_out.avg_rating, product_out.reviews_count = ratings.get(p.id, (None, 0))
         out.append(product_out)
-    return ShopOut(shop_name=f"@{ctx.bot.bot_username}", products=out)
+    return ShopOut(
+        shop_name=f"@{ctx.bot.bot_username}",
+        products=out,
+        support_url=get_settings().support_url or None,
+    )
 
 
 class EventIn(BaseModel):
@@ -168,6 +186,12 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     if missing:
         raise HTTPException(status_code=400, detail=f"products not available: {sorted(missing)}")
 
+    # Физический товар без адреса отправить некуда — это единственные данные
+    # покупателя, которые видит продавец. У цифровых заказов адрес не спрашиваем.
+    needs_delivery = any(products[i.product_id].type == "physical" for i in payload.items)
+    if needs_delivery and payload.delivery is None:
+        raise HTTPException(status_code=400, detail="delivery_required")
+
     # Сток проверяем по суммарному qty (товар может прийти двумя строками).
     # Финальная проверка — в вебхуке оплаты; здесь отсекаем очевидный оверселл
     qty_by_product: dict[int, int] = {}
@@ -191,6 +215,7 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         total=total,
         currency="USDT",
         comment=payload.comment,
+        delivery=payload.delivery.model_dump() if needs_delivery and payload.delivery else None,
     )
     ctx.session.add(order)
     await ctx.session.flush()
@@ -248,14 +273,20 @@ async def _own_order(ctx: BuyerContext, order_id: int) -> Order:
 async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> PayOut:
     """Свежая ссылка на оплату своего неоплаченного заказа. Инвойс создаётся
     новый: у ссылки из чекаута час жизни, к моменту «Оплатить» она уже может
-    быть мертва. Старый инвойс истечёт сам — сток он не держит."""
-    from app.payments.service import create_invoice_for_order
+    быть мертва.
+
+    Предыдущий счёт снимается, а не оставляется дотлевать: иначе у заказа
+    оказывается несколько живых ссылок, и оплата второй из них проходит мимо
+    заказа — деньги приняты, не сделано ничего.
+    """
+    from app.payments.service import create_invoice_for_order, discard_invoice
 
     order = await _own_order(ctx, order_id)
     if order.status != "pending_payment":
         raise HTTPException(
             status_code=409, detail=f"order is {order.status}, not awaiting payment"
         )
+    await discard_invoice(order.invoice_id)
     try:
         payment_url = await create_invoice_for_order(order.id, Decimal(order.total))
     except Exception:
@@ -265,10 +296,16 @@ async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> Pa
 
 
 @router.post("/orders/{order_id}/cancel")
-async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> dict:
+async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer_any_shop)) -> dict:
     """Покупатель передумал: свой неоплаченный заказ отменяется им сам.
+
     Статус проверяется под блокировкой строки — заказ, который вебхук успел
-    оплатить между нажатиями «Оплатить» и «Отменить», не отменится."""
+    оплатить между нажатиями «Оплатить» и «Отменить», не отменится. Счёт
+    снимается в Crypto Pay, иначе по оставшейся в переписке ссылке можно
+    заплатить за отменённый заказ, и деньги уйдут в никуда.
+    """
+    from app.payments.service import discard_invoice
+
     result = await ctx.session.execute(
         select(Order).where(Order.id == order_id).with_for_update()
     )
@@ -278,12 +315,38 @@ async def cancel_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) ->
     if order.status != "pending_payment":
         raise HTTPException(status_code=409, detail=f"order is {order.status}")
     order.status = "cancelled"
+    invoice_id = order.invoice_id
     await ctx.session.commit()
+
+    # после коммита: снятие счёта — сетевой вызов, и его неудача не должна
+    # откатывать уже принятую отмену
+    await discard_invoice(invoice_id)
     return {"status": "cancelled"}
 
 
+@router.post("/orders/{order_id}/received")
+async def confirm_received(
+    order_id: int, ctx: BuyerContext = Depends(get_buyer_any_shop)
+) -> dict:
+    """Покупатель получил заказ.
+
+    Отметку ставит он, а не продавец: «Отправлен» и «Доставлен» — разные
+    события, между ними дни пути. От `delivered_at` считается окно чата, и
+    начинать его в момент отправки значит закрывать связь с продавцом ровно
+    тогда, когда посылка может потеряться. Оценить покупку тоже можно только
+    после получения — раньше и оценивать нечего.
+    """
+    order = await _own_order(ctx, order_id)
+    if order.status != "fulfilled":
+        raise HTTPException(status_code=409, detail=f"order is {order.status}")
+    order.status = "delivered"
+    order.delivered_at = func.now()
+    await ctx.session.commit()
+    return {"status": "delivered"}
+
+
 @router.get("/orders/my", response_model=list[OrderOut])
-async def my_orders(ctx: BuyerContext = Depends(get_buyer)) -> list[OrderOut]:
+async def my_orders(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> list[OrderOut]:
     result = await ctx.session.execute(
         select(Order)
         .where(Order.customer_id == ctx.customer.id)
@@ -389,7 +452,7 @@ async def _own_order_with_chat(ctx: BuyerContext, order_id: int) -> tuple[Order,
 
 
 @router.get("/orders/{order_id}/chat", response_model=BuyerOrderChatOut)
-async def get_order_chat(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> BuyerOrderChatOut:
+async def get_order_chat(order_id: int, ctx: BuyerContext = Depends(get_buyer_any_shop)) -> BuyerOrderChatOut:
     from app.services.chat import chat_is_open, closes_at, read_history
 
     order, chat = await _own_order_with_chat(ctx, order_id)
@@ -405,7 +468,7 @@ async def get_order_chat(order_id: int, ctx: BuyerContext = Depends(get_buyer)) 
 
 @router.post("/orders/{order_id}/chat/messages", response_model=BuyerChatMessageOut)
 async def send_order_chat_message(
-    order_id: int, payload: BuyerChatMessageIn, ctx: BuyerContext = Depends(get_buyer)
+    order_id: int, payload: BuyerChatMessageIn, ctx: BuyerContext = Depends(get_buyer_any_shop)
 ) -> BuyerChatMessageOut:
     """Сообщение покупателя. Пишется в историю сразу; продавцу уходит пуш в
     hub-бот без деталей личности, сам текст он увидит в кабинете."""
@@ -434,15 +497,16 @@ async def send_order_chat_message(
 
 # --------------------------------------------------------------------------
 # Отзывы: оценка товара доступна только покупателю его доставленного заказа.
-# Наружу идут оценка, текст, случайный псевдоним автора и ответ продавца —
-# но никакие реальные данные о покупателе.
+# Наружу идут оценка, текст, имя автора и ответ продавца. Имя — настоящее,
+# из профиля Telegram (без юзернейма): живые подписи вызывают больше доверия
+# к отзывам. Покупателя об этом предупреждают в форме оценки.
 # --------------------------------------------------------------------------
 
 
 class PublicReviewOut(BaseModel):
     rating: int
     body: str | None
-    # случайный псевдоним («Анна К.»), к личности не привязан
+    # имя автора: first_name из Telegram, у безымянных — псевдоним «Анна К.»
     author_name: str | None
     reply_body: str | None
     reply_at: datetime | None
@@ -500,7 +564,7 @@ async def product_reviews(
 
 @router.post("/orders/{order_id}/reviews", response_model=list[BuyerReviewOut])
 async def leave_review(
-    order_id: int, payload: ReviewsIn, ctx: BuyerContext = Depends(get_buyer)
+    order_id: int, payload: ReviewsIn, ctx: BuyerContext = Depends(get_buyer_any_shop)
 ) -> list[BuyerReviewOut]:
     """Оценки позиций своего доставленного заказа. Повторная отправка по той же
     паре (заказ, товар) правит оценку — передумать можно. Пуш продавцу уходит
@@ -530,8 +594,8 @@ async def leave_review(
     for item in payload.items:
         review = by_product.get(item.product_id)
         if review is None:
-            # автор — Telegram-имя покупателя (не юзернейм); без имени в профиле
-            # остаётся случайный псевдоним
+            # автор — Telegram-имя покупателя (не юзернейм); у тех, у кого имени
+            # в профиле нет, подпись остаётся псевдонимом
             display_name = (ctx.customer.first_name or "").strip()[:64]
             review = ProductReview(
                 bot_id=ctx.bot.id,
@@ -559,7 +623,7 @@ async def leave_review(
 
 @router.delete("/orders/{order_id}/reviews/{product_id}")
 async def delete_review(
-    order_id: int, product_id: int, ctx: BuyerContext = Depends(get_buyer)
+    order_id: int, product_id: int, ctx: BuyerContext = Depends(get_buyer_any_shop)
 ) -> dict:
     """Покупатель передумал: свой отзыв на позицию доставленного заказа можно
     снять целиком. Средний рейтинг пересчитается при следующей выдаче витрины."""

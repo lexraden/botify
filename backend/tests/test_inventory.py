@@ -33,7 +33,7 @@ async def stocked_order(db, bot_id: int, stock: int | None, qty: int, invoice_id
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": pid, "qty": qty}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": qty}]},
         )
         assert r.status_code == 200, r.text
         order_id = r.json()["id"]
@@ -78,10 +78,11 @@ async def test_two_lines_of_same_product_decrement_once_by_sum(db):
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
             json={
+                "delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"},
                 "items": [
                     {"product_id": pid, "qty": 1},
                     {"product_id": pid, "qty": 2},
-                ]
+                ],
             },
         )
         assert r.status_code == 200, r.text
@@ -128,7 +129,7 @@ async def test_checkout_rejects_more_than_stock(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": pid, "qty": 3}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 3}]},
         )
         assert r.status_code == 400
         assert "insufficient stock" in r.json()["detail"]
@@ -136,7 +137,7 @@ async def test_checkout_rejects_more_than_stock(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": pid, "qty": 2}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 2}]},
         )
         assert r.status_code == 200
 
@@ -160,7 +161,7 @@ async def test_zero_stock_is_visible_but_not_buyable(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": pid, "qty": 1}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 1}]},
         )
         assert r.status_code == 400
 
@@ -228,3 +229,49 @@ async def test_negative_or_invalid_stock_rejected_by_api(db):
             json={"type": "physical", "title": "X", "price": "1", "stock": -1},
         )
         assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_sold_out_after_payment_tells_both_sides(db):
+    """Товар кончился между заказом и оплатой. Деньги приняты, отправить
+    нечего — раньше об этом знал только лог, и покупатель ждал посылку,
+    которой не будет."""
+    from unittest.mock import AsyncMock, patch
+
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={"type": "physical", "title": "Кружка", "price": "5", "stock": 1},
+        )
+        pid = r.json()["id"]
+        r = await c.post(
+            f"/api/store/{bot_id}/orders",
+            headers=buyer_headers(),
+            json={
+                "delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"},
+                "items": [{"product_id": pid, "qty": 1}],
+            },
+        )
+        order_id = r.json()["id"]
+
+    # пока заказ ждал оплату, остаток забрали
+    async with db() as session:
+        product = await session.get(Product, pid)
+        product.stock = 0
+        await session.commit()
+
+    await _set_invoice(db, order_id, 800900)
+    # без обёртки pay(): уведомления нужны настоящие, их и проверяем
+    with (
+        patch("app.payments.service._notify", new=AsyncMock()) as buyer_push,
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as seller_push,
+    ):
+        assert await handle_invoice_paid(800900, None) is True
+
+    assert "закончилось: Кружка" in buyer_push.call_args.args[2]
+    assert "Не хватило остатка: Кружка" in seller_push.await_args.args[1]
+
+    # сток в минус не ушёл, заказ остался оплаченным
+    assert await stock_of(db, pid) == 0

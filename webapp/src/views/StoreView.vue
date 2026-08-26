@@ -6,6 +6,7 @@ import { t } from '../i18n'
 import BrandBadge from '../components/BrandBadge.vue'
 import ProductCard from '../components/ProductCard.vue'
 import { useCartStore } from '../stores/cart'
+import { apiError } from '../services/apiError'
 
 const router = useRouter()
 const cart = useCartStore()
@@ -39,7 +40,7 @@ onMounted(async () => {
     cart.syncWithShop(shop.value.products)
     trackEvent('shop_open')
   } catch (e) {
-    error.value = e.response?.data?.detail || t('store.error')
+    error.value = apiError(e, 'store.error')
   }
 })
 </script>

@@ -28,7 +28,7 @@ async def create_order(c, bot_id) -> int:
     r = await c.post(
         f"/api/store/{bot_id}/orders",
         headers=buyer_headers(),
-        json={"items": [{"product_id": pid, "qty": 1}]},
+        json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 1}]},
     )
     assert r.status_code == 200, r.text
     return r.json()["id"]

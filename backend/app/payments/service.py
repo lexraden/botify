@@ -18,6 +18,31 @@ from app.security import decrypt_bot_token
 logger = logging.getLogger(__name__)
 
 
+async def discard_invoice(invoice_id: int | None) -> bool:
+    """Снять неоплаченный счёт в Crypto Pay, чтобы по нему нельзя было заплатить.
+
+    Нужно везде, где заказ перестаёт ждать оплату по этой ссылке: отмена и
+    выдача новой ссылки. Иначе покупатель платит по мёртвой ссылке из
+    переписки с @CryptoBot, вебхук приходит на отменённый (или уже
+    переоформленный) заказ и молча ничего не делает — деньги приняты, товара
+    нет, никто не уведомлён.
+
+    Побочно это держит инвариант «у заказа не больше одного оплачиваемого
+    счёта», на который опирается сверка (app/payments/reconcile.py).
+
+    Неудача не критична и наверх не идёт: счёт протухнет сам через час.
+    """
+    crypto = get_crypto_pay()
+    if crypto is None or invoice_id is None:
+        return False
+    try:
+        await crypto.delete_invoice(invoice_id)
+        return True
+    except Exception:
+        logger.warning("Не удалось снять счёт %s — истечёт сам", invoice_id, exc_info=True)
+        return False
+
+
 async def create_invoice_for_order(order_id: int, total: Decimal) -> str | None:
     """Создаёт инвойс Crypto Pay. Возвращает ссылку на оплату (или None без токена)."""
     crypto = get_crypto_pay()
@@ -119,10 +144,16 @@ async def handle_invoice_paid(
         # UPDATE атомарен — два заказа на последнюю штуку не уведут сток в минус.
         # Товары со стоком NULL учёту штук не подлежат.
         qty_by_product: dict[int, int] = {}
+        titles: dict[int, str] = {}
         for item, product in items:
+            titles[item.product_id] = product.title
             if product.stock is None:
                 continue
             qty_by_product[item.product_id] = qty_by_product.get(item.product_id, 0) + item.qty
+        # Товары, которых не хватило: деньги уже приняты, отправить их нечем.
+        # Молча это оставлять нельзя — возврата в MVP нет, разбираться сторонам
+        # придётся вручную, и узнать о проблеме они должны сразу.
+        sold_out: list[str] = []
         for product_id, qty in qty_by_product.items():
             spent = await session.execute(
                 update(Product)
@@ -136,6 +167,7 @@ async def handle_invoice_paid(
             if spent.rowcount == 0:
                 # гонка «чекнулись, пока сток кончился»: деньги уже приняты,
                 # заказ не разворачиваем, но и отрицательный сток не пишем
+                sold_out.append(titles.get(product_id, str(product_id)))
                 logger.error(
                     "Недостаточно стока товара id=%s для заказа %s (нужно %s) — сток не списан",
                     product_id,
@@ -183,7 +215,16 @@ async def handle_invoice_paid(
             else "\nПродавец готовит заказ — детали доставки придут сюда."
         )
         # доставленные цифровые заказы можно оценивать — подводим к форме отзыва
-        + ("\n⭐ Как всё прошло? Оцени покупки в разделе «Мои покупки»." if all_digital else ""),
+        + ("\n⭐ Как всё прошло? Оцени покупки в разделе «Мои покупки»." if all_digital else "")
+        # закончился между заказом и оплатой: честнее сказать сразу, чем дать
+        # человеку ждать посылку, которой не будет
+        + (
+            "\n\n⚠️ Пока шла оплата, закончилось: "
+            + ", ".join(html.escape(t) for t in sold_out)
+            + ".\nПродавец свяжется с тобой в чате заказа — напиши ему прямо здесь."
+            if sold_out
+            else ""
+        ),
     )
 
     from app.bots.hub import hub_bot
@@ -196,6 +237,13 @@ async def handle_invoice_paid(
                 "Digital-контент выдан автоматически."
                 if digital_lines and all_digital
                 else "Открой кабинет, чтобы отправить заказ и прикрепить трек/ссылку."
+            )
+            + (
+                "\n\n⚠️ Не хватило остатка: "
+                + ", ".join(html.escape(t) for t in sold_out)
+                + ".\nДеньги за заказ уже приняты — свяжись с покупателем в чате заказа."
+                if sold_out
+                else ""
             ),
         )
     except Exception:

@@ -103,7 +103,7 @@ async def test_full_buy_flow(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": burger_id, "qty": 2}, {"product_id": guide_id, "qty": 1}], "comment": "без лука"},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": burger_id, "qty": 2}, {"product_id": guide_id, "qty": 1}], "comment": "без лука"},
         )
         assert r.status_code == 200, r.text
         order = r.json()
@@ -157,7 +157,7 @@ async def test_order_rejects_foreign_or_inactive_products(db):
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": 12345, "qty": 1}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": 12345, "qty": 1}]},
         )
         assert r.status_code == 400
 
@@ -175,7 +175,7 @@ async def test_delete_product_with_orders_deactivates(db):
         await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"items": [{"product_id": pid, "qty": 1}]},
+            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 1}]},
         )
         r = await c.delete(f"/api/seller/bots/{bot_id}/products/{pid}", headers=seller_headers())
         assert r.json()["status"] == "deactivated"

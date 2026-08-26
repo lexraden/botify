@@ -4,34 +4,43 @@ import { startLoading, stopLoading } from './services/loading'
 
 const api = axios.create({ baseURL: '/api' })
 
+// Полноэкранный оверлей уместен для действий, которых человек ждёт, и вреден
+// для фоновых: чат опрашивается раз в 4 секунды, «Мои покупки» — раз в 10, и
+// без этого флага экран мигал бы поверх переписки всё время, что она открыта.
+const SILENT = { silent: true }
+
 api.interceptors.request.use((config) => {
   config.headers['X-Init-Data'] = getInitData()
-  startLoading()
+  if (!config.silent) startLoading()
   return config
 })
 
 // Любой ответ снимает запрос со счётчика — оверлей не залипает на ошибке
 api.interceptors.response.use(
   (response) => {
-    stopLoading()
+    if (!response.config?.silent) stopLoading()
     return response
   },
   (error) => {
-    stopLoading()
+    if (!error.config?.silent) stopLoading()
     return Promise.reject(error)
   },
 )
 
 // --- витрина покупателя (контекст seller-бота из query-параметра) ---
 export const fetchShop = () => api.get(`/store/${getBotId()}`).then((r) => r.data)
-export const createOrder = (items, comment) =>
-  api.post(`/store/${getBotId()}/orders`, { items, comment }).then((r) => r.data)
-export const fetchMyOrders = () => api.get(`/store/${getBotId()}/orders/my`).then((r) => r.data)
+export const createOrder = (items, comment, delivery = null) =>
+  api.post(`/store/${getBotId()}/orders`, { items, comment, delivery }).then((r) => r.data)
+export const fetchMyOrders = (silent = false) =>
+  api.get(`/store/${getBotId()}/orders/my`, silent ? SILENT : {}).then((r) => r.data)
 // неоплаченный заказ: свежая ссылка на оплату или отмена покупателем
 export const payOrder = (orderId) =>
   api.post(`/store/${getBotId()}/orders/${orderId}/pay`).then((r) => r.data)
 export const cancelOrder = (orderId) =>
   api.post(`/store/${getBotId()}/orders/${orderId}/cancel`).then((r) => r.data)
+// «Доставлен» ставит покупатель: отправка и получение — разные события
+export const confirmReceived = (orderId) =>
+  api.post(`/store/${getBotId()}/orders/${orderId}/received`).then((r) => r.data)
 // отзывы: список у товара, оценка — только по своему доставленному заказу
 export const fetchProductReviews = (productId) =>
   api.get(`/store/${getBotId()}/products/${productId}/reviews`).then((r) => r.data)
@@ -42,7 +51,7 @@ export const deleteOrderReview = (orderId, productId) =>
   api.delete(`/store/${getBotId()}/orders/${orderId}/reviews/${productId}`).then((r) => r.data)
 // Статистика витрины: ошибки глотаем — аналитика не должна ломать покупку
 export const trackEvent = (type, productId = null) =>
-  api.post(`/store/${getBotId()}/events`, { type, product_id: productId }).catch(() => {})
+  api.post(`/store/${getBotId()}/events`, { type, product_id: productId }, SILENT).catch(() => {})
 
 // --- кабинет продавца (контекст hub-бота) ---
 export const fetchMe = () => api.get('/seller/me').then((r) => r.data)
@@ -87,8 +96,8 @@ export const replyToReview = (botId, reviewId, body) =>
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
 // чат заказа: история читается всегда, писать можно в открытом окне
-export const fetchOrderChat = (botId, orderId) =>
-  api.get(`/seller/bots/${botId}/orders/${orderId}/chat`).then((r) => r.data)
+export const fetchOrderChat = (botId, orderId, silent = false) =>
+  api.get(`/seller/bots/${botId}/orders/${orderId}/chat`, silent ? SILENT : {}).then((r) => r.data)
 export const sendOrderChatMessage = (botId, orderId, body) =>
   api.post(`/seller/bots/${botId}/orders/${orderId}/chat/messages`, { body }).then((r) => r.data)
 // фото в чат: сырые байты файла (как у фото товара), черновик уезжает подписью
