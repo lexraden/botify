@@ -8,6 +8,9 @@
 """
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.handlers.seller.channels import _channel_texts
 from app.handlers.seller.settings import channel_text, settings_text
@@ -58,3 +61,39 @@ def test_long_text_is_truncated_before_escaping():
     text = settings_text(_bot(welcome_text="&" * 200), 0)
     assert "&am</i>" not in text and "&a</i>" not in text
     assert text.count("&amp;") == 120  # ровно срез в 120 исходных символов
+
+
+@pytest.mark.asyncio
+async def test_review_push_survives_angle_brackets():
+    """Отзыв покупателя и название товара уходят продавцу в hub-бот с
+    parse_mode=HTML: «<» в тексте оставил бы продавца без уведомления."""
+    from app.services.reviews import notify_new_review
+
+    sent = AsyncMock()
+    with patch("app.bots.hub.hub_bot.send_message", new=sent):
+        await notify_new_review(111, "Кроссовки <XL>", 5, "Носил <неделю> — норм")
+
+    text = sent.await_args.args[1]
+    assert "&lt;XL&gt;" in text and "&lt;неделю&gt;" in text
+    assert "<XL>" not in text and "<неделю>" not in text
+
+
+@pytest.mark.asyncio
+async def test_fulfillment_push_survives_angle_brackets(db):
+    """Трек, ссылка и примечание продавца тоже идут с parse_mode=HTML."""
+    from tests.test_api import client, seller_headers
+    from tests.test_fulfillment import paid_physical_order
+
+    bot_id, order_id = await paid_physical_order(db)
+    with patch("app.payments.service._notify", new=AsyncMock()) as notify_mock:
+        async with client() as c:
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
+                headers=seller_headers(),
+                json={"tracking": "RA<1>CN", "note": "размер <M>"},
+            )
+            assert r.status_code == 200, r.text
+
+    text = notify_mock.call_args.args[2]
+    assert "RA&lt;1&gt;CN" in text and "размер &lt;M&gt;" in text
+    assert "<M>" not in text
