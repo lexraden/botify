@@ -5,13 +5,15 @@
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.sql import func
 
 from app.bots.runner import make_seller_bot
+from app.config import get_settings
 from app.db import get_session
 from app.models import Customer, Mailing, SellerBot
 from app.security import decrypt_bot_token
@@ -19,6 +21,9 @@ from app.security import decrypt_bot_token
 logger = logging.getLogger(__name__)
 
 SEND_DELAY_SEC = 0.06
+# Как часто идущая рассылка отмечается живой. 200 сообщений — это ~12 секунд
+# отправки: на порог оживления (10 минут) запас огромный, а запись в БД редкая.
+HEARTBEAT_EVERY = 200
 
 
 def _keyboard(mailing: Mailing) -> InlineKeyboardMarkup | None:
@@ -46,6 +51,8 @@ async def process_due_mailings() -> None:
         )
         for mailing in due:
             mailing.status = "sending"  # чтобы параллельный тик не подхватил повторно
+            # признак жизни: по нему застрявшую рассылку отличают от идущей
+            mailing.heartbeat_at = func.now()
         await session.commit()
         mailing_ids = [m.id for m in due]
 
@@ -54,6 +61,53 @@ async def process_due_mailings() -> None:
             await send_mailing(mailing_id)
         except Exception:
             logger.exception("Рассылка %s упала", mailing_id)
+
+
+async def revive_stuck_mailings() -> int:
+    """Возвращает в очередь рассылки, застрявшие в `sending`.
+
+    Статус `sending` ставится перед отправкой, чтобы параллельный тик не
+    подхватил рассылку второй раз. Но если процесс умрёт посреди отправки
+    (деплой, OOM, рестарт контейнера), рассылка останется `sending` навсегда:
+    цикл её больше не берёт, а в кабинете она выглядит вечно идущей.
+
+    Возвращаем такие в `pending` — следующий тик отправит их заново. Повтор
+    для части покупателей возможен, и это осознанный выбор: получить сообщение
+    дважды неприятно, не получить вовсе — хуже, а точку обрыва мы не знаем.
+    Живая рассылка под раздачу не попадает: `heartbeat_at` обновляется по ходу
+    отправки (см. HEARTBEAT_EVERY), поэтому длинная рассылка по большой базе
+    остаётся свежей всё время работы.
+    """
+    minutes = get_settings().mailing_stuck_minutes
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+
+    async with get_session() as session:
+        stuck = list(
+            (
+                await session.execute(
+                    select(Mailing).where(
+                        Mailing.status == "sending",
+                        # heartbeat_at нет у рассылок, начатых до появления
+                        # колонки — для них ориентир created_at
+                        func.coalesce(Mailing.heartbeat_at, Mailing.created_at) < cutoff,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for mailing in stuck:
+            mailing.status = "pending"
+            mailing.heartbeat_at = None
+        await session.commit()
+
+    if stuck:
+        logger.warning(
+            "Возвращено в очередь застрявших рассылок: %d (id: %s)",
+            len(stuck),
+            ", ".join(str(m.id) for m in stuck),
+        )
+    return len(stuck)
 
 
 async def send_mailing(mailing_id: int) -> None:
@@ -82,7 +136,7 @@ async def send_mailing(mailing_id: int) -> None:
     sent = failed = 0
     blocked_ids: list[int] = []
     try:
-        for customer in customers:
+        for index, customer in enumerate(customers, start=1):
             try:
                 await bot.send_message(customer.telegram_id, text, reply_markup=keyboard)
                 sent += 1
@@ -99,6 +153,8 @@ async def send_mailing(mailing_id: int) -> None:
                 failed += 1
             except Exception:
                 failed += 1
+            if index % HEARTBEAT_EVERY == 0:
+                await _touch_heartbeat(mailing_id)
             await asyncio.sleep(SEND_DELAY_SEC)
     finally:
         await bot.session.close()
@@ -119,3 +175,19 @@ async def send_mailing(mailing_id: int) -> None:
         await session.commit()
 
     logger.info("Рассылка %s: отправлено %s, ошибок %s", mailing_id, sent, failed)
+
+
+async def _touch_heartbeat(mailing_id: int) -> None:
+    """Отметить идущую рассылку живой (см. revive_stuck_mailings).
+
+    Сбой отметки саму отправку ронять не должен: худшее, что случится, —
+    рассылку сочтут застрявшей и отправят заново.
+    """
+    try:
+        async with get_session() as session:
+            await session.execute(
+                update(Mailing).where(Mailing.id == mailing_id).values(heartbeat_at=func.now())
+            )
+            await session.commit()
+    except Exception:
+        logger.exception("Не удалось отметить рассылку %s живой", mailing_id)

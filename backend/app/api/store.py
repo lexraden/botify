@@ -7,12 +7,10 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import BuyerContext, get_buyer
 from app.models import (
-    BotAvatar,
     Customer,
     Order,
     OrderChat,
@@ -22,7 +20,6 @@ from app.models import (
     Seller,
     ShopEvent,
 )
-from app.services.bot_avatars import refresh_bot_avatar
 from app.services.reviews import notify_new_review, random_author_name
 
 logger = logging.getLogger(__name__)
@@ -49,8 +46,6 @@ class ProductOut(BaseModel):
 
 class ShopOut(BaseModel):
     shop_name: str
-    # фото бота из Telegram — логотип магазина в шапке витрины; None — нет фото
-    shop_avatar_url: str | None = None
     products: list[ProductOut]
 
 
@@ -93,28 +88,6 @@ class OrderOut(BaseModel):
 
 @router.get("", response_model=ShopOut)
 async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
-    avatar = (
-        await ctx.session.execute(
-            select(BotAvatar.token).where(BotAvatar.bot_id == ctx.bot.id)
-        )
-    ).scalar_one_or_none()
-    if avatar is None:
-        # магазину, подключённому до появления аватаров, докачиваем фото лениво;
-        # неудача (нет фото, Telegram недоступен) витрину не ломает
-        try:
-            await refresh_bot_avatar(ctx.session, ctx.bot)
-            await ctx.session.commit()
-        except IntegrityError:
-            # bot_id уникален: два покупателя открыли витрину одновременно и
-            # оба скачали аватар. Проигравший просто перечитает чужую строку —
-            # 500 на витрине из-за украшения недопустим
-            await ctx.session.rollback()
-        avatar = (
-            await ctx.session.execute(
-                select(BotAvatar.token).where(BotAvatar.bot_id == ctx.bot.id)
-            )
-        ).scalar_one_or_none()
-
     result = await ctx.session.execute(
         select(Product)
         .where(Product.bot_id == ctx.bot.id, Product.is_active.is_(True))
@@ -144,11 +117,7 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
         product_out = ProductOut.model_validate(p)
         product_out.avg_rating, product_out.reviews_count = ratings.get(p.id, (None, 0))
         out.append(product_out)
-    return ShopOut(
-        shop_name=f"@{ctx.bot.bot_username}",
-        shop_avatar_url=f"/api/bot-avatars/{avatar}" if avatar else None,
-        products=out,
-    )
+    return ShopOut(shop_name=f"@{ctx.bot.bot_username}", products=out)
 
 
 class EventIn(BaseModel):

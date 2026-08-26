@@ -49,16 +49,11 @@ onMounted(async () => {
     <p v-if="error" class="error">{{ error }}</p>
     <template v-else-if="shop">
       <header>
-        <!-- Личность магазина: фото бота из Telegram + @username — как карточка
-             в кабинете продавца, только без статуса. -->
+        <!-- Личность магазина: буква юзернейма + @username. Фото бота из
+             Telegram сюда не тянем: Bot API не отдаёт боту его собственную
+             аватарку (getChat на себя — chat not found, getMyPhoto нет). -->
         <div class="shop-id">
-          <img
-            v-if="shop.shop_avatar_url"
-            class="avatar"
-            :src="shop.shop_avatar_url"
-            alt=""
-          />
-          <div v-else class="avatar letter">{{ shop.shop_name.charAt(1).toUpperCase() }}</div>
+          <div class="avatar letter">{{ shop.shop_name.charAt(1).toUpperCase() }}</div>
           <b>{{ shop.shop_name }}</b>
         </div>
         <div class="controls">
@@ -116,9 +111,7 @@ header { display: flex; align-items: center; justify-content: space-between; mar
 .shop-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .shop-id b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .avatar {
-  width: 40px; height: 40px; border-radius: 13px; object-fit: cover; flex-shrink: 0;
-}
-.avatar.letter {
+  width: 40px; height: 40px; border-radius: 13px; flex-shrink: 0;
   background: var(--accent); color: #fff;
   display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px;
 }

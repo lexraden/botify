@@ -42,6 +42,17 @@ class Settings(BaseSettings):
     # Через сколько дней после блокировки история уходит в архивную таблицу
     archive_chat_after_days: int = 30
 
+    # Обслуживание (app/main.py: maintenance_loop)
+    # Через сколько часов после оплаты напомнить продавцу о неотправленном
+    # заказе (app/services/order_health.py). Напоминание одно на заказ.
+    stuck_order_hours: float = 24.0
+    # Как часто проверять, не отозван ли токен seller-бота
+    # (app/services/bot_health.py). Один get_me на бота за проход.
+    token_check_hours: float = 1.0
+    # После скольких минут без признака жизни рассылка в статусе sending
+    # считается застрявшей и возвращается в очередь
+    mailing_stuck_minutes: int = 10
+
     @field_validator("database_url")
     @classmethod
     def force_asyncpg(cls, v: str) -> str:

@@ -23,6 +23,10 @@ class Mailing(Base, CreatedAtMixin):
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     # pending -> sending -> done
+    # Признак жизни идущей рассылки: ставится на старте и обновляется по ходу
+    # отправки. Отличает «идёт прямо сейчас» от «застряла после падения
+    # процесса» — статус sending у них общий (app/services/mailing.py).
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     sent_count: Mapped[int] = mapped_column(Integer, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, default=0)

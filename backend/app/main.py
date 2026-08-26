@@ -53,6 +53,44 @@ async def chat_maintenance_loop() -> None:
             logger.exception("Ошибка в цикле обслуживания чатов")
 
 
+async def maintenance_loop() -> None:
+    """Обслуживание раз в 10 минут: застрявшие рассылки, зависшие заказы и
+    отозванные токены ботов.
+
+    Всё три — про то, что ломается молча: рассылка вечно «идёт», оплаченный
+    заказ никто не отправляет, бот перестал получать апдейты. Каждая задача
+    ловит свои ошибки сама, чтобы падение одной не уносило остальные вместе
+    с циклом. Проверка токенов ходит в Telegram по каждому боту, поэтому у
+    неё свой, более редкий, интервал.
+    """
+    from app.services.bot_health import check_revoked_tokens
+    from app.services.mailing import revive_stuck_mailings
+    from app.services.order_health import remind_stuck_orders
+
+    settings = get_settings()
+    tick = 600
+    last_token_check = 0.0
+
+    while True:
+        await asyncio.sleep(tick)
+        for name, job in (
+            ("оживление рассылок", revive_stuck_mailings),
+            ("напоминания по заказам", remind_stuck_orders),
+        ):
+            try:
+                await job()
+            except Exception:
+                logger.exception("Ошибка обслуживания: %s", name)
+
+        now = asyncio.get_running_loop().time()
+        if now - last_token_check >= settings.token_check_hours * 3600:
+            last_token_check = now
+            try:
+                await check_revoked_tokens()
+            except Exception:
+                logger.exception("Ошибка обслуживания: проверка токенов ботов")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await setup_hub_webhook()
@@ -61,6 +99,7 @@ async def lifespan(app: FastAPI):
     background_tasks = [
         asyncio.create_task(mailing_loop()),
         asyncio.create_task(chat_maintenance_loop()),
+        asyncio.create_task(maintenance_loop()),
     ]
     yield
     for task in background_tasks:

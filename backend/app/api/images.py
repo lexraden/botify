@@ -1,4 +1,4 @@
-"""Публичная раздача загруженных фото товаров, картинок переписки и аватаров.
+"""Публичная раздача загруженных фото товаров и картинок переписки.
 
 Картинки витрины и так видны покупателям; адрес фото в чате — случайный
 неугадываемый токен, как у витрины. Хранятся только типы из белого списка
@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_api_session
-from app.models import BotAvatar, ChatImage, ProductImage
+from app.models import ChatImage, ProductImage
 
 router = APIRouter()
 
@@ -51,16 +51,3 @@ async def get_chat_image(
     if image is None:
         raise HTTPException(status_code=404, detail="image not found")
     return _image_response(image.data, image.mime)
-
-
-@router.get("/bot-avatars/{token}")
-async def get_bot_avatar(
-    token: str,
-    session: AsyncSession = Depends(get_api_session),
-) -> Response:
-    avatar = (
-        await session.execute(select(BotAvatar).where(BotAvatar.token == token))
-    ).scalar_one_or_none()
-    if avatar is None:
-        raise HTTPException(status_code=404, detail="avatar not found")
-    return _image_response(avatar.data, avatar.mime)
