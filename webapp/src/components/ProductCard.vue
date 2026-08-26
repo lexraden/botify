@@ -79,7 +79,7 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
 .image img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .meta { display: flex; flex-direction: column; gap: 2px; }
 .title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.price-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.price-row { display: flex; align-items: baseline; gap: 8px; }
 .price { font-size: 14px; font-weight: 800; }
 .rating { font-size: 11.5px; font-weight: 700; color: #f59e1b; white-space: nowrap; }
 .add, .stepper button {

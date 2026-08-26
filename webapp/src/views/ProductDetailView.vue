@@ -68,11 +68,12 @@ onMounted(async () => {
         <h3>{{ t('product.reviews') }}</h3>
         <!-- вместо личности — случайный псевдоним, сервис анонимный -->
         <div v-for="r in reviews" :key="r.created_at + String(r.rating)" class="review">
-          <p v-if="r.author_name" class="author">{{ r.author_name }}</p>
+          <!-- шапка отзыва: имя слева, дата здесь же; звёзды — строкой ниже -->
           <div class="review-head">
-            <span class="stars">{{ '★'.repeat(r.rating) }}</span>
+            <span v-if="r.author_name" class="author">{{ r.author_name }}</span>
             <span class="date">{{ fmtDate(r.created_at) }}</span>
           </div>
+          <span class="stars">{{ '★'.repeat(r.rating) }}</span>
           <p v-if="r.body">{{ r.body }}</p>
           <div v-if="r.reply_body" class="reply">
             <b>{{ t('product.sellerReply') }}</b>
@@ -81,23 +82,21 @@ onMounted(async () => {
         </div>
       </section>
 
-      <div v-if="qty" class="stepper">
-        <button @click="cart.remove(product)">−</button>
-        <b>{{ qty }}</b>
-        <button :disabled="maxed" @click="cart.add(product)">+</button>
+      <!-- покупка закреплена у нижнего края: видна при любом скролле -->
+      <div class="buy-bar">
+        <div v-if="!soldOut && qty" class="stepper">
+          <button @click="cart.remove(product)">−</button>
+          <b>{{ qty }}</b>
+          <button :disabled="maxed" @click="cart.add(product)">+</button>
+        </div>
+        <button v-else-if="!soldOut" class="btn btn-primary" @click="cart.add(product)">
+          {{ t('product.addToCart') }}
+        </button>
+        <button v-else class="btn btn-soft" disabled>{{ t('product.soldOut') }}</button>
+        <button v-if="cart.count" class="btn btn-green" @click="router.push('/checkout')">
+          {{ t('product.goCart', { n: cart.count, sum: cart.total.toFixed(2) }) }}
+        </button>
       </div>
-      <button
-        v-else-if="!soldOut"
-        class="btn btn-primary add-cart"
-        @click="cart.add(product)"
-      >
-        {{ t('product.addToCart') }}
-      </button>
-      <button v-else class="btn btn-soft" disabled>{{ t('product.soldOut') }}</button>
-
-      <button v-if="cart.count" class="btn btn-green go-cart" @click="router.push('/checkout')">
-        {{ t('product.goCart', { n: cart.count, sum: cart.total.toFixed(2) }) }}
-      </button>
       <BrandBadge />
     </template>
 
@@ -106,7 +105,8 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.detail { padding: 18px 16px 24px; }
+/* снизу запас под фиксированную панель покупки */
+.detail { padding: 18px 16px 86px; }
 .back { display: inline-block; margin-bottom: 14px; color: var(--sub); font-size: 14px; font-weight: 700; cursor: pointer; }
 .photo {
   width: 100%; aspect-ratio: 1; border-radius: 18px; background: var(--surface2);
@@ -127,10 +127,15 @@ h2 { font-size: 19px; margin: 14px 0 6px; }
   border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px;
   background: var(--surface);
 }
-.review-head { display: flex; justify-content: space-between; align-items: baseline; }
-.stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; }
-.date { color: var(--sub); font-size: 11.5px; font-weight: 700; }
-.author { margin: 0 0 4px; font-size: 12px; font-weight: 700; color: var(--text); }
+.review-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+}
+.author {
+  font-size: 12px; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.stars { display: block; margin-top: 3px; color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; }
+.date { color: var(--sub); font-size: 11.5px; font-weight: 700; white-space: nowrap; }
 .review p { margin: 5px 0 0; font-size: 13.5px; line-height: 1.45; }
 .reply {
   margin-top: 8px;
@@ -142,7 +147,7 @@ h2 { font-size: 19px; margin: 14px 0 6px; }
 .reply p { margin: 3px 0 0; font-size: 13px; }
 .stepper {
   display: flex; align-items: center; justify-content: center; gap: 18px;
-  height: 48px; border-radius: 15px; background: var(--surface2); margin-top: 16px;
+  height: 48px; border-radius: 15px; background: var(--surface2);
 }
 .stepper button {
   width: 44px; height: 40px; border: 0; border-radius: 12px; background: var(--surface);
@@ -150,7 +155,11 @@ h2 { font-size: 19px; margin: 14px 0 6px; }
 }
 .stepper button:disabled { opacity: 0.35; }
 .stepper b { font-size: 16px; min-width: 20px; text-align: center; }
-.add-cart { margin-top: 20px; }
-.go-cart { margin-top: 10px; height: 44px; }
+/* панель покупки прижата к низу экрана — как cart-bar в StoreView */
+.buy-bar {
+  position: fixed; left: 16px; right: 16px; bottom: 18px; z-index: 20;
+  display: flex; gap: 10px;
+}
+.buy-bar > * { flex: 1; }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
 </style>

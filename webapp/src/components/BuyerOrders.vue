@@ -2,11 +2,9 @@
 // Список покупок покупателя: живые статусы, форма оценки, удаление отзыва.
 // Живёт и на отдельном экране /my-orders, и внутри профиля.
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { deleteOrderReview, fetchMyOrders, submitOrderReviews } from '../api'
 import { t } from '../i18n'
 
-const router = useRouter()
 const orders = ref(null)
 
 // класс для цвета статуса: ok — зелёный, bad — красный, wait — нейтральный
@@ -117,7 +115,6 @@ onBeforeUnmount(() => {
   <div class="orders-list">
     <template v-if="orders && !orders.length">
       <p class="empty">{{ t('orders.empty') }}</p>
-      <button class="btn btn-primary empty-cta" @click="router.push('/')">{{ t('common.toCatalog') }}</button>
     </template>
     <div v-for="o in orders || []" :key="o.id" class="order">
       <div class="head">
@@ -183,7 +180,6 @@ onBeforeUnmount(() => {
   .total { margin-top: 6px; font-weight: 700; }
 }
 .empty { text-align: center; opacity: 0.6; margin-top: 40px; }
-.empty-cta { display: block; width: max-content; margin: 16px auto 0; }
 .reviewed-mark {
   color: #f59e1b;
   font-size: 11px;
