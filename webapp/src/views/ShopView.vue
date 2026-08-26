@@ -267,19 +267,14 @@ async function submitMailing() {
             <span>@{{ summary.bot_username }}</span>
           </div>
         </div>
-        <!-- назад — вернуться на экран, откуда пришли (список магазинов
-             или онбординг); профиль — те же настройки, что и у покупателя -->
-        <div class="controls">
-          <button class="icon-btn" @click="router.go(-1)" :aria-label="t('common.back')">
-            ←
-          </button>
-          <button class="icon-btn" :aria-label="t('store.profile')" @click="router.push('/profile')">
-            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
-            </svg>
-          </button>
-        </div>
+        <!-- профиль продавца: магазины, язык, тема. Системную «Назад» Telegram
+             рисует сам (services/backButton.js), дубль в шапке не нужен -->
+        <button class="icon-btn" :aria-label="t('seller.profileTitle')" @click="router.push(`/shop/${botId}/profile`)">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+          </svg>
+        </button>
       </header>
 
       <div class="stats">

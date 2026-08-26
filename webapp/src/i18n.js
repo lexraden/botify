@@ -18,7 +18,6 @@ export const DICT = {
 
     // общий
     'common.toCatalog': 'В каталог',
-    'common.back': 'Назад',
     'badge.madeWith': 'Сделано через',
 
     // мои покупки
@@ -133,10 +132,10 @@ export const DICT = {
 
     // кабинет продавца: экран магазина
     'seller.shop': 'Магазин',
-    'seller.cabinetBtn': 'Кабинет',
     'seller.profileTitle': 'Профиль продавца',
     'seller.profileSubtitle': 'Магазины, язык и тема',
     'seller.profileIcon': '👤',
+    'seller.backToShop': 'В магазин',
     'seller.noShops': 'Пока нет магазинов — добавь первый',
     'seller.loadError': 'Не удалось загрузить магазин',
     'stat.customers': 'покупателей',
@@ -321,7 +320,6 @@ export const DICT = {
 
     // common
     'common.toCatalog': 'To catalog',
-    'common.back': 'Back',
     'badge.madeWith': 'Made with',
 
     // my purchases
@@ -438,7 +436,11 @@ export const DICT = {
 
     // seller dashboard: shop screen
     'seller.shop': 'Shop',
-    'seller.cabinetBtn': 'Dashboard',
+    'seller.profileTitle': 'Seller profile',
+    'seller.profileSubtitle': 'Shops, language and theme',
+    'seller.profileIcon': '👤',
+    'seller.backToShop': 'To shop',
+    'seller.noShops': "No shops yet — add the first one",
     'seller.loadError': 'Could not load this shop',
     'stat.customers': 'customers',
     'stat.orders': 'orders',

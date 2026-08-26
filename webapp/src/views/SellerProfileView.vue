@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { fetchMe, disableShop, enableShop, deleteShop, connectBot } from '../api'
+import { fetchMe, disableShop, enableShop, deleteShop } from '../api'
 import { t } from '../i18n'
 import BrandBadge from '../components/BrandBadge.vue'
 import { locale, setLocale } from '../services/locale'
@@ -63,6 +63,12 @@ function goAddShop() {
   router.push('/onboarding/bot')
 }
 
+// карточка магазина ведёт в его кабинет — как раньше из списка магазинов
+function goShop(bot) {
+  if (confirmDeleteId.value === bot.id) return
+  router.push(`/shop/${bot.id}`)
+}
+
 // тема: явный выбор продавца, иначе как в клиенте Telegram
 const isDark = computed(() =>
   themePref.value ? themePref.value === 'dark' : tg?.colorScheme === 'dark',
@@ -76,7 +82,11 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
 <template>
   <div class="profile">
     <div class="top">
-      <a class="back" @click="router.go(-1)">← {{ t('common.back') }}</a>
+      <!-- назад ведёт в тот магазин, из которого открылся профиль, а не на
+           шаг истории: экран может быть первым после перезагрузки страницы -->
+      <a class="back" @click="router.push(`/shop/${route.params.botId}`)">
+        ← {{ t('seller.backToShop') }}
+      </a>
       <!-- настройки внешнего вида: тема и язык -->
       <div class="prefs">
         <button class="pref-btn" :aria-label="t('profile.themeToggle')" @click="toggleTheme">
@@ -102,7 +112,7 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
 
     <!-- список подключенных ботов -->
     <div v-for="bot in bots" :key="bot.id" class="card shop">
-      <div class="main">
+      <div class="main" @click="goShop(bot)">
         <div class="avatar">{{ bot.bot_username.charAt(0).toUpperCase() }}</div>
         <div class="info">
           <b>@{{ bot.bot_username }}</b>
@@ -110,6 +120,9 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
             {{ bot.is_active ? t('shops.works') : t('shops.off') }}
           </span>
         </div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--sub)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 6l6 6-6 6" />
+        </svg>
         <button class="menu-btn" @click.stop="toggleMenu(bot)">⋮</button>
       </div>
 
@@ -180,7 +193,7 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
   margin: -8px 0 14px;
 }
 .shop { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
-.main { display: flex; align-items: center; gap: 14px; }
+.main { display: flex; align-items: center; gap: 14px; cursor: pointer; }
 .info { display: flex; flex-direction: column; gap: 2px; flex-grow: 1; }
 .info span { font-size: 12px; }
 .on { color: var(--green-text); }
