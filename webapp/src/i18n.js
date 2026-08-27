@@ -79,11 +79,11 @@ export const DICT = {
     'product.goCart': 'В корзину · {n} · {sum}',
 
     // оформление заказа
-    'checkout.title': 'YOUR ORDER',
+    'checkout.title': 'Ваш заказ',
     'checkout.edit': 'Изменить',
     'checkout.empty': 'Корзина пуста.',
     'checkout.commentPh': 'Комментарий к заказу — детали, пожелания…',
-    'checkout.pay': 'PAY {sum} USDT',
+    'checkout.pay': 'Оплатить {sum} USDT',
     'checkout.error': 'Не удалось оформить заказ',
     'checkout.deliveryTitle': 'Куда доставить',
     'checkout.deliveryHint': 'Продавец увидит это, чтобы отправить заказ.',

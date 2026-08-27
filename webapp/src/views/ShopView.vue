@@ -238,7 +238,10 @@ function revokePhotos(photos) {
 }
 
 function pickFulfillPhotos() {
-  fulfillPhotoInput.value?.click()
+  // input лежит внутри v-for по заказам, поэтому Vue отдаёт ref массивом,
+  // даже когда форма открыта одна — кликать нужно по элементу
+  const el = Array.isArray(fulfillPhotoInput.value) ? fulfillPhotoInput.value[0] : fulfillPhotoInput.value
+  el?.click()
 }
 
 function onFulfillPhotos(e) {

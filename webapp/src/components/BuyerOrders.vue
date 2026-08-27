@@ -184,7 +184,13 @@ onBeforeUnmount(() => {
           {{ STATUS_KEY[o.status] ? t(STATUS_KEY[o.status]) : o.status }}
         </span>
       </div>
-      <!-- неоплаченный: покупатель может доплатить заново или передумать -->
+      <div v-for="i in o.items" :key="i.product_id" class="item">
+        {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
+        <span v-if="i.reviewed" class="reviewed-mark">{{ t('orders.reviewedMark') }}</span>
+      </div>
+      <div class="total">{{ t('orders.total', { sum: `${Number(o.total).toFixed(2)} ${o.currency}` }) }}</div>
+      <!-- действия — внизу карточки: сначала состав и сумма, потом кнопки.
+           неоплаченный: покупатель может доплатить заново или передумать -->
       <template v-if="o.status === 'pending_payment'">
         <div class="pay-actions">
           <button class="pay-btn" :disabled="busyId === o.id" @click="retryPay(o)">
@@ -205,12 +211,6 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="actionError.id === o.id" class="action-error">{{ actionError.text }}</p>
       </template>
-      <div v-for="i in o.items" :key="i.product_id" class="item">
-        {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
-        <span v-if="i.reviewed" class="reviewed-mark">{{ t('orders.reviewedMark') }}</span>
-      </div>
-      <div class="total">{{ t('orders.total', { sum: `${Number(o.total).toFixed(2)} ${o.currency}` }) }}</div>
-
       <button v-if="canRate(o) && formFor !== o.id" class="rate-btn" @click="openForm(o)">
         {{ allReviewed(o) ? t('orders.editReview') : t('orders.rate') }}
       </button>
