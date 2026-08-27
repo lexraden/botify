@@ -129,12 +129,42 @@ async def test_fulfill_photo_only_without_text(db):
             history = (
                 await c.get(f"/api/seller/bots/{bot_id}/orders/{order_id}/chat", headers=seller_headers())
             ).json()
+            # перед фото — служебная запись об отправке (rate limit ей не мешает)
+            assert history["messages"][0]["sender"] == "seller"
+            assert "Посылка на фото ниже" in history["messages"][0]["body"]
             photo_messages = [m for m in history["messages"] if m["image_url"]]
             assert len(photo_messages) == 1
             assert (await c.get(photo_messages[0]["image_url"], headers=seller_headers())).status_code == 200
 
     buyer_text = notify_mock.call_args.args[2]
     assert "фото" in buyer_text  # покупатель знает, что посылка на фото
+
+
+@pytest.mark.asyncio
+async def test_fulfill_leaves_a_note_in_order_chat(db):
+    """Отправка остаётся в истории чата: продавец в кабинете видит, что отправил,
+    даже когда не прикладывал фото — они уходят следом отдельными сообщениями."""
+    bot_id, order_id = await paid_physical_order(db)
+
+    with patch("app.payments.service._notify", new=AsyncMock()):
+        async with client() as c:
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
+                headers=seller_headers(),
+                json={"value": "RA123456789CN"},
+            )
+            assert r.status_code == 200, r.text
+
+            history = (
+                await c.get(
+                    f"/api/seller/bots/{bot_id}/orders/{order_id}/chat",
+                    headers=seller_headers(),
+                )
+            ).json()
+
+    assert [m["sender"] for m in history["messages"]] == ["seller"]
+    assert "отправлен" in history["messages"][0]["body"]
+    assert "RA123456789CN" in history["messages"][0]["body"]
 
 
 @pytest.mark.asyncio

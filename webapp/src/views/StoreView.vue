@@ -113,7 +113,7 @@ onMounted(async () => {
         <ProductCard v-for="p in filtered" :key="p.id" :product="p" @seen="trackEvent('product_view', p.id)" />
       </div>
       <!-- при открытой корзине прячем плашку: низ экрана занят панелью корзины -->
-      <BrandBadge v-if="!cart.count" />
+      <div v-if="!cart.count" class="badge-spacer"><BrandBadge /></div>
 
       <button v-if="cart.count" class="cart-bar" @click="router.push('/checkout')">
         <span class="left">
@@ -130,7 +130,15 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.store { padding: 18px 16px 24px; }
+.store {
+  padding: 18px 16px 24px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+/* плашка прижимается к низу экрана, а не липнет к сетке товаров */
+.badge-spacer { margin-top: auto; }
 .store.has-cart { padding-bottom: 96px; }
 header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .shop-id { display: flex; align-items: center; gap: 10px; min-width: 0; }

@@ -131,7 +131,7 @@ describe('BuyerOrders — живые статусы', () => {
     submitOrderReviews.mockResolvedValue([])
     const wrapper = await mountList()
     await flushPromises()
-    expect(wrapper.text()).toContain('⭐ Оценить покупки')
+    expect(wrapper.text()).toContain('⭐ Оценить покупку')
 
     await wrapper.find('.rate-btn').trigger('click')
     // форма по всем позициям заказа, оценённая открыта заполненной

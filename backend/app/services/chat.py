@@ -184,6 +184,20 @@ async def send_message(
     return message
 
 
+async def add_service_note(session, chat: OrderChat, order: Order, body: str) -> ChatMessage | None:
+    """Служебная запись в историю чата от имени продавца (не от пользователя):
+    без rate limit — иначе фото, отправленные продавцом сразу после fulfill,
+    упёрлись бы в двухсекундный интервал и молча терялись. Чат закрыт —
+    записи нет."""
+    body = (body or "").strip()
+    if not body or not chat_is_open(order):
+        return None
+    message = ChatMessage(chat_id=chat.id, sender="seller", body=body[:MAX_MESSAGE_LEN])
+    session.add(message)
+    await session.flush()
+    return message
+
+
 async def notify_customer(bot_record: SellerBot, customer_tg: int, order_id: int, body: str) -> int | None:
     """Сообщение продавца -> покупателю от бота магазина. Возвращает message_id
     в Telegram (по реплаю на него ответ адресуется этому заказу)."""

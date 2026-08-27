@@ -959,6 +959,27 @@ async def fulfill_order(
     order.status = "fulfilled"
     await session.commit()
 
+    # отправка остаётся в истории чата заказа: продавец в кабинете видит, что
+    # и куда отправил (фото прикладывались бы следом отдельными сообщениями).
+    # Запись служебная и не должна сорвать отправку — падение гасим.
+    from app.services.chat import add_service_note, get_or_create_chat
+
+    note_lines = [f"📦 Заказ #{order.id} отправлен."]
+    if value:
+        note_lines.append(value[:512])
+    elif payload.photos == 1:
+        note_lines.append("Посылка на фото ниже.")
+    elif payload.photos:
+        note_lines.append(f"Фото посылки ниже ({payload.photos} шт.).")
+    chat = await get_or_create_chat(session, order)
+    if chat is not None:
+        try:
+            async with session.begin_nested():
+                await add_service_note(session, chat, order, "\n".join(note_lines))
+            await session.commit()
+        except Exception:
+            pass  # журнал не критичен: заказ уже отправлен, пуш уйдёт ниже
+
     customer = await session.get(Customer, order.customer_id)
 
     from app.payments.service import _notify

@@ -138,9 +138,9 @@ const STATUS = computed(() => ({
 }))
 // у оплаченных заказов есть чат с покупателем (закрывается сам через 72ч после доставки)
 const CHAT_STATUSES = ['paid', 'fulfilled', 'delivered']
-// Отправить можно оплаченный, а отправленный — переотправить: опечатку
-// в треке продавец должен уметь поправить, пока посылка едет.
-const FULFILLABLE = ['paid', 'fulfilled']
+// Отправить можно оплаченный заказ; после отправки кнопка исчезает —
+// остаётся чат с покупателем (трек и фото уже в истории чата).
+const FULFILLABLE = ['paid']
 const TYPE_LABEL = computed(() => ({
   physical: t('type.physical'),
   digital: t('type.digital'),
