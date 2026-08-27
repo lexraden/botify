@@ -118,6 +118,12 @@ async def test_product_reviews_flow(db):
             stranger = next(p for p in r.json()["products"] if p["id"] == stranger_pid)
             assert stranger["avg_rating"] is None and stranger["reviews_count"] == 0
 
+            # рейтинг магазина на шапке складывается из всех его отзывов,
+            # продажи считаются по оплаченным заказам
+            shop_body = r.json()
+            assert float(shop_body["rating"]) == pytest.approx(4.0)
+            assert shop_body["sales_count"] == 1
+
             # список отзывов товара: без личности, свежая версия оценки
             r = await c.get(
                 f"/api/store/{bot_id}/products/{pid}/reviews", headers=buyer_headers()
@@ -252,10 +258,13 @@ async def test_delete_own_review_recalculates_rating(db):
         )
         assert r.status_code == 200, r.text
 
-        # рейтинг товара обнулился
+        # рейтинг товара обнулился; вместе с ним пропал и магазинный
         r = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
-        product = next(p for p in r.json()["products"] if p["id"] == pid)
+        body = r.json()
+        product = next(p for p in body["products"] if p["id"] == pid)
         assert product["reviews_count"] == 0 and product["avg_rating"] is None
+        assert body["rating"] is None
+        assert body["sales_count"] == 1  # продажа от отзыва не зависит
 
         # второго раза нет
         r = await c.delete(

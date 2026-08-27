@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_api_session
-from app.models import ChatImage, ProductImage
+from app.models import ChatImage, ProductImage, ShopLogo
 
 router = APIRouter()
 
@@ -51,3 +51,16 @@ async def get_chat_image(
     if image is None:
         raise HTTPException(status_code=404, detail="image not found")
     return _image_response(image.data, image.mime)
+
+
+@router.get("/shop-logos/{token}")
+async def get_shop_logo(
+    token: str,
+    session: AsyncSession = Depends(get_api_session),
+) -> Response:
+    logo = (
+        await session.execute(select(ShopLogo).where(ShopLogo.token == token))
+    ).scalar_one_or_none()
+    if logo is None:
+        raise HTTPException(status_code=404, detail="image not found")
+    return _image_response(logo.data, logo.mime)

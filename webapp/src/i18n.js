@@ -15,6 +15,10 @@ export const DICT = {
     'store.nothingFound': 'Ничего не нашлось',
     'store.profile': 'Профиль',
     'store.cart': 'Корзина · {n}',
+    // trust-строка шапки: «12 продаж» с русским плюрализмом
+    'store.salesOne': 'продажа',
+    'store.salesFew': 'продажи',
+    'store.salesMany': 'продаж',
 
     // общий
     'common.toCatalog': 'В каталог',
@@ -132,6 +136,14 @@ export const DICT = {
 
     // кабинет продавца: экран магазина
     'seller.shop': 'Магазин',
+    'seller.identity.toggle': 'Настроить витрину',
+    'seller.identity.title': 'Шапка витрины',
+    'seller.identity.hint': 'Так магазин видят покупатели в приложении.',
+    'seller.identity.nameLabel': 'Название магазина',
+    'seller.identity.nameRequired': 'Введите название магазина.',
+    'seller.identity.uploadLogo': 'Загрузить логотип',
+    'seller.identity.replaceLogo': 'Заменить',
+    'seller.identity.removeLogo': 'Убрать логотип',
     'seller.profileTitle': 'Профиль продавца',
     'seller.profileSubtitle': 'Магазины, язык и тема',
     'seller.profileIcon': '👤',
@@ -317,6 +329,10 @@ export const DICT = {
     'store.nothingFound': 'Nothing found',
     'store.profile': 'Profile',
     'store.cart': 'Cart · {n}',
+    // trust line in the header: "12 sales"
+    'store.salesOne': 'sale',
+    'store.salesFew': 'sales',
+    'store.salesMany': 'sales',
 
     // common
     'common.toCatalog': 'To catalog',
@@ -436,6 +452,14 @@ export const DICT = {
 
     // seller dashboard: shop screen
     'seller.shop': 'Shop',
+    'seller.identity.toggle': 'Edit shop appearance',
+    'seller.identity.title': 'Storefront header',
+    'seller.identity.hint': 'This is how buyers see your shop in their app.',
+    'seller.identity.nameLabel': 'Shop name',
+    'seller.identity.nameRequired': 'Enter the shop name.',
+    'seller.identity.uploadLogo': 'Upload a logo',
+    'seller.identity.replaceLogo': 'Replace',
+    'seller.identity.removeLogo': 'Remove logo',
     'seller.profileTitle': 'Seller profile',
     'seller.profileSubtitle': 'Shops, language and theme',
     'seller.profileIcon': '👤',

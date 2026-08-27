@@ -20,7 +20,9 @@ from app.models import (
     ProductReview,
     Seller,
     ShopEvent,
+    ShopLogo,
 )
+from app.models.orders import PAID_STATUSES
 from app.services.reviews import notify_new_review, random_author_name
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,12 @@ class ShopOut(BaseModel):
     # Куда писать, если проблема с заказом. Пусто — в профиле нет кнопки:
     # лучше её отсутствие, чем ссылка не туда.
     support_url: str | None = None
+    # логотип из кабинета; None — в шапке первая буква имени вместо кружка
+    logo_url: str | None = None
+    # средний рейтинг по всем отзывам магазина; нет отзывов — None
+    rating: float | None = None
+    # состоявшиеся продажи — оплаченные заказы (PAID_STATUSES)
+    sales_count: int = 0
 
 
 class CartItemIn(BaseModel):
@@ -131,10 +139,34 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
         product_out = ProductOut.model_validate(p)
         product_out.avg_rating, product_out.reviews_count = ratings.get(p.id, (None, 0))
         out.append(product_out)
+
+    # идентичность и trust-сигналы шапки: лого, рейтинг магазина по всем
+    # его отзывам одним агрегатом, число состоявшихся продаж
+    logo = (
+        await ctx.session.execute(select(ShopLogo).where(ShopLogo.bot_id == ctx.bot.id))
+    ).scalar_one_or_none()
+    avg_rating, total_reviews = (
+        await ctx.session.execute(
+            select(func.avg(ProductReview.rating), func.count()).where(
+                ProductReview.bot_id == ctx.bot.id
+            )
+        )
+    ).one()
+    sales_count = (
+        await ctx.session.execute(
+            select(func.count())
+            .select_from(Order)
+            .where(Order.bot_id == ctx.bot.id, Order.status.in_(PAID_STATUSES))
+        )
+    ).scalar_one()
+
     return ShopOut(
-        shop_name=f"@{ctx.bot.bot_username}",
+        shop_name=ctx.bot.shop_name or f"@{ctx.bot.bot_username}",
         products=out,
         support_url=get_settings().support_url or None,
+        logo_url=f"/api/shop-logos/{logo.token}" if logo else None,
+        rating=float(avg_rating) if total_reviews else None,
+        sales_count=sales_count,
     )
 
 

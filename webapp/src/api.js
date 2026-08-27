@@ -70,6 +70,18 @@ export const deleteShop = (botId) => api.delete(`/seller/bots/${botId}`).then((r
 export const fetchShopSummary = (botId) =>
   api.get(`/seller/bots/${botId}/summary`).then((r) => r.data)
 export const fetchShopStats = (botId) => api.get(`/seller/bots/${botId}/stats`).then((r) => r.data)
+// идентичность магазина в шапке витрины: показное имя и логотип
+export const updateShopName = (botId, name) =>
+  api.put(`/seller/bots/${botId}/shop-name`, { shop_name: name }).then((r) => r.data)
+// лого: сырые байты файла, тип сервер определяет по содержимому
+export const uploadShopLogo = (botId, file) =>
+  api
+    .post(`/seller/bots/${botId}/shop-logo`, file, {
+      headers: { 'Content-Type': 'application/octet-stream' },
+    })
+    .then((r) => r.data)
+export const deleteShopLogo = (botId) =>
+  api.delete(`/seller/bots/${botId}/shop-logo`).then((r) => r.data)
 export const fetchProducts = (botId) =>
   api.get(`/seller/bots/${botId}/products`).then((r) => r.data)
 export const saveProduct = (botId, product) =>

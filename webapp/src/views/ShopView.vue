@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   createMailing,
   deleteProduct,
+  deleteShopLogo,
   fetchMailings,
   fetchMe,
   fetchProducts,
@@ -13,6 +14,8 @@ import {
   fetchSellerReviews,
   fulfillOrder,
   replyToReview,
+  updateShopName,
+  uploadShopLogo,
   withdrawPayout,
 } from '../api'
 import { t, intlLocale } from '../i18n'
@@ -253,6 +256,90 @@ async function submitMailing() {
     f.sending = false
   }
 }
+
+// --- идентичность магазина в шапке витрины: показное имя и логотип ---
+// Панель открывается кликом по аватарке в шапке кабинета. Лого уезжает на
+// сервер сразу после выбора файла (как фото товара), имя — по кнопке.
+const MAX_LOGO_MB = 5
+
+const identityOpen = ref(false)
+const shopName = ref('')
+const savingName = ref(false)
+const nameError = ref('')
+const uploadingLogo = ref(false)
+const logoError = ref('')
+const logoInput = ref(null)
+
+// буква аватара: от показного имени, без него — от юзернейма бота
+const identityLetter = computed(() => {
+  const base = summary.value?.shop_name || summary.value?.bot_username || ''
+  return base.charAt(0).toUpperCase()
+})
+
+function toggleIdentity() {
+  if (!identityOpen.value) {
+    // префилл при каждом открытии: актуальные значения summary уже загружены
+    shopName.value = summary.value?.shop_name ?? ''
+    nameError.value = ''
+    logoError.value = ''
+  }
+  identityOpen.value = !identityOpen.value
+}
+
+async function saveIdentity() {
+  if (savingName.value) return
+  const name = shopName.value.trim()
+  if (!name) {
+    // пустая строка на сервере — ошибка: сброс на дефолт из UI не делаем,
+    // чтобы случайная очистка поля не стёрла название магазина
+    nameError.value = t('seller.identity.nameRequired')
+    return
+  }
+  savingName.value = true
+  try {
+    await updateShopName(botId.value, name)
+    summary.value = await fetchShopSummary(botId.value)
+    identityOpen.value = false
+  } catch (e) {
+    nameError.value = e.response?.data?.detail || t('form.saveError')
+  } finally {
+    savingName.value = false
+  }
+}
+
+async function onPickLogo(e) {
+  const file = e.target.files?.[0]
+  e.target.value = '' // повторный выбор того же файла должен срабатывать
+  if (!file || uploadingLogo.value) return
+  logoError.value = ''
+  if (file.size > MAX_LOGO_MB * 1024 * 1024) {
+    logoError.value = t('form.fileTooBig', { n: MAX_LOGO_MB })
+    return
+  }
+  uploadingLogo.value = true
+  try {
+    await uploadShopLogo(botId.value, file)
+    summary.value = await fetchShopSummary(botId.value)
+  } catch (err) {
+    logoError.value = err.response?.data?.detail || t('form.uploadError')
+  } finally {
+    uploadingLogo.value = false
+  }
+}
+
+async function removeLogo() {
+  if (uploadingLogo.value) return
+  uploadingLogo.value = true
+  logoError.value = ''
+  try {
+    await deleteShopLogo(botId.value)
+    summary.value = await fetchShopSummary(botId.value)
+  } catch (e) {
+    logoError.value = e.response?.data?.detail || t('form.uploadError')
+  } finally {
+    uploadingLogo.value = false
+  }
+}
 </script>
 
 <template>
@@ -260,11 +347,24 @@ async function submitMailing() {
     <p v-if="error" class="error">{{ error }}</p>
     <template v-else-if="summary">
       <header>
+        <!-- аватар-кнопка открывает панель идентичности: так продавец меняет
+             имя и лого, которые покупатели видят в шапке витрины -->
         <div class="title">
-          <h2>{{ t('seller.shop') }}</h2>
-          <div class="bot-line">
-            <span class="dot" :class="{ off: !summary.is_active }" />
-            <span>@{{ summary.bot_username }}</span>
+          <button class="avatar-btn" :aria-label="t('seller.identity.toggle')" @click="toggleIdentity">
+            <img
+              v-if="summary.logo_url"
+              class="shop-avatar"
+              :src="summary.logo_url"
+              :alt="summary.shop_name || summary.bot_username"
+            />
+            <span v-else class="shop-avatar letter">{{ identityLetter }}</span>
+          </button>
+          <div class="title-text">
+            <h2>{{ t('seller.shop') }}</h2>
+            <div class="bot-line">
+              <span class="dot" :class="{ off: !summary.is_active }" />
+              <span>@{{ summary.bot_username }}</span>
+            </div>
           </div>
         </div>
         <!-- профиль продавца: магазины, язык, тема. Системную «Назад» Telegram
@@ -276,6 +376,56 @@ async function submitMailing() {
           </svg>
         </button>
       </header>
+
+      <!-- панель идентичности: превью аватара, лого грузится сразу после
+           выбора файла, название сохраняется кнопкой -->
+      <div v-if="identityOpen" class="card identity">
+        <b class="id-title">{{ t('seller.identity.title') }}</b>
+        <p class="id-hint">{{ t('seller.identity.hint') }}</p>
+        <div class="identity-row">
+          <img v-if="summary.logo_url" class="preview-avatar" :src="summary.logo_url" alt="" />
+          <span v-else class="preview-avatar letter">{{ identityLetter }}</span>
+          <div class="logo-actions">
+            <input
+              ref="logoInput"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              hidden
+              @change="onPickLogo"
+            />
+            <button class="btn btn-soft act" type="button" :disabled="uploadingLogo" @click="logoInput.click()">
+              {{ uploadingLogo ? '…' : (summary.logo_url ? t('seller.identity.replaceLogo') : t('seller.identity.uploadLogo')) }}
+            </button>
+            <button
+              v-if="summary.logo_url"
+              class="btn btn-soft act"
+              type="button"
+              :disabled="uploadingLogo"
+              @click="removeLogo"
+            >
+              {{ t('seller.identity.removeLogo') }}
+            </button>
+          </div>
+        </div>
+        <p v-if="logoError" class="id-error">{{ logoError }}</p>
+
+        <label for="shop-name-input">{{ t('seller.identity.nameLabel') }}</label>
+        <input
+          id="shop-name-input"
+          v-model="shopName"
+          type="text"
+          maxlength="64"
+          :placeholder="'@' + (summary.bot_username || '')"
+        />
+        <p v-if="nameError" class="id-error">{{ nameError }}</p>
+        <button
+          class="btn btn-primary save-btn"
+          :disabled="savingName || !shopName.trim()"
+          @click="saveIdentity"
+        >
+          {{ savingName ? '…' : t('form.save') }}
+        </button>
+      </div>
 
       <div class="stats">
         <div class="card stat">
@@ -544,6 +694,18 @@ async function submitMailing() {
 .shop { padding: 18px 16px 36px; }
 header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
 h2 { font-size: 18px; margin: 0 0 4px; }
+.title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.title-text { min-width: 0; }
+.avatar-btn {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  border-radius: 50%; flex-shrink: 0;
+}
+.shop-avatar { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; }
+.shop-avatar.letter {
+  background: var(--accent); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 800;
+}
 .bot-line { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--sub); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
 .dot.off { background: var(--sub); }
@@ -553,6 +715,23 @@ h2 { font-size: 18px; margin: 0 0 4px; }
   color: var(--text); display: flex; align-items: center; justify-content: center;
   cursor: pointer; font-size: 18px; line-height: 1;
 }
+/* Панель идентичности магазина */
+.identity { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; padding: 14px; }
+.id-title { font-size: 15px; }
+.id-hint { margin: -5px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--sub); }
+.identity-row { display: flex; align-items: center; gap: 12px; }
+.preview-avatar { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.preview-avatar.letter {
+  background: var(--accent); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 800;
+}
+.logo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.logo-actions .act { height: 40px; padding: 0 14px; font-size: 13.5px; }
+.id-error { margin: -4px 0 0; color: var(--red); font-size: 12.5px; }
+.identity label { font-size: 12px; color: var(--sub); margin-top: 2px; font-weight: 700; }
+.save-btn { margin-top: 4px; }
+
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .stat { padding: 12px 10px; display: flex; flex-direction: column; gap: 3px; }
 .stat b { font-size: 19px; }

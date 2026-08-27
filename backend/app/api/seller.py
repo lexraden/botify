@@ -12,7 +12,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_seller
@@ -32,6 +32,7 @@ from app.models import (
     Seller,
     SellerBot,
     ShopEvent,
+    ShopLogo,
 )
 from app.models.orders import PAID_STATUSES
 from app.payments.payouts import paid_total, pending_total
@@ -269,6 +270,79 @@ async def delete_shop(
 
 
 # --------------------------------------------------------------------------
+# Идентичность магазина: показное имя и логотип шапки витрины
+# --------------------------------------------------------------------------
+
+
+class ShopNameIn(BaseModel):
+    shop_name: str | None = Field(default=None, max_length=64)
+
+
+@router.put("/bots/{bot_id}/shop-name")
+async def set_shop_name(
+    payload: ShopNameIn,
+    shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> dict:
+    """Показное имя магазина в шапке витрины (дефолт — Telegram-имя бота).
+
+    Пустая строка после strip — 422: сброс на дефолт передаётся null, чтобы
+    случайная очистка поля не превращала витрину обратно в @username молча."""
+    name = (payload.shop_name or "").strip()
+    if payload.shop_name is not None and not name:
+        raise HTTPException(status_code=422, detail="shop_name пуст — пришли null для сброса")
+    shop.shop_name = name[:64] or None
+    await session.commit()
+    await _notify_seller(
+        seller,
+        f"🏪 Название магазина теперь <b>{html.escape(shop.shop_name)}</b>."
+        if shop.shop_name
+        else f"🏪 Название магазина сброшено к <b>@{html.escape(shop.bot_username or '')}</b>.",
+    )
+    return {"shop_name": shop.shop_name}
+
+
+@router.post("/bots/{bot_id}/shop-logo")
+async def upload_shop_logo(
+    request: Request,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> dict:
+    """Логотип магазина: сырые байты файла, тип по содержимому — как у фото
+    товара. Старая строка удаляется целиком: адрес новой всегда другой, и
+    immutable-кэш браузера не показывает старую картинку на её месте."""
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="фото больше 5 МБ")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="пустой файл")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="фото больше 5 МБ")
+    mime = sniff_image_mime(data)
+    if mime is None:
+        raise HTTPException(status_code=400, detail="только JPEG, PNG, WebP или GIF")
+
+    await session.execute(delete(ShopLogo).where(ShopLogo.bot_id == shop.id))
+    logo = ShopLogo(bot_id=shop.id, mime=mime, size=len(data), data=data)
+    session.add(logo)
+    await session.commit()
+    return {"url": f"/api/shop-logos/{logo.token}"}
+
+
+@router.delete("/bots/{bot_id}/shop-logo")
+async def remove_shop_logo(
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> dict:
+    """Убрать лого — вернуться к первой букве имени вместо кружка."""
+    await session.execute(delete(ShopLogo).where(ShopLogo.bot_id == shop.id))
+    await session.commit()
+    return {"status": "removed"}
+
+
+# --------------------------------------------------------------------------
 # Каналы магазина: список и отключение из кабинета.
 # Подключение происходит в Telegram (бота добавляют админом), кабинет
 # показывает картину и даёт отключить; владение проверяет get_shop.
@@ -319,6 +393,9 @@ class LimitsOut(BaseModel):
 class ShopSummaryOut(BaseModel):
     id: int
     bot_username: str
+    # показное имя и лого шапки витрины — префилл панели идентичности кабинета
+    shop_name: str | None = None
+    logo_url: str | None = None
     is_active: bool
     webhook_status: str
     customers_count: int
@@ -377,6 +454,9 @@ async def shop_summary(
             select(func.count()).select_from(Customer).where(Customer.bot_id == shop.id)
         )
     ).scalar_one()
+    logo = (
+        await session.execute(select(ShopLogo).where(ShopLogo.bot_id == shop.id))
+    ).scalar_one_or_none()
     # как в списке заказов и в выручке ниже: считаем только оплаченные —
     # корзины до оплаты и отменённые до оплаты цифру не растят
     orders_count = (
@@ -397,6 +477,8 @@ async def shop_summary(
     return ShopSummaryOut(
         id=shop.id,
         bot_username=shop.bot_username,
+        shop_name=shop.shop_name,
+        logo_url=f"/api/shop-logos/{logo.token}" if logo else None,
         is_active=shop.is_active,
         webhook_status=shop.webhook_status,
         customers_count=customers_count,

@@ -46,14 +46,69 @@ describe('StoreView — шапка магазина и поиск', () => {
     })
   }
 
-  it('шапка как в кабинете: «Магазин» крупно и @username под ним', async () => {
-    fetchShop.mockResolvedValue({ shop_name: '@petshop', products: PRODUCTS })
+  it('хиро: буква-аватар, имя магазина, trust-строка с рейтингом и продажами', async () => {
+    fetchShop.mockResolvedValue({
+      shop_name: 'Shopik',
+      logo_url: null,
+      rating: 4.9,
+      sales_count: 12,
+      products: PRODUCTS,
+    })
     const wrapper = await mountView()
     await flushPromises()
-    // аватара нет вовсе — только заголовок раздела и юзернейм бота
-    expect(wrapper.find('.avatar').exists()).toBe(false)
-    expect(wrapper.find('.shop-id h2').text()).toBe('Магазин')
-    expect(wrapper.find('.bot-line').text()).toBe('@petshop')
+    // без лого — кружок с первой буквой названия
+    const letter = wrapper.find('.avatar.letter')
+    expect(letter.exists()).toBe(true)
+    expect(letter.text()).toBe('S')
+    // показное имя вместо прежнего заголовка «Магазин»
+    expect(wrapper.find('.shop-id h2').text()).toBe('Shopik')
+    // trust-строка: ★ 4.9 · 12 продаж (звезда отдельным элементом)
+    const trustText = wrapper.find('.trust').text().replace(/\s+/g, ' ').trim()
+    expect(trustText).toBe('★4.9 · 12 продаж')
+    expect(wrapper.find('.trust .star').text()).toBe('★')
+  })
+
+  it('лого рисуется картинкой по адресу из ответа', async () => {
+    fetchShop.mockResolvedValue({
+      shop_name: 'Shopik',
+      logo_url: '/api/shop-logos/tok123',
+      rating: null,
+      sales_count: 12,
+      products: PRODUCTS,
+    })
+    const wrapper = await mountView()
+    await flushPromises()
+    const img = wrapper.find('.avatar')
+    expect(img.element.tagName).toBe('IMG')
+    expect(img.attributes('src')).toBe('/api/shop-logos/tok123')
+  })
+
+  it('без продаж trust-строки нет вовсе; продажи без отзывов — без рейтинга', async () => {
+    fetchShop.mockResolvedValue({
+      shop_name: 'Магазин',
+      logo_url: null,
+      rating: null,
+      sales_count: 0,
+      products: PRODUCTS,
+    })
+    let wrapper = await mountView()
+    await flushPromises()
+    expect(wrapper.find('.trust').exists()).toBe(false)
+
+    // продажи есть, отзывов нет: число показано, рейтинга и звезды нет
+    fetchShop.mockResolvedValue({
+      shop_name: 'Магазин',
+      logo_url: null,
+      rating: null,
+      sales_count: 1,
+      products: PRODUCTS,
+    })
+    wrapper.unmount()
+    wrapper = await mountView()
+    await flushPromises()
+    const trust = wrapper.find('.trust')
+    expect(trust.text().replace(/\s+/g, ' ').trim()).toBe('1 продажа') // единица — не «продажи»
+    expect(trust.find('.star').exists()).toBe(false)
   })
 
   it('поиск фильтрует каталог по названию и описанию', async () => {

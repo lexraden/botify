@@ -43,6 +43,10 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
         await bot.session.close()
 
     async with get_session() as session:
+        # показное имя магазина по умолчанию — Telegram-имя бота; продавец
+        # сможет сменить его в кабинете
+        default_shop_name = (getattr(me, "first_name", "") or "").strip()[:64] or None
+
         existing = (
             await session.execute(
                 select(SellerBot).where(SellerBot.telegram_bot_id == me.id)
@@ -58,6 +62,10 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
             # переподключение ранее отключённого бота: обновляем токен и вебхук
             existing.bot_token_encrypted = encrypt_bot_token(token)
             existing.bot_username = me.username or str(me.id)
+            # кастомное имя продавца не трогаем; дефолт дописываем тем старым
+            # ботам, у которых его ещё нет
+            if not existing.shop_name and default_shop_name:
+                existing.shop_name = default_shop_name
             existing.is_active = True
             webhook_ok = await setup_seller_webhook(existing)
             existing.webhook_status = "active" if webhook_ok else "pending"
@@ -69,6 +77,7 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
             bot_token_encrypted=encrypt_bot_token(token),
             bot_username=me.username or str(me.id),
             telegram_bot_id=me.id,
+            shop_name=default_shop_name,
             webhook_status="pending",
         )
         session.add(record)

@@ -84,3 +84,26 @@ class ProductImage(Base, CreatedAtMixin):
     mime: Mapped[str] = mapped_column(String(32))
     size: Mapped[int] = mapped_column(Integer)
     data: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class ShopLogo(Base, CreatedAtMixin):
+    """Логотип магазина, загруженный продавцом из кабинета: аватар-кружок
+    в шапке витрины. Хранится в БД по образцу ProductImage; без лого витрина
+    показывает первую букву имени.
+
+    Один лого на магазин. Обновление целиком удаляет старую строку и вставляет
+    новую, поэтому адрес (токен) всегда меняется — immutable-кэш браузера
+    не отдаст старую картинку по адресу новой."""
+
+    __tablename__ = "shop_logos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, default=new_image_token
+    )
+    mime: Mapped[str] = mapped_column(String(32))
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)

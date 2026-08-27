@@ -45,6 +45,11 @@ class SellerBot(Base, CreatedAtMixin):
     webhook_status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | active | failed
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Показное имя магазина в шапке витрины. Дефолт проставляется при
+    # подключении из Telegram-имени бота (getMe.first_name); NULL — витрина
+    # показывает @username, как раньше. Меняется продавцом из кабинета.
+    shop_name: Mapped[str | None] = mapped_column(String(64))
+
     # Настройки из /settings самого бота: приветствие покупателю на /start
     # и кнопка открытия витрины (None -> стандартный «🛍 Открыть каталог»)
     welcome_text: Mapped[str | None] = mapped_column(Text)

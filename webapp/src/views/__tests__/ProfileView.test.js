@@ -26,7 +26,14 @@ describe('ProfileView — профиль покупателя', () => {
   beforeEach(() => {
     fetchMyOrders.mockReset()
     fetchShop.mockReset()
-    fetchShop.mockResolvedValue({ support_url: 'https://t.me/botify_support' })
+    // форма ответа честная: поля шапки витрины, добавленные для trust-строки
+    fetchShop.mockResolvedValue({
+      support_url: 'https://t.me/botify_support',
+      shop_name: '@petshop_bot',
+      logo_url: null,
+      rating: null,
+      sales_count: 0,
+    })
     setLocale('ru')
     themePref.value = null
     router.push('/profile')
@@ -86,7 +93,13 @@ describe('ProfileView — профиль покупателя', () => {
 
   it('без настроенной поддержки кнопки нет — лучше никакой, чем не туда', async () => {
     fetchMyOrders.mockResolvedValue([])
-    fetchShop.mockResolvedValue({ support_url: null })
+    fetchShop.mockResolvedValue({
+      support_url: null,
+      shop_name: '@petshop_bot',
+      logo_url: null,
+      rating: null,
+      sales_count: 0,
+    })
     const w = await mountView()
     await flushPromises()
     expect(w.text()).not.toContain('Поддержка')

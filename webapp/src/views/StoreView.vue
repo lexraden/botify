@@ -32,6 +32,19 @@ function toggleSearch() {
   query.value = ''
 }
 
+// без своего лого — аватар из первой буквы названия
+const initial = computed(() => (shop.value?.shop_name || '?').charAt(0).toUpperCase())
+
+// «продажа/продажи/продаж»: русский плюрализм по mod10/mod100
+const salesWord = computed(() => {
+  const n = shop.value?.sales_count ?? 0
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return t('store.salesOne')
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return t('store.salesFew')
+  return t('store.salesMany')
+})
+
 onMounted(async () => {
   try {
     shop.value = await fetchShop()
@@ -51,10 +64,21 @@ onMounted(async () => {
     <p v-if="error" class="error">{{ error }}</p>
     <template v-else-if="shop">
       <header>
-        <!-- как в кабинете продавца: название раздела крупно, @username мельче под ним -->
+        <!-- хиро магазина: аватар (лого или буква), имя бренда и trust-строка.
+             Имя бэкенд отдаёт с фолбэком @username; у магазина без продаж
+             trust-строки нет вовсе, рейтинга нет при отсутствии отзывов -->
         <div class="shop-id">
-          <h2>{{ t('seller.shop') }}</h2>
-          <div class="bot-line">{{ shop.shop_name }}</div>
+          <img v-if="shop.logo_url" class="avatar" :src="shop.logo_url" :alt="shop.shop_name" />
+          <div v-else class="avatar letter">{{ initial }}</div>
+          <div class="titles">
+            <h2>{{ shop.shop_name }}</h2>
+            <div v-if="shop.sales_count" class="trust">
+              <template v-if="shop.rating != null">
+                <span class="star">★</span>{{ shop.rating.toFixed(1) }} ·
+              </template>
+              {{ shop.sales_count }} {{ salesWord }}
+            </div>
+          </div>
         </div>
         <div class="controls">
           <button
@@ -109,9 +133,17 @@ onMounted(async () => {
 .store { padding: 18px 16px 24px; }
 .store.has-cart { padding-bottom: 96px; }
 header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.shop-id { min-width: 0; }
-.shop-id h2 { font-size: 18px; margin: 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bot-line { font-size: 13px; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.avatar.letter {
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 800;
+}
+.titles { min-width: 0; }
+.titles h2 { font-size: 18px; margin: 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trust { font-size: 13px; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trust .star { color: var(--orange); margin-right: 3px; }
 .controls { display: flex; gap: 8px; flex-shrink: 0; }
 .icon-btn {
   width: 42px; height: 42px; border-radius: 13px; border: 0; background: var(--surface2);

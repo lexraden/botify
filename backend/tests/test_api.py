@@ -97,6 +97,10 @@ async def test_full_buy_flow(db):
         assert r.status_code == 200
         shop = r.json()
         assert shop["shop_name"] == "@petshop_bot"
+        # без продаж trust-строки нет, а rating и лого у ORM-бота отсутствуют
+        assert shop["sales_count"] == 0
+        assert shop["rating"] is None
+        assert shop["logo_url"] is None
         assert {p["title"] for p in shop["products"]} == {"Бургер", "Гайд"}
 
         # оформляет заказ; сумма считается на сервере
@@ -148,6 +152,12 @@ async def test_full_buy_flow(db):
         summary = r.json()
         assert summary["customers_count"] == 1
         assert summary["orders_count"] == 1
+
+        # витрина уже считает состоявшуюся продажу; отзывов нет — рейтинг None
+        r = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
+        shop = r.json()
+        assert shop["sales_count"] == 1
+        assert shop["rating"] is None
 
 
 @pytest.mark.asyncio
