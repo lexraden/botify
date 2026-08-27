@@ -245,8 +245,9 @@ function pickFulfillPhotos() {
 }
 
 function onFulfillPhotos(e) {
-  e.target.value = '' // повторный выбор того же файла должен срабатывать
+  // файлы читаем ДО сброса: value='' в браузере очищает выбранные файлы
   const files = Array.from(e.target.files ?? [])
+  e.target.value = '' // повторный выбор того же файла должен срабатывать
   if (!files.length) return
   const form = fulfillForm.value
   const overflow = MAX_FULFILL_PHOTOS - form.photos.length

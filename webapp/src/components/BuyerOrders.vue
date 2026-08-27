@@ -232,21 +232,20 @@ onBeforeUnmount(() => {
               ★
             </button>
           </div>
-          <input
+          <textarea
             v-model="drafts[i.product_id].body"
             class="rate-note"
             :placeholder="t('orders.notePlaceholder')"
             maxlength="1000"
+            rows="3"
           />
         </div>
-        <!-- подпись отзыва не анонимна: говорим об этом до отправки -->
-        <p class="rate-note">{{ t('orders.reviewNameNote') }}</p>
         <p v-if="sendError" class="rate-error">{{ sendError }}</p>
         <div class="form-actions">
           <button class="btn btn-primary" :disabled="sending" @click="submit(o)">
             {{ sending ? t('orders.sending') : t('orders.submit') }}
           </button>
-          <a @click="formFor = null">{{ t('orders.later') }}</a>
+          <button class="later-btn" type="button" @click="formFor = null">{{ t('orders.later') }}</button>
         </div>
       </div>
     </div>
@@ -339,14 +338,24 @@ onBeforeUnmount(() => {
   font-family: inherit;
   background: var(--surface);
   color: var(--text);
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 76px; /* выше одной строки: место для пары слов */
+  resize: none;
 }
 .rate-error { color: var(--red); font-size: 12.5px; margin: 0; }
-.rate-note { font-size: 12px; color: var(--sub); margin: 6px 0 0; }
 .form-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  a { color: var(--sub); font-size: 13px; font-weight: 700; cursor: pointer; }
+  gap: 8px;
+  button { flex: 1; height: 42px; border-radius: 11px; }
+}
+.later-btn {
+  border: 0;
+  background: var(--surface2);
+  color: var(--sub);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
 }
 .status {
   &.ok { color: var(--green); }

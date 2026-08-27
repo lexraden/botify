@@ -71,12 +71,20 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
       <span class="muted">{{ t('profile.write') }}</span>
     </button>
 
-    <BrandBadge />
+    <!-- плашка прижимается к низу экрана, а не липнет к блоку сверху -->
+    <div class="badge-spacer"><BrandBadge /></div>
   </div>
 </template>
 
 <style scoped lang="scss">
-.profile { padding: 18px 16px 24px; }
+.profile {
+  padding: 18px 16px 24px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+.badge-spacer { margin-top: auto; }
 .top {
   display: flex;
   align-items: center;

@@ -50,7 +50,6 @@ export const DICT = {
     'orders.editReview': '✏️ Изменить отзыв',
     'orders.delete': 'Удалить',
     'orders.notePlaceholder': 'Пара слов (необязательно)',
-    'orders.reviewNameNote': 'Отзыв будет подписан твоим именем из Telegram.',
     'orders.needEveryRating': 'Поставь оценку каждому товару.',
     'orders.submit': 'Отправить отзыв',
     'orders.sending': 'Отправляем…',
@@ -76,7 +75,7 @@ export const DICT = {
     'product.reviews': 'Отзывы',
     'product.sellerReply': 'Ответ продавца',
     'product.addToCart': 'Добавить в корзину',
-    'product.goCart': 'В корзину · {n} · {sum}',
+    'product.goCart': 'В корзину · {n} · {sum} USDT',
 
     // оформление заказа
     'checkout.title': 'Ваш заказ',
@@ -360,7 +359,6 @@ export const DICT = {
     'orders.editReview': '✏️ Edit review',
     'orders.delete': 'Delete',
     'orders.notePlaceholder': 'A few words (optional)',
-    'orders.reviewNameNote': 'Your review will be signed with your Telegram name.',
     'orders.needEveryRating': 'Rate every item first.',
     'orders.submit': 'Send review',
     'orders.sending': 'Sending…',
@@ -386,7 +384,7 @@ export const DICT = {
     'product.reviews': 'Reviews',
     'product.sellerReply': "Seller's reply",
     'product.addToCart': 'Add to cart',
-    'product.goCart': 'Cart · {n} · {sum}',
+    'product.goCart': 'Cart · {n} · {sum} USDT',
 
     // checkout
     'checkout.title': 'YOUR ORDER',

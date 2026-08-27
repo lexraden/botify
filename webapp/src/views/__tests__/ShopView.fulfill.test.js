@@ -1,5 +1,11 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, beforeAll } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+
+// jsdom не умеет blob-адреса — превью в тестах подменяем заглушкой
+beforeAll(() => {
+  URL.createObjectURL = vi.fn(() => 'blob:preview')
+  URL.revokeObjectURL = vi.fn()
+})
 
 // Регресс на живой баг: input выбора фото лежит внутри v-for по заказам,
 // поэтому template ref приходит массивом и .click() по нему молча не срабатывает
@@ -76,5 +82,21 @@ describe('ShopView — форма отправки заказа', () => {
 
     const submit = w.find('.fulfill-form .btn-green')
     expect(submit.attributes('disabled')).toBeDefined() // пусто — отправлять нечего
+  })
+
+  it('выбранное фото показывает превью и открывает слот для следующего', async () => {
+    const w = await mountOrders()
+    await w.find('.fulfill-btn').trigger('click')
+
+    const input = w.find('input[type="file"]')
+    Object.defineProperty(input.element, 'files', {
+      value: [new File(['x'], 'parcel.png', { type: 'image/png' })],
+    })
+    await input.trigger('change')
+
+    expect(w.findAll('.tile.filled')).toHaveLength(1)
+    expect(w.find('.tile.filled img').attributes('src')).toMatch(/^blob:/)
+    // справа от превью — квадратик «+» для следующего фото
+    expect(w.find('.tile.add').exists()).toBe(true)
   })
 })
