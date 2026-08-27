@@ -87,6 +87,36 @@ async def latest_draft(seller_id: int) -> SellerBot | None:
         ).scalar_one_or_none()
 
 
+async def can_create_managed_bots() -> bool:
+    """Разрешено ли нашему боту создавать боты для пользователей.
+
+    Флаг `can_manage_bots` поднимается вручную в мини-аппе @BotFather
+    («Bot Management Mode») и приходит только в ответе `getMe`. Пока он снят,
+    Telegram отвечает на кнопку «this bot doesn't support managing bots» —
+    поэтому кнопку лучше не показывать вовсе, чем показывать сломанной.
+
+    Ошибку связи трактуем как «нельзя»: лучше предложить ручной путь, чем
+    отправить человека в тупик.
+    """
+    from app.bots.hub import hub_bot
+
+    try:
+        me = await hub_bot.get_me()
+    except Exception:
+        logger.exception("Не удалось спросить getMe у hub-бота")
+        return False
+    return bool(me.can_manage_bots)
+
+
+MANAGEMENT_OFF = (
+    "Создание бота одной кнопкой пока не включено у платформы.\n\n"
+    "Это чинится в @BotFather: открой его мини-апп (синяя кнопка «Open» слева "
+    "от поля ввода) → выбери бота платформы → включи <b>Bot Management Mode</b>. "
+    "Флаг приходит только в getMe, в обычном меню настроек его нет.\n\n"
+    "Пока не включено — подключай бота как раньше, токеном через приложение."
+)
+
+
 class DraftPromotionError(Exception):
     """Черновик не удалось превратить в магазин."""
 

@@ -36,7 +36,9 @@ from aiogram.fsm.state import State, StatesGroup
 from app.db import get_session
 from app.models import Seller
 from app.services.shop_draft import (
+    MANAGEMENT_OFF,
     DraftPromotionError,
+    can_create_managed_bots,
     create_draft,
     promote_draft,
     suggest_username,
@@ -74,6 +76,12 @@ NO_SELLER = "Сначала нажми /start — я заведу тебя в с
 
 @router.message(Command("newshop"))
 async def cmd_newshop(message: types.Message, state: FSMContext) -> None:
+    # спрашиваем до вопроса про название: иначе человек введёт его, получит
+    # кнопку и упрётся в «this bot doesn't support managing bots»
+    if not await can_create_managed_bots():
+        await message.answer(MANAGEMENT_OFF, reply_markup=types.ReplyKeyboardRemove())
+        return
+
     await state.set_state(NewShop.waiting_title)
     await message.answer(
         "Как назовём магазин?\n\n"

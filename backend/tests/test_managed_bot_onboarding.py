@@ -157,6 +157,65 @@ async def test_latest_draft_ignores_finished_shops(db):
 
 
 # --------------------------------------------------------------------------
+# Право создавать боты
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_newshop_explains_instead_of_offering_broken_button(db):
+    """Пока `can_manage_bots` снят, Telegram отвечает на кнопку ошибкой.
+
+    Значит спрашивать название бессмысленно: человек его введёт, получит
+    кнопку и упрётся в «this bot doesn't support managing bots».
+    """
+    from app.handlers.hub.newshop import cmd_newshop
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=4242), answer=AsyncMock()
+    )
+    state = SimpleNamespace(set_state=AsyncMock(), clear=AsyncMock())
+
+    with patch(
+        "app.bots.hub.hub_bot.get_me",
+        new=AsyncMock(return_value=SimpleNamespace(can_manage_bots=False)),
+    ):
+        await cmd_newshop(message, state)
+
+    state.set_state.assert_not_awaited()  # до вопроса про название не дошли
+    assert "BotFather" in message.answer.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_newshop_asks_for_title_when_management_is_on(db):
+    from app.handlers.hub.newshop import cmd_newshop
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=4242), answer=AsyncMock()
+    )
+    state = SimpleNamespace(set_state=AsyncMock(), clear=AsyncMock())
+
+    with patch(
+        "app.bots.hub.hub_bot.get_me",
+        new=AsyncMock(return_value=SimpleNamespace(can_manage_bots=True)),
+    ):
+        await cmd_newshop(message, state)
+
+    state.set_state.assert_awaited()
+    assert "назовём магазин" in message.answer.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_unreachable_telegram_does_not_offer_the_button(db):
+    """Связь легла — предлагаем ручной путь, а не кнопку наугад."""
+    from app.services.shop_draft import can_create_managed_bots
+
+    with patch(
+        "app.bots.hub.hub_bot.get_me", new=AsyncMock(side_effect=Exception("timeout"))
+    ):
+        assert await can_create_managed_bots() is False
+
+
+# --------------------------------------------------------------------------
 # Кнопка и разбор ответа Telegram
 # --------------------------------------------------------------------------
 
