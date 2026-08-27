@@ -1,6 +1,4 @@
-Это инструкция только для моделей от Anthropic, если ты другая модель - смотри GLP.md
-
-# CLAUDE.md — как работать с Claude Code в этом проекте
+# CLAUDE.md — как работать с Claude Code в этом проекте если ты модель от Anthropic
 
 Основано на гайде Anthropic «Maximizing the value of your Claude Code sessions»,
 адаптировано под нашу среду: сессии идут в **Claude Code на вебе** (claude.ai/code
