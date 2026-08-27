@@ -14,6 +14,7 @@ from app.money import fmt
 from app.models import Customer, Order, OrderItem, Payout, Product, Seller
 from app.payments.client import get_crypto_pay
 from app.security import decrypt_bot_token
+from app.services.notify_texts import buyer_text
 
 logger = logging.getLogger(__name__)
 
@@ -208,20 +209,23 @@ async def handle_invoice_paid(
     await _notify(
         seller_bot_token,
         customer_tg,
-        f"✅ Заказ #{order_id} оплачен!\n\n{order_summary}\n"
+        # язык уведомления — как в Mini App покупателя (notify_texts)
+        buyer_text(customer, "paid.header", id=order_id)
+        + f"\n\n{order_summary}\n"
         + (
-            "\n📬 Твои материалы:\n" + "\n".join(digital_lines)
+            "\n" + buyer_text(customer, "paid.materials") + "\n" + "\n".join(digital_lines)
             if digital_lines
-            else "\nПродавец готовит заказ — детали доставки придут сюда."
+            else "\n" + buyer_text(customer, "paid.preparing")
         )
         # доставленные цифровые заказы можно оценивать — подводим к форме отзыва
-        + ("\n⭐ Как всё прошло? Оцени покупки в разделе «Мои покупки»." if all_digital else "")
+        + ("\n" + buyer_text(customer, "paid.review") if all_digital else "")
         # закончился между заказом и оплатой: честнее сказать сразу, чем дать
         # человеку ждать посылку, которой не будет
         + (
-            "\n\n⚠️ Пока шла оплата, закончилось: "
-            + ", ".join(html.escape(t) for t in sold_out)
-            + ".\nПродавец свяжется с тобой в чате заказа — напиши ему прямо здесь."
+            "\n\n"
+            + buyer_text(
+                customer, "paid.sold_out", items=", ".join(html.escape(t) for t in sold_out)
+            )
             if sold_out
             else ""
         ),

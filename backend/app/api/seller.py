@@ -959,18 +959,22 @@ async def fulfill_order(
     order.status = "fulfilled"
     await session.commit()
 
+    customer = await session.get(Customer, order.customer_id)
+
     # отправка остаётся в истории чата заказа: продавец в кабинете видит, что
     # и куда отправил (фото прикладывались бы следом отдельными сообщениями).
     # Запись служебная и не должна сорвать отправку — падение гасим.
+    # Текст — на языке покупателя: запись в чат и пуш делят одни строки.
     from app.services.chat import add_service_note, get_or_create_chat
+    from app.services.notify_texts import buyer_text
 
-    note_lines = [f"📦 Заказ #{order.id} отправлен."]
+    note_lines = [buyer_text(customer, "note.sent", id=order.id)]
     if value:
         note_lines.append(value[:512])
     elif payload.photos == 1:
-        note_lines.append("Посылка на фото ниже.")
+        note_lines.append(buyer_text(customer, "fulfill.photo_one"))
     elif payload.photos:
-        note_lines.append(f"Фото посылки ниже ({payload.photos} шт.).")
+        note_lines.append(buyer_text(customer, "fulfill.photo_many", n=payload.photos))
     chat = await get_or_create_chat(session, order)
     if chat is not None:
         try:
@@ -980,21 +984,19 @@ async def fulfill_order(
         except Exception:
             pass  # журнал не критичен: заказ уже отправлен, пуш уйдёт ниже
 
-    customer = await session.get(Customer, order.customer_id)
-
     from app.payments.service import _notify
     from app.security import decrypt_bot_token
 
     # текст продавца уходит с parse_mode=HTML — экранируем, иначе «<» в
     # примечании или треке оставит покупателя без уведомления об отправке
-    lines = [f"📦 Продавец отправил заказ #{order.id}!"]
+    lines = [buyer_text(customer, "fulfill.header", id=order.id)]
     if value:
         lines.append(html.escape(value))
     elif payload.photos == 1:
-        lines.append("Посылка на фото ниже.")
+        lines.append(buyer_text(customer, "fulfill.photo_one"))
     elif payload.photos:
-        lines.append(f"Фото посылки ниже ({payload.photos} шт.).")
-    lines.append("\n📬 Получишь — отметь в «Моих покупках», там же можно оценить.")
+        lines.append(buyer_text(customer, "fulfill.photo_many", n=payload.photos))
+    lines.append("\n" + buyer_text(customer, "fulfill.hint"))
     await _notify(
         decrypt_bot_token(shop.bot_token_encrypted),
         customer.telegram_id,
@@ -1081,6 +1083,7 @@ async def send_order_chat_message(
         notify_customer,
         send_message,
     )
+    from app.services.notify_texts import buyer_locale
 
     order, chat = await _order_with_chat(shop, order_id, session)
     try:
@@ -1091,14 +1094,15 @@ async def send_order_chat_message(
         raise HTTPException(status_code=429, detail="too_many_messages")
 
     out = ChatMessageOut.model_validate(message)
-    customer_tg = (
-        await session.get(Customer, order.customer_id)
-    ).telegram_id
+    customer = await session.get(Customer, order.customer_id)
     await session.commit()
 
     # Доставка после коммита: сбой Telegram не должен терять сообщение из
-    # истории (продавец увидит его в кабинете при следующем открытии)
-    tg_message_id = await notify_customer(shop, customer_tg, order.id, message.body)
+    # истории (продавец увидит его в кабинете при следующем открытии).
+    # Обёртка «💬 Заказ #N» — на языке покупателя.
+    tg_message_id = await notify_customer(
+        shop, customer.telegram_id, order.id, message.body, locale=buyer_locale(customer)
+    )
     if tg_message_id is not None:
         async with session_factory() as followup:
             await followup.execute(
@@ -1127,6 +1131,7 @@ async def send_order_chat_photo(
         notify_customer_photo,
         send_message,
     )
+    from app.services.notify_texts import buyer_locale
 
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_IMAGE_BYTES:
@@ -1155,15 +1160,19 @@ async def send_order_chat_photo(
         raise HTTPException(status_code=429, detail="too_many_messages")
 
     out = ChatMessageOut.model_validate(message)
-    customer_tg = (
-        await session.get(Customer, order.customer_id)
-    ).telegram_id
+    customer = await session.get(Customer, order.customer_id)
     await session.commit()
 
     # Доставка после коммита — как у текстовых сообщений: сбой Telegram не
-    # теряет фото из истории кабинета
+    # теряет фото из истории кабинета. Обёртка — на языке покупателя.
     tg_message_id = await notify_customer_photo(
-        shop, customer_tg, order.id, data, mime, message.body or None
+        shop,
+        customer.telegram_id,
+        order.id,
+        data,
+        mime,
+        message.body or None,
+        locale=buyer_locale(customer),
     )
     if tg_message_id is not None:
         async with session_factory() as followup:

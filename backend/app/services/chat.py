@@ -30,6 +30,7 @@ from app.models import ChatMessage, Order, OrderChat, SellerBot
 from app.models.chat import ChatMessageArchive
 from app.models.orders import PAID_STATUSES
 from app.security import decrypt_bot_token
+from app.services.notify_texts import text as notify_text
 
 logger = logging.getLogger(__name__)
 
@@ -198,9 +199,12 @@ async def add_service_note(session, chat: OrderChat, order: Order, body: str) ->
     return message
 
 
-async def notify_customer(bot_record: SellerBot, customer_tg: int, order_id: int, body: str) -> int | None:
+async def notify_customer(
+    bot_record: SellerBot, customer_tg: int, order_id: int, body: str, locale: str = "en"
+) -> int | None:
     """Сообщение продавца -> покупателю от бота магазина. Возвращает message_id
-    в Telegram (по реплаю на него ответ адресуется этому заказу)."""
+    в Telegram (по реплаю на него ответ адресуется этому заказу). Обёртка
+    «💬 Заказ #N» — на языке покупателя, тело не переводится."""
     # импорт внутри функции: app.bots.runner сам импортирует хендлеры чата,
     # модульный импорт наверху даёт цикл runner → chat → services.chat → runner
     from app.bots.runner import make_seller_bot
@@ -209,7 +213,7 @@ async def notify_customer(bot_record: SellerBot, customer_tg: int, order_id: int
     try:
         sent = await bot.send_message(
             customer_tg,
-            f"💬 Заказ #{order_id}\n\n{html.escape(body)}",
+            f"{notify_text(locale, 'chat.header', id=order_id)}\n\n{html.escape(body)}",
         )
         return sent.message_id
     except Exception:
@@ -226,9 +230,11 @@ async def notify_customer_photo(
     data: bytes,
     mime: str,
     caption: str | None,
+    locale: str = "en",
 ) -> int | None:
     """Фото продавца -> покупателю от бота магазина (send_photo). Возвращает
-    message_id в Telegram — реплай на него адресует этот же заказ."""
+    message_id в Telegram — реплай на него адресует этот же заказ. Обёртка
+    «💬 Заказ #N» — на языке покупателя, подпись не переводится."""
     # импорт внутри функции — тот же цикл runner → chat → services.chat → runner,
     # что и в notify_customer
     from aiogram.types import BufferedInputFile
@@ -237,13 +243,13 @@ async def notify_customer_photo(
 
     bot = make_seller_bot(decrypt_bot_token(bot_record.bot_token_encrypted))
     try:
-        text = f"💬 Заказ #{order_id}"
+        header = notify_text(locale, "chat.header", id=order_id)
         if caption:
-            text += f"\n\n{html.escape(caption)}"
+            header += f"\n\n{html.escape(caption)}"
         sent = await bot.send_photo(
             customer_tg,
             BufferedInputFile(data, filename=f"order-{order_id}.{mime.split('/')[-1]}"),
-            caption=text,
+            caption=header,
         )
         return sent.message_id
     except Exception:

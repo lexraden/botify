@@ -102,11 +102,20 @@ class TgUserInfo:
     language_code: str | None = None
 
 
+# Языки, на которые умеет говорить платформа (уведомления покупателю)
+CUSTOMER_LOCALES = ("ru", "en")
+
+
 async def upsert_customer(
-    bot_record: SellerBot, user: TgUserInfo, source: str | None = None
+    bot_record: SellerBot,
+    user: TgUserInfo,
+    source: str | None = None,
+    locale: str | None = None,
 ) -> tuple[Customer, bool]:
     """Добавляет покупателя в базу конкретного seller-бота (или обновляет).
-    source записывается только при первом контакте — фиксируем происхождение лида."""
+    source записывается только при первом контакте — фиксируем происхождение лида.
+    locale — ручной выбор языка из Mini App (X-Locale): валидные значения
+    сохраняются, мусор и пустая строка существующий выбор не сбрасывают."""
     async with get_session() as session:
         customer = (
             await session.execute(
@@ -120,6 +129,11 @@ async def upsert_customer(
         if customer is not None:
             customer.username = user.username
             customer.first_name = user.first_name
+            # Telegram-профиль мог смениться с прошлого визита: без этого
+            # смена языка в самом Telegram никогда бы не подхватилась.
+            customer.language_code = user.language_code
+            if locale in CUSTOMER_LOCALES:
+                customer.locale = locale
             # Раз он снова здесь — бот разблокирован, рассылки опять доходят.
             # Иначе отметка «не доставляется» осталась бы навсегда.
             customer.mailing_blocked = False
@@ -133,6 +147,7 @@ async def upsert_customer(
             username=user.username,
             first_name=user.first_name,
             language_code=user.language_code,
+            locale=locale if locale in CUSTOMER_LOCALES else None,
             source=source,
         )
         session.add(customer)

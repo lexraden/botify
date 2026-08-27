@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { getBotId, getInitData } from './services/telegram'
+import { storedLocale } from './services/locale'
 import { startLoading, stopLoading } from './services/loading'
 
 const api = axios.create({ baseURL: '/api' })
@@ -11,6 +12,8 @@ const SILENT = { silent: true }
 
 api.interceptors.request.use((config) => {
   config.headers['X-Init-Data'] = getInitData()
+  // язык уведомлений на бэкенде = язык Mini App; '' — ручной выбор ещё не сделан
+  config.headers['X-Locale'] = storedLocale() ?? ''
   if (!config.silent) startLoading()
   return config
 })

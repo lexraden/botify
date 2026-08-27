@@ -25,6 +25,7 @@ async def _buyer_context(
     session: AsyncSession,
     *,
     require_active: bool,
+    x_locale: str = "",
 ) -> BuyerContext:
     """Покупатель: initData подписана токеном seller-бота, из которого открыта витрина.
 
@@ -53,6 +54,7 @@ async def _buyer_context(
             language_code=user.get("language_code"),
         ),
         source="webapp",
+        locale=x_locale or None,
     )
     if customer.is_banned:
         raise HTTPException(status_code=403, detail="banned")
@@ -62,19 +64,23 @@ async def _buyer_context(
 async def get_buyer(
     bot_id: int = Path(),
     x_init_data: str = Header(default=""),
+    x_locale: str = Header(default=""),
     session: AsyncSession = Depends(get_api_session),
 ) -> BuyerContext:
     """Витрина и покупка: только у работающего магазина."""
-    return await _buyer_context(bot_id, x_init_data, session, require_active=True)
+    return await _buyer_context(bot_id, x_init_data, session, require_active=True, x_locale=x_locale)
 
 
 async def get_buyer_any_shop(
     bot_id: int = Path(),
     x_init_data: str = Header(default=""),
+    x_locale: str = Header(default=""),
     session: AsyncSession = Depends(get_api_session),
 ) -> BuyerContext:
     """Свои заказы, чат и отзывы — доступны и у отключённого магазина."""
-    return await _buyer_context(bot_id, x_init_data, session, require_active=False)
+    return await _buyer_context(
+        bot_id, x_init_data, session, require_active=False, x_locale=x_locale
+    )
 
 
 async def get_seller(

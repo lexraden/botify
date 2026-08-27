@@ -24,6 +24,13 @@ function stored() {
 
 export const locale = ref(stored() ?? detect())
 
+// Ручной выбор из профиля (или null): уезжает на бэкенд заголовком X-Locale,
+// чтобы пуши бота приходили на том же языке, что и сам Mini App. Автодетект
+// Telegram сюда не входит — сервер сам видит language_code в initData.
+export function storedLocale() {
+  return stored()
+}
+
 export function setLocale(value) {
   if (!LOCALES.includes(value)) return
   locale.value = value
