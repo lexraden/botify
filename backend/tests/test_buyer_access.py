@@ -136,7 +136,7 @@ async def test_shipped_is_not_delivered_until_buyer_says_so(db):
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"tracking": "RA1"},
+                json={"value": "RA1"},
             )
         assert r.json()["status"] == "fulfilled"
 
@@ -171,7 +171,7 @@ async def test_forgotten_confirmation_closes_itself(db):
             await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"tracking": "RA1"},
+                json={"value": "RA1"},
             )
 
     assert await auto_confirm_delivery() == 0  # свежий заказ не трогаем

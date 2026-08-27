@@ -1,6 +1,5 @@
-// Минимальная локаль для блока условий использования. Глобального i18n в
-// проекте нет — этот модуль только выбирает язык текстов T&C: из языка
-// профиля Telegram, иначе языка браузера; выбор можно переключить вручную.
+// Единый источник локали всего Mini App (i18n.js читает отсюда же): начальный
+// язык берём из Telegram-профиля пользователя, дальше выбор живёт вручную.
 import { ref } from 'vue'
 import { tg } from './telegram'
 
@@ -8,7 +7,9 @@ const KEY = 'botify:locale'
 export const LOCALES = ['ru', 'en']
 
 function detect() {
-  const raw = tg?.initDataUnsafe?.user?.language_code ?? navigator.language ?? 'ru'
+  // русский, только если так настроен сам Telegram; нет данных или другой
+  // язык — английский всегда (решение владельца: дефолт платформы EN)
+  const raw = tg?.initDataUnsafe?.user?.language_code ?? ''
   return String(raw).toLowerCase().startsWith('ru') ? 'ru' : 'en'
 }
 

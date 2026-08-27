@@ -80,7 +80,7 @@ async def test_review_push_survives_angle_brackets():
 
 @pytest.mark.asyncio
 async def test_fulfillment_push_survives_angle_brackets(db):
-    """Трек, ссылка и примечание продавца тоже идут с parse_mode=HTML."""
+    """Трек или ссылка продавца идут с parse_mode=HTML."""
     from tests.test_api import client, seller_headers
     from tests.test_fulfillment import paid_physical_order
 
@@ -90,12 +90,12 @@ async def test_fulfillment_push_survives_angle_brackets(db):
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"tracking": "RA<1>CN", "note": "размер <M>"},
+                json={"value": "RA<1>CN размер <M>"},
             )
             assert r.status_code == 200, r.text
 
     text = notify_mock.call_args.args[2]
-    assert "RA&lt;1&gt;CN" in text and "размер &lt;M&gt;" in text
+    assert "RA&lt;1&gt;CN размер &lt;M&gt;" in text
     assert "<M>" not in text
 
 

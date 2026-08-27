@@ -29,12 +29,16 @@ function mountWith(type) {
 }
 
 describe('CheckoutView — доставка', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    delete window.Telegram
+    window.open = vi.fn()
+  })
 
-  it('у физического товара спрашивает адрес и не пускает без него', async () => {
+  it('у физического товара одно поле адреса, без него оплата не пускает', async () => {
     const w = mountWith('physical')
     await flushPromises()
-    expect(w.findAll('.delivery input')).toHaveLength(2) // имя и телефон
+    expect(w.findAll('.delivery textarea')).toHaveLength(1) // имя и телефон убрали
     expect(w.find('button.pay').attributes('disabled')).toBeDefined()
 
     await w.find('button.pay').trigger('click')
@@ -44,9 +48,6 @@ describe('CheckoutView — доставка', () => {
   it('заполненный адрес уходит вместе с заказом', async () => {
     const w = mountWith('physical')
     await flushPromises()
-    const [name, phone] = w.findAll('.delivery input')
-    await name.setValue('Аня')
-    await phone.setValue('+79990001122')
     await w.find('.delivery textarea').setValue('Тверская 1')
     await w.find('button.pay').trigger('click')
     await flushPromises()
@@ -54,7 +55,7 @@ describe('CheckoutView — доставка', () => {
     expect(createOrder).toHaveBeenCalledWith(
       [{ product_id: 1, qty: 1 }],
       null,
-      { name: 'Аня', phone: '+79990001122', address: 'Тверская 1' },
+      { address: 'Тверская 1' },
     )
   })
 
@@ -66,5 +67,19 @@ describe('CheckoutView — доставка', () => {
     await w.find('button.pay').trigger('click')
     await flushPromises()
     expect(createOrder).toHaveBeenCalledWith([{ product_id: 1, qty: 1 }], null, null)
+  })
+
+  it('после Pay открывается окно оплаты и покупатель возвращается в магазин', async () => {
+    createOrder.mockResolvedValueOnce({ id: 1, payment_url: 'https://t.me/CryptoBot' })
+    window.Telegram = { WebApp: { openTelegramLink: vi.fn() } }
+    const w = mountWith('digital')
+    await flushPromises()
+    await w.find('button.pay').trigger('click')
+    await flushPromises()
+
+    expect(window.Telegram.WebApp.openTelegramLink).toHaveBeenCalledWith('https://t.me/CryptoBot')
+    expect(window.open).not.toHaveBeenCalled()
+    // промежуточной страницы «Мои покупки» больше нет — сразу назад в магазин
+    expect(router.push).toHaveBeenCalledWith('/')
   })
 })

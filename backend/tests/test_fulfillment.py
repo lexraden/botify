@@ -20,10 +20,11 @@ async def paid_physical_order(db) -> tuple[int, int]:
             json={"type": "physical", "title": "Кроссовки", "price": "50"},
         )
         pid = r.json()["id"]
+        # адрес без имени и телефона: чекаут больше их не собирает
         r = await c.post(
             f"/api/store/{bot_id}/orders",
             headers=buyer_headers(),
-            json={"delivery": {"name": "Аня", "phone": "+79990001122", "address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 1}]},
+            json={"delivery": {"address": "Тверская 1"}, "items": [{"product_id": pid, "qty": 1}]},
         )
         order_id = r.json()["id"]
 
@@ -49,7 +50,7 @@ async def test_fulfill_flow(db):
 
     with patch("app.payments.service._notify", new=AsyncMock()) as notify_mock:
         async with client() as c:
-            # пустой fulfillment отклоняется
+            # пустой fulfillment отклоняется: ни строки, ни обещанных фото
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill", headers=seller_headers(), json={}
             )
@@ -58,7 +59,7 @@ async def test_fulfill_flow(db):
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"tracking": "RA123456789CN", "note": "Отправлено CDEK"},
+                json={"value": "RA123456789CN", "photos": 2},
             )
             assert r.status_code == 200, r.text
             # «Отправлен», а не «Доставлен»: посылка ещё едет
@@ -70,14 +71,14 @@ async def test_fulfill_flow(db):
             ).json()
             sent = next(o for o in orders if o["id"] == order_id)
             assert sent["items"][0]["title"] == "Кроссовки"
-            assert sent["fulfillment"]["tracking"] == "RA123456789CN"
-            assert sent["fulfillment"]["note"] == "Отправлено CDEK"
+            assert sent["fulfillment"]["value"] == "RA123456789CN"
+            assert sent["fulfillment"]["photos"] == 2
 
             # трек можно поправить, пока заказ в пути — опечатка не фатальна
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"tracking": "RA987654321CN"},
+                json={"value": "RA987654321CN"},
             )
             assert r.status_code == 200, r.text
 
@@ -92,12 +93,48 @@ async def test_fulfill_flow(db):
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"tracking": "x"},
+                json={"value": "x"},
             )
             assert r.status_code == 400
 
     buyer_text = notify_mock.call_args.args[2]
     assert "RA987654321CN" in buyer_text
+
+
+@pytest.mark.asyncio
+async def test_fulfill_photo_only_without_text(db):
+    """Трек иногда негде взять — фото посылки сами по себе основание для отправки."""
+    bot_id, order_id = await paid_physical_order(db)
+
+    with patch("app.payments.service._notify", new=AsyncMock()) as notify_mock:
+        async with client() as c:
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
+                headers=seller_headers(),
+                json={"value": None, "photos": 1},
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["status"] == "fulfilled"
+
+            # а вот и само фото: уезжает следом в чат заказа как у продавца из кабинета
+            from tests.test_product_images import PNG_BYTES
+
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/chat/photo",
+                headers={**seller_headers(), "Content-Type": "application/octet-stream"},
+                content=PNG_BYTES,
+            )
+            assert r.status_code == 200, r.text
+
+            history = (
+                await c.get(f"/api/seller/bots/{bot_id}/orders/{order_id}/chat", headers=seller_headers())
+            ).json()
+            photo_messages = [m for m in history["messages"] if m["image_url"]]
+            assert len(photo_messages) == 1
+            assert (await c.get(photo_messages[0]["image_url"], headers=seller_headers())).status_code == 200
+
+    buyer_text = notify_mock.call_args.args[2]
+    assert "фото" in buyer_text  # покупатель знает, что посылка на фото
 
 
 @pytest.mark.asyncio

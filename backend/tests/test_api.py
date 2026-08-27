@@ -173,6 +173,49 @@ async def test_order_rejects_foreign_or_inactive_products(db):
 
 
 @pytest.mark.asyncio
+async def test_delivery_with_address_only(db):
+    """Чекаут спрашивает только адрес: заказ без имени и телефона проходит."""
+    from unittest.mock import AsyncMock, patch
+
+    from tests.test_payments import patched_notifications
+
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={"type": "physical", "title": "Кофе", "price": "3"},
+        )
+        pid = r.json()["id"]
+        r = await c.post(
+            f"/api/store/{bot_id}/orders",
+            headers=buyer_headers(),
+            json={"delivery": {"address": "Пункт выдачи №2"}, "items": [{"product_id": pid, "qty": 1}]},
+        )
+        assert r.status_code == 200, r.text
+        order_id = r.json()["id"]
+
+    # неоплаченные заказы продавца не видны — платим, чтобы проверить выдачу
+    from app.db import get_session
+    from app.models import Order
+    from app.payments.service import handle_invoice_paid
+
+    async with get_session() as session:
+        order = await session.get(Order, order_id)
+        order.invoice_id = 700900
+        await session.commit()
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        assert await handle_invoice_paid(700900, None)
+
+    async with client() as c:
+        orders = (await c.get(f"/api/seller/bots/{bot_id}/orders", headers=seller_headers())).json()
+        delivery = orders[0]["delivery"]
+        assert delivery["address"] == "Пункт выдачи №2"
+        assert "name" not in delivery and "phone" not in delivery
+
+
+@pytest.mark.asyncio
 async def test_delete_product_with_orders_deactivates(db):
     bot_id = await setup_shop(db)
     async with client() as c:

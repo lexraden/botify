@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchProductReviews, fetchShop, trackEvent } from '../api'
 import { t, intlLocale } from '../i18n'
-import BrandBadge from '../components/BrandBadge.vue'
 import { useCartStore } from '../stores/cart'
 import { apiError } from '../services/apiError'
 
@@ -100,7 +99,6 @@ onMounted(async () => {
           {{ t('product.goCart', { n: cart.count, sum: cart.total.toFixed(2) }) }}
         </button>
       </div>
-      <BrandBadge />
     </template>
 
     <p v-else-if="error" class="error">{{ error }}</p>

@@ -49,7 +49,7 @@ async def test_product_reviews_flow(db):
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"note": "Выдано на кассе"},
+                json={"value": "Выдано на кассе"},
             )
             # «Доставлен» ставит покупатель — оценивать можно только после
             await c.post(
@@ -202,7 +202,7 @@ async def test_review_author_falls_back_to_pseudonym_without_name(db):
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"note": "Выдано"},
+                json={"value": "Выдано"},
             )
             # подтверждает получение сам покупатель этого заказа
             await c.post(
@@ -235,7 +235,7 @@ async def test_delete_own_review_recalculates_rating(db):
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"note": "Выдано"},
+                json={"value": "Выдано"},
             )
             # «Доставлен» ставит покупатель — оценивать можно только после
             await c.post(
@@ -293,7 +293,7 @@ async def test_seller_reply_visible_to_buyers(db):
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
                 headers=seller_headers(),
-                json={"note": "Выдано"},
+                json={"value": "Выдано"},
             )
             # «Доставлен» ставит покупатель — оценивать можно только после
             await c.post(

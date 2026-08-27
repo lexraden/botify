@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { fetchMe, disableShop, enableShop, deleteShop } from '../api'
 import { t } from '../i18n'
-import BrandBadge from '../components/BrandBadge.vue'
 import { locale, setLocale } from '../services/locale'
 import { setTheme, themePref } from '../services/theme'
 import { openTelegramLink, tg } from '../services/telegram'
@@ -152,8 +151,6 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
       </svg>
       {{ t('shops.add') }}
     </button>
-
-    <BrandBadge />
   </div>
 </template>
 

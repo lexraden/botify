@@ -17,12 +17,9 @@ const error = ref('')
 const needsDelivery = computed(() =>
   Object.values(cart.items).some((i) => i.product.type === 'physical'),
 )
-const delivery = ref({ name: '', phone: '', address: '' })
-const deliveryReady = computed(
-  () =>
-    !needsDelivery.value ||
-    (delivery.value.name.trim() && delivery.value.phone.trim() && delivery.value.address.trim()),
-)
+// одно поле адреса: имя/телефон убрали — лишний ввод стоял конверсии
+const address = ref('')
+const deliveryReady = computed(() => !needsDelivery.value || address.value.trim())
 
 onMounted(() => trackEvent('checkout_start'))
 
@@ -38,13 +35,7 @@ async function pay() {
     const order = await createOrder(
       cart.asOrderItems,
       comment.value || null,
-      needsDelivery.value
-        ? {
-            name: delivery.value.name.trim(),
-            phone: delivery.value.phone.trim(),
-            address: delivery.value.address.trim(),
-          }
-        : null,
+      needsDelivery.value ? { address: address.value.trim() } : null,
     )
     cart.clear()
     if (order.payment_url) {
@@ -52,7 +43,9 @@ async function pay() {
       if (tg?.openTelegramLink) tg.openTelegramLink(order.payment_url)
       else window.open(order.payment_url, '_blank')
     }
-    router.push({ name: 'my-orders', query: { created: order.id, pay: order.payment_url ? 1 : 0 } })
+    // промежуточная страница «Мои покупки» мешала: нажали Pay — окно оплаты
+    // уже открыто, возвращаем покупателя в магазин, где он и был
+    router.push('/')
   } catch (e) {
     error.value = apiError(e, 'checkout.error')
   } finally {
@@ -81,16 +74,8 @@ async function pay() {
     <section v-if="needsDelivery" class="delivery">
       <h3>{{ t('checkout.deliveryTitle') }}</h3>
       <p class="hint">{{ t('checkout.deliveryHint') }}</p>
-      <input v-model="delivery.name" :placeholder="t('checkout.namePh')" :maxlength="128" />
-      <input
-        v-model="delivery.phone"
-        type="tel"
-        inputmode="tel"
-        :placeholder="t('checkout.phonePh')"
-        :maxlength="32"
-      />
       <textarea
-        v-model="delivery.address"
+        v-model="address"
         :placeholder="t('checkout.addressPh')"
         :maxlength="512"
         rows="2"
@@ -130,16 +115,6 @@ header {
   gap: 8px;
   h3 { margin: 0; font-size: 15px; }
   .hint { margin: -4px 0 2px; font-size: 13px; color: var(--sub); }
-  input {
-    width: 100%;
-    box-sizing: border-box;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px;
-    background: var(--surface);
-    color: inherit;
-    font: inherit;
-  }
   textarea { margin-top: 0; }
 }
 textarea {

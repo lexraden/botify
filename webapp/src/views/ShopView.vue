@@ -14,6 +14,7 @@ import {
   fetchSellerReviews,
   fulfillOrder,
   replyToReview,
+  sendOrderChatPhoto,
   updateShopName,
   uploadShopLogo,
   withdrawPayout,
@@ -156,15 +157,22 @@ const fmtDateTime = (iso) =>
     minute: '2-digit',
   })
 
-// что продавец отправил при выполнении — одной строкой для карточки
-const fulfillmentLine = (f) =>
-  [
-    f?.tracking ? t('fulfill.tracking', { v: f.tracking }) : '',
-    f?.url ? t('fulfill.url', { v: f.url }) : '',
-    f?.note || '',
+// что продавец отправил при выполнении — одной строкой для карточки.
+// Новый формат fulfillment {value, photos}; старые заказы хранят tracking/url/note
+const fulfillmentLine = (f) => {
+  if (!f) return ''
+  if (f.value) {
+    const photos = f.photos ? ` · 📷 ${f.photos}` : ''
+    return `${f.value}${photos}`
+  }
+  return [
+    f.tracking ? t('fulfill.tracking', { v: f.tracking }) : '',
+    f.url ? t('fulfill.url', { v: f.url }) : '',
+    f.note || '',
   ]
     .filter(Boolean)
     .join(' · ')
+}
 
 async function reload() {
   const id = botId.value
@@ -209,23 +217,69 @@ async function removeProduct(p) {
   }
 }
 
-const fulfillForm = ref({ orderId: null, tracking: '', url: '', note: '', sending: false })
+// Отправка физического заказа: одно поле «трек или ссылка» плюс до 3 фото
+// посылки. Фото уезжают в чат заказа (покупатель получит их от бота) после
+// того, как сам fulfill принял сервер.
+const MAX_FULFILL_PHOTOS = 3
+// как у фото товара и лого магазина: тяжёлое молча не берём
+const MAX_FULFILL_MB = 5
+
+const fulfillPhotoInput = ref(null)
+const fulfillForm = ref({ orderId: null, value: '', photos: [], sending: false })
 
 function openFulfill(o) {
-  fulfillForm.value = { orderId: o.id, tracking: '', url: '', note: '', sending: false }
+  revokePhotos(fulfillForm.value.photos)
+  fulfillForm.value = { orderId: o.id, value: '', photos: [], sending: false }
+}
+
+// file → URL.createObjectURL для превью; чистим за собой, иначе утекаем
+function revokePhotos(photos) {
+  for (const p of photos) URL.revokeObjectURL(p.url)
+}
+
+function pickFulfillPhotos() {
+  fulfillPhotoInput.value?.click()
+}
+
+function onFulfillPhotos(e) {
+  e.target.value = '' // повторный выбор того же файла должен срабатывать
+  const files = Array.from(e.target.files ?? [])
+  if (!files.length) return
+  const form = fulfillForm.value
+  const overflow = MAX_FULFILL_PHOTOS - form.photos.length
+  if (overflow <= 0) return
+  for (const file of files.slice(0, overflow)) {
+    if (file.size > MAX_FULFILL_MB * 1024 * 1024) continue // слишком тяжёлое — пропускаем
+    form.photos.push({ file, url: URL.createObjectURL(file) })
+  }
+}
+
+function dropPhoto(i) {
+  const form = fulfillForm.value
+  URL.revokeObjectURL(form.photos[i].url)
+  form.photos.splice(i, 1)
 }
 
 async function submitFulfill() {
   const f = fulfillForm.value
-  if (f.sending || !(f.tracking || f.url || f.note)) return
+  if (f.sending || !(f.value.trim() || f.photos.length)) return
   f.sending = true
   actionError.value = ''
   try {
     await fulfillOrder(botId.value, f.orderId, {
-      tracking: f.tracking || null,
-      url: f.url || null,
-      note: f.note || null,
+      value: f.value.trim() || null,
+      photos: f.photos.length,
     })
+    // фото — следом за fulfill; сбой одного не отменяет отправку заказа:
+    // текст уже доставлен, а картинку можно переслать из истории чата
+    for (const p of f.photos) {
+      try {
+        await sendOrderChatPhoto(botId.value, f.orderId, p.file, '')
+      } catch {
+        /* история чата не критична для подтверждения отправки */
+      }
+    }
+    revokePhotos(f.photos)
     fulfillForm.value.orderId = null
     await reload()
   } catch (e) {
@@ -488,11 +542,13 @@ async function removeLogo() {
               <span>{{ (Number(i.price) * i.qty).toFixed(2) }} USDT</span>
             </div>
           </div>
-          <!-- адрес нужен, чтобы отправить: показываем отдельным блоком,
-               а не в общем ряду примечаний -->
+          <!-- адрес нужен, чтобы отправить: показываем отдельным блоком.
+               Имя/телефон покупателя больше не собираем — у старых заказов есть -->
           <div v-if="o.delivery" class="delivery">
             <b>{{ t('seller.deliveryTitle') }}</b>
-            <span>{{ o.delivery.name }} · {{ o.delivery.phone }}</span>
+            <span v-if="o.delivery.name || o.delivery.phone">
+              {{ [o.delivery.name, o.delivery.phone].filter(Boolean).join(' · ') }}
+            </span>
             <span>{{ o.delivery.address }}</span>
           </div>
           <div v-if="o.comment" class="comment">💬 {{ o.comment }}</div>
@@ -512,15 +568,40 @@ async function removeLogo() {
           >
             {{ t('seller.fulfill') }}
           </button>
+          <!-- фото посылки: до трёх квадратиков с превью; клик по пустому
+               «+» открывает выбор файлов -->
           <div v-if="fulfillForm.orderId === o.id" class="fulfill-form">
-            <input v-model="fulfillForm.tracking" :placeholder="t('seller.trackPh')" />
-            <input v-model="fulfillForm.url" :placeholder="t('seller.urlPh')" />
-            <input v-model="fulfillForm.note" :placeholder="t('seller.notePh')" />
+            <div class="photo-tiles">
+              <div
+                v-for="(p, i) in fulfillForm.photos"
+                :key="p.url"
+                class="tile filled"
+              >
+                <img :src="p.url" alt="" />
+                <button class="drop" type="button" :aria-label="t('orders.delete')" @click="dropPhoto(i)">✕</button>
+              </div>
+              <button
+                v-if="fulfillForm.photos.length < MAX_FULFILL_PHOTOS"
+                class="tile add"
+                type="button"
+                :aria-label="t('chat.attachPhoto')"
+                :disabled="fulfillForm.sending"
+                @click="pickFulfillPhotos"
+              >
+                +
+              </button>
+            </div>
+            <input ref="fulfillPhotoInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden @change="onFulfillPhotos" />
+            <input
+              v-model="fulfillForm.value"
+              maxlength="512"
+              :placeholder="t('seller.fulfillValuePh')"
+            />
             <div class="pair">
               <button class="btn btn-soft" @click="fulfillForm.orderId = null">{{ t('common.cancel') }}</button>
               <button
                 class="btn btn-green"
-                :disabled="fulfillForm.sending || !(fulfillForm.tracking || fulfillForm.url || fulfillForm.note)"
+                :disabled="fulfillForm.sending || !(fulfillForm.value.trim() || fulfillForm.photos.length)"
                 @click="submitFulfill"
               >
                 {{ fulfillForm.sending ? '…' : t('seller.send') }}
@@ -782,6 +863,22 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .fulfill-btn { height: 42px; }
 .chat-btn { height: 42px; margin-top: 2px; }
 .fulfill-form { display: flex; flex-direction: column; gap: 8px; }
+.photo-tiles { display: flex; gap: 8px; }
+.tile {
+  width: 64px; height: 64px; border-radius: 12px; padding: 0;
+  border: 1px solid var(--line); background: var(--surface2);
+  position: relative; overflow: visible; cursor: pointer;
+}
+.tile.add {
+  font-size: 26px; color: var(--sub); line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.tile.filled img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
+.tile .drop {
+  position: absolute; top: -6px; right: -6px; width: 20px; height: 20px;
+  border-radius: 50%; border: 0; background: var(--text); color: var(--surface);
+  font-size: 11px; line-height: 1; cursor: pointer;
+}
 .pair { display: flex; gap: 8px; }
 .pair .btn { height: 42px; }
 .mailing-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }

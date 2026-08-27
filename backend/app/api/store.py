@@ -68,10 +68,12 @@ class CartItemIn(BaseModel):
 
 class DeliveryIn(BaseModel):
     """Куда везти. Обязательна, если в заказе есть физический товар: без неё
-    продавец не может отправить посылку и идёт выяснять адрес в чат."""
+    продавец не может отправить посылку и идёт выяснять адрес в чат.
+    Имя/телефон больше не собираем (лишний ввод стоял конверсии чекаута),
+    но поле осталось — у старых заказов и старых клиентов оно приходит."""
 
-    name: str = Field(min_length=1, max_length=128)
-    phone: str = Field(min_length=1, max_length=32)
+    name: str | None = Field(default=None, max_length=128)
+    phone: str | None = Field(default=None, max_length=32)
     address: str = Field(min_length=1, max_length=512)
 
 
@@ -247,7 +249,11 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         total=total,
         currency="USDT",
         comment=payload.comment,
-        delivery=payload.delivery.model_dump() if needs_delivery and payload.delivery else None,
+        delivery=(
+            payload.delivery.model_dump(exclude_none=True)
+            if needs_delivery and payload.delivery
+            else None
+        ),
     )
     ctx.session.add(order)
     await ctx.session.flush()

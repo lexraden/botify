@@ -918,9 +918,14 @@ async def reply_to_review(
 
 
 class FulfillIn(BaseModel):
-    tracking: str | None = Field(default=None, max_length=256)  # трек-номер
-    url: str | None = Field(default=None, max_length=512)       # ссылка (файл/инвайт)
-    note: str | None = Field(default=None, max_length=1000)     # координаты/примечание
+    # Единое поле «что отправлено» — трек-номер или ссылка; прежние три поля
+    # (tracking/url/note) схлопнулись в одно по мокапу владельца.
+    value: str | None = Field(default=None, max_length=512)
+    # Сколько фото продавец приложил сверх текста. Сам эндпоинт фото не
+    # принимает: фронт шлёт их через POST .../chat/photo уже после успешного
+    # fulfill — там готовая доставка покупателю и история чата. Число нужно,
+    # чтобы можно было отправить только фото без единой строки текста.
+    photos: int = Field(default=0, ge=0, le=3)
 
 
 @router.post("/bots/{bot_id}/orders/{order_id}/fulfill")
@@ -930,10 +935,11 @@ async def fulfill_order(
     shop: SellerBot = Depends(get_shop),
     session: AsyncSession = Depends(get_api_session),
 ) -> dict:
-    """Продавец прикрепляет трек/ссылку/примечание -> бот пересылает покупателю.
+    """Продавец прикрепляет трек/ссылку/фото -> бот пересылает покупателю.
     Доля продавца остаётся в кассе магазина — вывод только по кнопке «Вывести»."""
-    if not (payload.tracking or payload.url or payload.note):
-        raise HTTPException(status_code=400, detail="attach tracking, url or note")
+    value = (payload.value or "").strip()
+    if not (value or payload.photos):
+        raise HTTPException(status_code=400, detail="attach tracking, link or photo")
 
     order = await session.get(Order, order_id)
     if order is None or order.bot_id != shop.id:
@@ -941,7 +947,10 @@ async def fulfill_order(
     if order.status not in ("paid", "fulfilled"):
         raise HTTPException(status_code=400, detail=f"order is {order.status}")
 
-    order.fulfillment = payload.model_dump(exclude_none=True)
+    fulfillment: dict = {"photos": payload.photos}
+    if value:
+        fulfillment["value"] = value[:512]
+    order.fulfillment = fulfillment
     # «Отправлен», а не «Доставлен»: посылка едет днями, а от delivered_at
     # тикает окно чата. Раньше покупатель видел «Доставлен» в первый же день,
     # а на четвёртый, когда посылка потерялась, писать продавцу было уже
@@ -958,12 +967,12 @@ async def fulfill_order(
     # текст продавца уходит с parse_mode=HTML — экранируем, иначе «<» в
     # примечании или треке оставит покупателя без уведомления об отправке
     lines = [f"📦 Продавец отправил заказ #{order.id}!"]
-    if payload.tracking:
-        lines.append(f"Трек-номер: <code>{html.escape(payload.tracking)}</code>")
-    if payload.url:
-        lines.append(f"Ссылка: {html.escape(payload.url)}")
-    if payload.note:
-        lines.append(html.escape(payload.note))
+    if value:
+        lines.append(html.escape(value))
+    elif payload.photos == 1:
+        lines.append("Посылка на фото ниже.")
+    elif payload.photos:
+        lines.append(f"Фото посылки ниже ({payload.photos} шт.).")
     lines.append("\n📬 Получишь — отметь в «Моих покупках», там же можно оценить.")
     await _notify(
         decrypt_bot_token(shop.bot_token_encrypted),
