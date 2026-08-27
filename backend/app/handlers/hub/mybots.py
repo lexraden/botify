@@ -1,5 +1,7 @@
 """Управление магазинами: меню «Мои магазины», карточки, включение/удаление."""
 
+import html
+
 from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -23,6 +25,9 @@ NO_SHOPS = "У тебя пока нет подключённых магазин�
 
 def bot_status_line(bot: SellerBot) -> str:
     """Строка одного магазина в общем списке."""
+    if bot.is_draft:
+        # магазин заведён, бот ещё не создан — зовём закончить, а не пугаем
+        return f"⚪ <b>{html.escape(bot.display_name)}</b> — бот не создан, /newshop"
     if not bot.is_active:
         return f"⚪ <b>@{bot.bot_username}</b> — отключён"
     icon = STATUS_ICONS.get(bot.webhook_status, "⚪")

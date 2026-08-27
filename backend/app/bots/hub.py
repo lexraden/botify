@@ -6,9 +6,20 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from app.config import get_settings
 from app.handlers.hub import admin as hub_admin
 from app.handlers.hub import mybots as hub_mybots
+from app.handlers.hub import newshop as hub_newshop
 from app.handlers.hub import start as hub_start
 
 HUB_WEBHOOK_PATH = "/webhook/hub"
+
+# Список обязателен: managed_bot в дефолтную выдачу Telegram не входит, и без
+# явного перечисления апдейты о созданных нами ботах просто не придут.
+# Всё, что перечислено, hub-бот действительно обрабатывает.
+HUB_ALLOWED_UPDATES = [
+    "message",
+    "callback_query",
+    "my_chat_member",
+    "managed_bot",
+]
 
 hub_bot = Bot(
     token=get_settings().hub_bot_token,
@@ -18,6 +29,9 @@ hub_bot = Bot(
 hub_dp = Dispatcher(storage=MemoryStorage())
 hub_dp.include_router(hub_admin.router)
 hub_dp.include_router(hub_mybots.router)
+# newshop раньше start: у него свой FSM на текст (название магазина),
+# и он не должен перехватываться приветствием
+hub_dp.include_router(hub_newshop.router)
 hub_dp.include_router(hub_start.router)
 
 
@@ -31,6 +45,7 @@ async def setup_hub_webhook() -> None:
         [
             BotCommand(command="start", description="Начать / настройка"),
             BotCommand(command="mybots", description="Мои магазины"),
+            BotCommand(command="newshop", description="Новый магазин"),
         ]
     )
     url = f"{settings.webhook_base_url}{HUB_WEBHOOK_PATH}"
@@ -40,4 +55,5 @@ async def setup_hub_webhook() -> None:
             url=url,
             secret_token=settings.telegram_webhook_secret,
             drop_pending_updates=True,
+            allowed_updates=HUB_ALLOWED_UPDATES,
         )

@@ -50,7 +50,10 @@ PRODUCT_TYPES = {"physical", "digital", "service"}
 
 class BotOut(BaseModel):
     id: int
-    bot_username: str
+    # у черновика (магазин заведён, бот ещё нет) юзернейма не существует
+    bot_username: str | None = None
+    title: str | None = None
+    is_draft: bool = False
     webhook_status: str
     is_active: bool
 
@@ -202,7 +205,7 @@ async def get_shop(
 
 class ShopStateOut(BaseModel):
     id: int
-    bot_username: str
+    bot_username: str | None = None  # у черновика бота ещё нет
     is_active: bool
 
 

@@ -14,9 +14,26 @@ class SellerBot(Base, CreatedAtMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     seller_id: Mapped[int] = mapped_column(ForeignKey("sellers.id", ondelete="CASCADE"), index=True)
 
-    bot_token_encrypted: Mapped[bytes] = mapped_column(LargeBinary)
-    bot_username: Mapped[str] = mapped_column(String(64))
-    telegram_bot_id: Mapped[int] = mapped_column(BigInteger, unique=True)  # id из getMe
+    # Название магазина: из него собирается имя и юзернейм для создаваемого
+    # бота, оно же — шапка витрины. У магазинов, заведённых до этого поля,
+    # совпадает с юзернеймом бота.
+    title: Mapped[str | None] = mapped_column(String(128))
+
+    # Пусто, пока бот не подключён: онбординг начинается с названия магазина,
+    # а бот появляется последним шагом. Черновик — это строка с пустым токеном,
+    # отдельного флага нет намеренно (был бы второй источник правды).
+    bot_token_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary)
+    bot_username: Mapped[str | None] = mapped_column(String(64))
+    telegram_bot_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)  # из getMe
+
+    @property
+    def is_draft(self) -> bool:
+        """Магазин заведён, но бота к нему ещё не подключили."""
+        return self.bot_token_encrypted is None
+
+    @property
+    def display_name(self) -> str:
+        return self.title or (f"@{self.bot_username}" if self.bot_username else "Магазин")
 
     webhook_status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | active | failed
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

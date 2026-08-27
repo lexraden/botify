@@ -112,6 +112,9 @@ async def enable_bot(bot_id: int, seller_id: int) -> SellerBot | None:
         bot = await session.get(SellerBot, bot_id)
         if bot is None or bot.seller_id != seller_id:
             return None
+        if bot.bot_token_encrypted is None:
+            # черновик: включать нечего, магазин без бота покупателям не отдаётся
+            return None
         bot.is_active = True
         webhook_ok = await setup_seller_webhook(bot)
         bot.webhook_status = "active" if webhook_ok else "pending"

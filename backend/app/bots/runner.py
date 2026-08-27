@@ -58,6 +58,9 @@ async def setup_seller_webhook(record: SellerBot) -> bool:
     settings = get_settings()
     if not settings.webhook_base_url:
         return False
+    if record.bot_token_encrypted is None:
+        # черновик магазина: бота ещё нет, вешать вебхук не на что
+        return False
     token = decrypt_bot_token(record.bot_token_encrypted)
     bot = make_seller_bot(token)
     try:
@@ -80,6 +83,8 @@ async def setup_seller_webhook(record: SellerBot) -> bool:
 
 async def remove_seller_webhook(record: SellerBot) -> None:
     """Снимает вебхук выключаемого бота — Telegram перестаёт слать апдейты."""
+    if record.bot_token_encrypted is None:
+        return  # черновик: снимать нечего
     token = decrypt_bot_token(record.bot_token_encrypted)
     bot = make_seller_bot(token)
     try:
@@ -111,7 +116,7 @@ async def feed_seller_update(bot_id: int, update_data: dict) -> None:
     """Роутит апдейт seller-бота в общий Dispatcher с контекстом bot_id/seller_id."""
     async with get_session() as session:
         record = await session.get(SellerBot, bot_id)
-    if record is None or not record.is_active:
+    if record is None or not record.is_active or record.bot_token_encrypted is None:
         logger.warning("Апдейт для неизвестного/выключенного seller-бота id=%s", bot_id)
         return
 

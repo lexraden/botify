@@ -62,6 +62,8 @@ async def check_revoked_tokens() -> int:
                     select(SellerBot).where(
                         SellerBot.is_active.is_(True),
                         SellerBot.webhook_status != REVOKED,
+                        # у черновика токена нет — проверять нечего
+                        SellerBot.bot_token_encrypted.is_not(None),
                     )
                 )
             )
