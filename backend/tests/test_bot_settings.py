@@ -274,7 +274,13 @@ async def test_save_channel_greeting(db):
 
 
 def test_card_keyboard_links_to_bot_settings():
-    bot = SimpleNamespace(id=7, bot_username="deep_shop", is_active=True)
+    bot = SimpleNamespace(
+        id=7,
+        bot_username="deep_shop",
+        is_active=True,
+        webhook_status="active",
+        is_managed=False,
+    )
     kb = mybots.bot_card_keyboard(bot)
     assert "⚙️ Настройки бота" in button_texts(kb)
     url_buttons = [btn for row in kb.inline_keyboard for btn in row if btn.url]

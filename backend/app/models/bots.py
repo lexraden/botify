@@ -26,6 +26,13 @@ class SellerBot(Base, CreatedAtMixin):
     bot_username: Mapped[str | None] = mapped_column(String(64))
     telegram_bot_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)  # из getMe
 
+    # Бот создан кнопкой внутри платформы (managed bot), а не вручную в
+    # @BotFather. Флаг нужен ровно для одного: только такому боту мы можем
+    # сами перевыпустить токен через replaceManagedBotToken, если продавец
+    # сменил его в @BotFather. Из остальных полей это не выводится — токен
+    # и юзернейм у обоих способов одинаковые.
+    is_managed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
     @property
     def is_draft(self) -> bool:
         """Магазин заведён, но бота к нему ещё не подключили."""

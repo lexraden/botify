@@ -151,6 +151,9 @@ async def promote_draft(
         shop.bot_username = bot_username
         shop.telegram_bot_id = telegram_bot_id
         shop.is_active = True
+        # бот наш управляемый: если продавец сменит токен в @BotFather,
+        # мы сможем перевыпустить его сами (app/services/bot_recovery.py)
+        shop.is_managed = True
         await session.commit()
         await session.refresh(shop)
         return shop

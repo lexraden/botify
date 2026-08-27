@@ -323,6 +323,123 @@ async def test_bot_created_without_draft_does_not_crash(db):
 
 
 # --------------------------------------------------------------------------
+# Продавец сменил токен в @BotFather
+# --------------------------------------------------------------------------
+
+
+REPLACEMENT_TOKEN = "7891234567:AAHreplaced-token-aaaaaaaaaaaaaaaa"
+
+
+async def _connected_shop(db, *, is_managed: bool) -> tuple[Seller, SellerBot]:
+    """Работающий магазин с отозванным токеном — состояние после того, как
+    продавец перевыпустил токен в @BotFather."""
+    seller = await _seller(db)
+    async with db() as session:
+        shop = SellerBot(
+            seller_id=seller.id,
+            title="Кофейня",
+            bot_token_encrypted=encrypt_bot_token(NEW_TOKEN),
+            bot_username="kofeynya_bot",
+            telegram_bot_id=7891234567,
+            is_managed=is_managed,
+            is_active=True,
+            webhook_status="revoked",
+        )
+        session.add(shop)
+        await session.commit()
+        await session.refresh(shop)
+        return seller, shop
+
+
+@pytest.mark.asyncio
+async def test_managed_shop_is_restored_without_the_seller(db):
+    """Смысл кнопки: ни BotFather, ни копипаста токена."""
+    from app.services.bot_recovery import RESTORED, restore_managed_token
+
+    seller, shop = await _connected_shop(db, is_managed=True)
+
+    with (
+        patch(
+            "app.bots.hub.hub_bot.replace_managed_bot_token",
+            new=AsyncMock(return_value=REPLACEMENT_TOKEN),
+        ),
+        patch("app.bots.runner.setup_seller_webhook", new=AsyncMock(return_value=True)),
+    ):
+        assert await restore_managed_token(shop.id, seller.id) == RESTORED
+
+    async with db() as session:
+        fresh = await session.get(SellerBot, shop.id)
+        assert decrypt_bot_token(fresh.bot_token_encrypted) == REPLACEMENT_TOKEN
+        assert fresh.webhook_status == "active"  # магазин снова живой
+        assert fresh.is_active is True
+
+
+@pytest.mark.asyncio
+async def test_manually_connected_shop_cannot_be_restored(db):
+    """Чужим ботом мы не управляем — перевыпускать нечего."""
+    from app.services.bot_recovery import NOT_MANAGED, restore_managed_token
+
+    seller, shop = await _connected_shop(db, is_managed=False)
+    replace = AsyncMock()
+    with patch("app.bots.hub.hub_bot.replace_managed_bot_token", new=replace):
+        assert await restore_managed_token(shop.id, seller.id) == NOT_MANAGED
+    replace.assert_not_awaited()  # и не ходим в Telegram зря
+
+
+@pytest.mark.asyncio
+async def test_failed_replace_leaves_the_old_token_alone(db):
+    """Доступ к боту забрали — магазин остаётся как был, а не без токена."""
+    from app.services.bot_recovery import FAILED, restore_managed_token
+
+    seller, shop = await _connected_shop(db, is_managed=True)
+    with patch(
+        "app.bots.hub.hub_bot.replace_managed_bot_token",
+        new=AsyncMock(side_effect=Exception("access revoked")),
+    ):
+        assert await restore_managed_token(shop.id, seller.id) == FAILED
+
+    async with db() as session:
+        fresh = await session.get(SellerBot, shop.id)
+        assert decrypt_bot_token(fresh.bot_token_encrypted) == NEW_TOKEN
+
+
+@pytest.mark.asyncio
+async def test_restore_refuses_someone_elses_shop(db):
+    """Chat id в callback_data подделать несложно — владельца проверяем."""
+    from app.services.bot_recovery import NOT_FOUND, restore_managed_token
+
+    _, shop = await _connected_shop(db, is_managed=True)
+    stranger = await _seller(db, telegram_id=999)
+
+    replace = AsyncMock()
+    with patch("app.bots.hub.hub_bot.replace_managed_bot_token", new=replace):
+        assert await restore_managed_token(shop.id, stranger.id) == NOT_FOUND
+    replace.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_promoted_shop_is_marked_managed(db):
+    """Без этого флага починить бота кнопкой будет нечем."""
+    seller = await _seller(db)
+    draft = await create_draft(seller.id, "Кофейня")
+    shop = await promote_draft(draft.id, NEW_TOKEN, "kofeynya_bot", 7891234567)
+    assert shop.is_managed is True
+
+
+@pytest.mark.asyncio
+async def test_revoked_push_offers_the_button_only_to_managed_bots(db):
+    """Кнопка, которая ничего не чинит, хуже честного текста про BotFather."""
+    from app.services.bot_health import revoked_text
+
+    managed = revoked_text("kofeynya_bot", is_managed=True)
+    manual = revoked_text("kofeynya_bot", is_managed=False)
+
+    assert "новый токен" in managed
+    assert "перестанет" in managed  # предупреждаем: старый токен умрёт
+    assert "BotFather" in manual and "новый токен" not in manual
+
+
+# --------------------------------------------------------------------------
 # Черновик не ломает существующий код
 # --------------------------------------------------------------------------
 

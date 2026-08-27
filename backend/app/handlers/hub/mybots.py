@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.models import Seller, SellerBot
 from app.services.bot_connect import delete_bot, disconnect_bot, enable_bot, get_own_bot
+from app.services.bot_recovery import NOT_MANAGED, RESTORED, restore_managed_token
 
 router = Router()
 
@@ -21,6 +22,17 @@ SHOPS_PITCH = (
 )
 
 NO_SHOPS = "У тебя пока нет подключённых магазинов."
+
+
+def restore_keyboard(bot_id: int) -> types.InlineKeyboardMarkup:
+    """Кнопка «выпустить новый токен» — для бота, созданного нашей кнопкой.
+
+    Уезжает в пуш от `bot_health`, поэтому живёт здесь, рядом с хендлером,
+    который её ловит.
+    """
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Восстановить магазин", callback_data=f"mybots:fix:{bot_id}")
+    return kb.as_markup()
 
 
 def bot_status_line(bot: SellerBot) -> str:
@@ -34,7 +46,8 @@ def bot_status_line(bot: SellerBot) -> str:
     if bot.webhook_status == "revoked":
         # отозванный токен чинится только переподключением, поэтому пишем
         # прямо здесь, а не прячем за цветом кружка
-        return f"{icon} <b>@{bot.bot_username}</b> — токен отозван, подключи заново"
+        fix = "нажми «Восстановить»" if bot.is_managed else "подключи заново"
+        return f"{icon} <b>@{bot.bot_username}</b> — токен отозван, {fix}"
     return f"{icon} <b>@{bot.bot_username}</b> — включён"
 
 
@@ -68,6 +81,12 @@ def shops_menu_keyboard(bots: list[SellerBot]) -> types.InlineKeyboardMarkup:
 
 
 def bot_card_text(bot: SellerBot) -> str:
+    if bot.webhook_status == "revoked":
+        # «работает» здесь было бы враньём: покупатели до магазина не доходят
+        return (
+            f"🔴 <b>@{bot.bot_username}</b> — токен отозван\n\n"
+            "Магазин не получает сообщения от покупателей."
+        )
     if bot.is_active:
         icon = STATUS_ICONS.get(bot.webhook_status, "⚪")
         return f"{icon} <b>@{bot.bot_username}</b> — работает"
@@ -76,6 +95,9 @@ def bot_card_text(bot: SellerBot) -> str:
 
 def bot_card_keyboard(bot: SellerBot) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
+    if bot.webhook_status == "revoked" and bot.is_managed:
+        # починка в одно нажатие — до всех остальных кнопок
+        kb.button(text="🔄 Восстановить магазин", callback_data=f"mybots:fix:{bot.id}")
     if bot.is_active:
         kb.button(text="🔌 Отключить", callback_data=f"mybots:off:{bot.id}")
     else:
@@ -291,6 +313,49 @@ async def do_delete(callback: types.CallbackQuery) -> None:
         )
     else:
         await callback.answer("Бот не найден", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("mybots:fix:"))
+async def restore_shop(callback: types.CallbackQuery) -> None:
+    """Перевыпуск токена бота, созданного нашей кнопкой.
+
+    Кнопка приходит двумя путями: в пуше от `bot_health` и в карточке
+    магазина, — поэтому правим не сообщение целиком, а отвечаем текстом:
+    под кнопкой может быть и то и другое.
+    """
+    ctx = await _owned_bot_from_callback(callback)
+    if ctx is None:
+        return
+    seller, bot_id = ctx
+    if callback.message is None:
+        return
+
+    await callback.answer("Восстанавливаю…")
+    result = await restore_managed_token(bot_id, seller.id)
+    bot = await get_own_bot(bot_id, seller.id)
+    username = bot.bot_username if bot else ""
+
+    if result == RESTORED:
+        text = (
+            f"✅ Магазин <b>@{username}</b> снова работает.\n\n"
+            "Токен перевыпущен, покупатели опять доходят. Старый токен из "
+            "@BotFather больше не действует."
+        )
+    elif result == NOT_MANAGED:
+        text = (
+            f"Бота <b>@{username}</b> создавал не я, поэтому выпустить ему токен "
+            "не могу. Возьми свежий токен в @BotFather и подключи магазин заново."
+        )
+    else:
+        text = (
+            f"Не вышло восстановить <b>@{username}</b>. Возможно, у платформы "
+            "забрали доступ к боту в @BotFather. Подключить можно и вручную — "
+            "свежим токеном оттуда же."
+        )
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⬅️ Все магазины", callback_data="mybots:menu")
+    await callback.message.answer(text, reply_markup=kb.as_markup())
 
 
 @router.callback_query(F.data.startswith("mybots:back:"))
