@@ -112,28 +112,38 @@ describe('ProfileView — профиль покупателя', () => {
     expect(w.text()).toContain('Поддержка')
   })
 
-  it('под плашкой — ссылки на ToS и Privacy, клик открывает документ', async () => {
+  it('под плашкой — ссылки на ToS и Privacy: в RU двумя строками, в EN одной', async () => {
     fetchMyOrders.mockResolvedValue([])
     const w = await mountView()
     await flushPromises()
 
-    const links = w.findAll('.legal-links button')
+    const nav = w.find('.legal-links')
+    const links = nav.findAll('button')
     expect(links.map((b) => b.text())).toEqual([
       'Условия использования',
       'Политика конфиденциальности',
     ])
+    // русская версия: две строки друг над другом, разделителя нет
+    expect(nav.classes()).toContain('stack')
+    expect(nav.find('span').exists()).toBe(false)
 
     await links[0].trigger('click')
     expect(w.find('[role="dialog"]').exists()).toBe(true)
     expect(w.find('h3').text()).toBe('Условия использования')
     // документ настоящий, не заглушка: кап и арбитраж в тексте
     expect(w.text()).toContain('US$20')
-
     await w.find('.close').trigger('click')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
 
-    await links[1].trigger('click')
-    expect(w.find('h3').text()).toBe('Политика конфиденциальности')
+    // английская версия: одна строка с разделителем
+    setLocale('en')
+    await flushPromises()
+    const navEn = w.find('.legal-links')
+    expect(navEn.classes()).not.toContain('stack')
+    expect(navEn.find('span').exists()).toBe(true)
+
+    await navEn.findAll('button')[1].trigger('click')
+    expect(w.find('h3').text()).toBe('Privacy Policy')
     await w.find('.close').trigger('click')
   })
 })

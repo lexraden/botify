@@ -91,10 +91,10 @@ async function toggleLang() {
     <!-- плашка прижимается к низу экрана, а не липнет к блоку сверху -->
     <div class="badge-spacer">
       <BrandBadge />
-      <!-- юридические документы платформы — открываются модалкой, как в онбординге -->
-      <nav class="legal-links" aria-label="Legal">
+      <!-- юридические документы: EN — одной строкой, RU — двумя друг над другом -->
+      <nav class="legal-links" :class="{ stack: locale === 'ru' }" aria-label="Legal">
         <button type="button" @click="legalDoc = 'tos'">{{ t('profile.termsOfService') }}</button>
-        <span aria-hidden="true">·</span>
+        <span v-if="locale !== 'ru'" aria-hidden="true">·</span>
         <button type="button" @click="legalDoc = 'privacy'">{{ t('profile.privacyPolicy') }}</button>
       </nav>
     </div>
@@ -124,11 +124,10 @@ async function toggleLang() {
     padding: 0;
     color: var(--sub);
     font-size: 12px;
-    text-decoration: underline;
-    text-underline-offset: 3px;
     cursor: pointer;
   }
   span { color: var(--sub); font-size: 12px; }
+  &.stack { flex-direction: column; gap: 4px; }
 }
 .top {
   display: flex;
