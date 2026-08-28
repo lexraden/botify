@@ -118,7 +118,7 @@ async function toggleLang() {
   text-align: center;
   /* чуть левее геометрического центра: «and» встаёт ровно над «with» плашки */
   position: relative;
-  left: -7px;
+  left: -9px;
   button {
     border: 0;
     background: none;
