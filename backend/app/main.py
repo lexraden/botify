@@ -55,7 +55,8 @@ async def chat_maintenance_loop() -> None:
 
 async def maintenance_loop() -> None:
     """Обслуживание раз в 10 минут: недоехавшие оплаты, застрявшие рассылки,
-    зависшие заказы, истёкшие неоплаченные, отозванные токены ботов и
+    зависшие заказы, истёкшие неоплаченные, отзывы, не отмодерированные
+    продавцом за review_moderation_days, отозванные токены ботов и
     осиротевшие фото товаров.
 
     Всё это — про то, что ломается молча: вебхук об оплате не дошёл, рассылка
@@ -74,6 +75,7 @@ async def maintenance_loop() -> None:
         expire_unpaid_orders,
         remind_stuck_orders,
     )
+    from app.services.reviews import auto_publish_stale_reviews
 
     settings = get_settings()
     tick = 600
@@ -87,6 +89,7 @@ async def maintenance_loop() -> None:
             ("напоминания по заказам", remind_stuck_orders),
             ("авто-подтверждение получения", auto_confirm_delivery),
             ("истечение неоплаченных заказов", expire_unpaid_orders),
+            ("автопубликация отзывов", auto_publish_stale_reviews),
             ("чистка осиротевших фото", purge_orphan_images),
         ):
             try:

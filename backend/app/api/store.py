@@ -84,10 +84,12 @@ class OrderIn(BaseModel):
 
 
 class BuyerOwnReviewOut(BaseModel):
-    """Свой отзыв позиции — для предзаполнения формы правки в «Моих покупках»."""
+    """Свой отзыв позиции — для предзаполнения формы правки в «Моих покупках».
+    Статус нужен, чтобы показать «на проверке», пока продавец не одобрил."""
 
     rating: int
     body: str | None
+    status: str
 
 
 class OrderItemOut(BaseModel):
@@ -121,7 +123,8 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
     )
     products = result.scalars().all()
 
-    # средний рейтинг одним агрегатом на все товары магазина
+    # средний рейтинг одним агрегатом на все товары магазина; в рейтинг
+    # попадают только опубликованные отзывы — ожидающие модерации не видны
     ratings: dict[int, tuple[float, int]] = {}
     if products:
         rows = await ctx.session.execute(
@@ -132,6 +135,7 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
             )
             .where(
                 ProductReview.bot_id == ctx.bot.id,
+                ProductReview.status == "published",
                 ProductReview.product_id.in_([p.id for p in products]),
             )
             .group_by(ProductReview.product_id)
@@ -152,7 +156,8 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
     avg_rating, total_reviews = (
         await ctx.session.execute(
             select(func.avg(ProductReview.rating), func.count()).where(
-                ProductReview.bot_id == ctx.bot.id
+                ProductReview.bot_id == ctx.bot.id,
+                ProductReview.status == "published",
             )
         )
     ).one()
@@ -454,7 +459,9 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> list[Ord
                         reviewed=(order.id, i.product_id) in my_reviews,
                         my_review=(
                             BuyerOwnReviewOut(
-                                rating=review.rating, body=review.body
+                                rating=review.rating,
+                                body=review.body,
+                                status=review.status,
                             )
                             if (review := my_reviews.get((order.id, i.product_id)))
                             is not None
@@ -589,6 +596,7 @@ class BuyerReviewOut(BaseModel):
     rating: int
     body: str | None
     author_name: str | None
+    status: str
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -613,7 +621,7 @@ async def product_reviews(
         raise HTTPException(status_code=404, detail="product not found")
     result = await ctx.session.execute(
         select(ProductReview)
-        .where(ProductReview.product_id == product_id)
+        .where(ProductReview.product_id == product_id, ProductReview.status == "published")
         .order_by(ProductReview.id.desc())
         .limit(50)
     )
@@ -647,6 +655,19 @@ async def leave_review(
     )
     by_product = {r.product_id: r for r in existing_rows.scalars().all()}
 
+    # Порог модерации: высокая оценка публикуется сразу, низкая ждёт продавца.
+    # Правка пересчитывает статус по тому же порогу (5→2 уходит на проверку,
+    # 2→5 публикуется), правка отклонённого возвращает его в ожидание.
+    auto_publish_min = get_settings().review_auto_publish_min
+    # время в Python, не func.now(): модель валидируется сразу после flush,
+    # а SQL-выражение в атрибуте async-сессия без refresh не отдаст
+    now = datetime.now(timezone.utc)
+
+    def status_for(rating: int, previous: str | None = None) -> str:
+        if previous == "rejected":
+            return "pending"
+        return "published" if rating >= auto_publish_min else "pending"
+
     out: list[BuyerReviewOut] = []
     created: list[tuple[str, int, str | None]] = []
     for item in payload.items:
@@ -663,6 +684,8 @@ async def leave_review(
                 rating=item.rating,
                 body=item.body,
                 author_name=display_name or random_author_name(),
+                status=status_for(item.rating),
+                moderated_at=now if item.rating >= auto_publish_min else None,
             )
             ctx.session.add(review)
             await ctx.session.flush()
@@ -670,6 +693,10 @@ async def leave_review(
         else:
             review.rating = item.rating
             review.body = item.body
+            new_status = status_for(item.rating, review.status)
+            if new_status != review.status:
+                review.status = new_status
+                review.moderated_at = now if new_status == "published" else None
         out.append(BuyerReviewOut.model_validate(review))
     await ctx.session.commit()
 

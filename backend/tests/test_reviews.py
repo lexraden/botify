@@ -350,3 +350,233 @@ async def test_seller_reply_visible_to_buyers(db):
         # в списке продавца ответ тоже есть
         r = await c.get(f"/api/seller/bots/{bot_id}/reviews", headers=seller_headers())
         assert r.json()[0]["reply_body"] == "И правда спасибо!"
+
+
+async def _delivered_order_with_product(db):
+    """Доставленный заказ + id единственного товара (отзыв ещё не оставлен)."""
+    bot_id, order_id = await paid_physical_order(db)
+    async with client() as c:
+        r = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
+        pid = r.json()["products"][0]["id"]
+        with patch("app.payments.service._notify", new=AsyncMock()):
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/orders/{order_id}/fulfill",
+                headers=seller_headers(),
+                json={"value": "Выдано"},
+            )
+            # «Доставлен» ставит покупатель — оценивать можно только после
+            await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/received",
+                headers=buyer_headers(),
+            )
+            assert r.status_code == 200, r.text
+    return bot_id, order_id, pid
+
+
+@pytest.mark.asyncio
+async def test_low_rating_review_waits_for_moderation(db):
+    """Оценка ниже порога (4) скрыта от витрины до одобрения продавца."""
+    from app.config import get_settings
+
+    assert get_settings().review_auto_publish_min == 4
+    bot_id, order_id, pid = await _delivered_order_with_product(db)
+
+    async with client() as c:
+        with patch("app.api.store.notify_new_review", new=AsyncMock()):
+            r = await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/reviews",
+                headers=buyer_headers(),
+                json={"items": [{"product_id": pid, "rating": 3, "body": "не то"}]},
+            )
+        assert r.status_code == 200, r.text
+        review = r.json()[0]
+        assert review["status"] == "pending"
+
+        # из публичного списка и из рейтингов ожидающий не виден
+        r = await c.get(
+            f"/api/store/{bot_id}/products/{pid}/reviews", headers=buyer_headers()
+        )
+        assert r.json() == []
+        r = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
+        body = r.json()
+        product = next(p for p in body["products"] if p["id"] == pid)
+        assert product["reviews_count"] == 0 and product["avg_rating"] is None
+        assert body["rating"] is None
+
+        # покупатель видит свой отзыв со статусом «на проверке»
+        r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
+        mine = r.json()[0]["items"][0]["my_review"]
+        assert mine["rating"] == 3 and mine["status"] == "pending"
+
+        # продавцу отзыв виден — в статусе на проверке
+        r = await c.get(f"/api/seller/bots/{bot_id}/reviews", headers=seller_headers())
+        seller_review = r.json()[0]
+        assert seller_review["status"] == "pending"
+        assert seller_review["moderated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_edit_rating_recomputes_status(db):
+    """Правка оценки пересчитывает статус по порогу в обе стороны."""
+    bot_id, order_id, pid = await _delivered_order_with_product(db)
+
+    async with client() as c:
+        with patch("app.api.store.notify_new_review", new=AsyncMock()):
+
+            async def _post(rating):
+                return await c.post(
+                    f"/api/store/{bot_id}/orders/{order_id}/reviews",
+                    headers=buyer_headers(),
+                    json={"items": [{"product_id": pid, "rating": rating}]},
+                )
+
+            # 5 -> опубликован сразу
+            r = await _post(5)
+            assert r.json()[0]["status"] == "published"
+
+            # 5 -> 2: уходит на проверку, из витрины исчезает
+            r = await _post(2)
+            assert r.json()[0]["status"] == "pending"
+            r = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
+            product = next(p for p in r.json()["products"] if p["id"] == pid)
+            assert product["reviews_count"] == 0
+
+            # 2 -> 5: возвращается в публикацию
+            r = await _post(5)
+            assert r.json()[0]["status"] == "published"
+            r = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
+            product = next(p for p in r.json()["products"] if p["id"] == pid)
+            assert product["reviews_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_seller_approve_reject(db):
+    bot_id, order_id, pid = await _delivered_order_with_product(db)
+
+    async with client() as c:
+        with patch("app.api.store.notify_new_review", new=AsyncMock()):
+            r = await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/reviews",
+                headers=buyer_headers(),
+                json={"items": [{"product_id": pid, "rating": 2}]},
+            )
+        review_id = r.json()[0]["id"]
+
+        # чужой магазин и несуществующий отзыв не различаются — 404
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/reviews/999999/approve", headers=seller_headers()
+        )
+        assert r.status_code == 404
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/reviews/999999/reject", headers=seller_headers()
+        )
+        assert r.status_code == 404
+
+        # одобрение публикует: из рейтингов и публичного списка
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/reviews/{review_id}/approve",
+            headers=seller_headers(),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "published" and r.json()["moderated_at"]
+        r = await c.get(
+            f"/api/store/{bot_id}/products/{pid}/reviews", headers=buyer_headers()
+        )
+        assert [x["rating"] for x in r.json()] == [2]
+
+        # повторное одобрение идемпотентно
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/reviews/{review_id}/approve",
+            headers=seller_headers(),
+        )
+        assert r.status_code == 200 and r.json()["status"] == "published"
+
+        # отклонение прячет отзыв; повторное отклонение тоже идемпотентно
+        for _ in range(2):
+            r = await c.post(
+                f"/api/seller/bots/{bot_id}/reviews/{review_id}/reject",
+                headers=seller_headers(),
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["status"] == "rejected"
+        r = await c.get(
+            f"/api/store/{bot_id}/products/{pid}/reviews", headers=buyer_headers()
+        )
+        assert r.json() == []
+
+        # правка отклонённого не публикует его обратно, даже с высокой оценкой
+        with patch("app.api.store.notify_new_review", new=AsyncMock()):
+            r = await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/reviews",
+                headers=buyer_headers(),
+                json={"items": [{"product_id": pid, "rating": 5}]},
+            )
+        assert r.json()[0]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_auto_publish_stale_reviews(db):
+    """Джоб публикует ожидающие старше review_moderation_days, свежие не трогает."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import update
+
+    from app.config import get_settings
+    from app.db import get_session
+    from app.models import ProductReview
+    from app.services.reviews import auto_publish_stale_reviews
+
+    days = get_settings().review_moderation_days
+    bot_id, order_id, pid = await _delivered_order_with_product(db)
+
+    async with client() as c:
+        with patch("app.api.store.notify_new_review", new=AsyncMock()):
+            r = await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/reviews",
+                headers=buyer_headers(),
+                json={"items": [{"product_id": pid, "rating": 3}]},
+            )
+        review_id = r.json()[0]["id"]
+
+        # второй товар — свежий ожидающий отзыв на него, прямым инсёртом
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={"type": "physical", "title": "Шапка", "price": "10"},
+        )
+        pid2 = r.json()["id"]
+
+    async with get_session() as session:
+        review = await session.get(ProductReview, review_id)
+        fresh = ProductReview(
+            bot_id=review.bot_id,
+            product_id=pid2,
+            order_id=review.order_id,
+            customer_id=review.customer_id,
+            rating=1,
+            author_name="Кто-то Ч.",
+            status="pending",
+        )
+        session.add(fresh)
+        await session.flush()
+        fresh_id = fresh.id
+        await session.execute(
+            update(ProductReview)
+            .where(ProductReview.id == review_id)
+            .values(created_at=datetime.now(timezone.utc) - timedelta(days=days + 1))
+        )
+        await session.commit()
+
+    # один устаревший — публикуется, свежий остаётся на месте
+    assert await auto_publish_stale_reviews() == 1
+
+    async with client() as c:
+        r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
+        mine = r.json()[0]["items"][0]["my_review"]
+        assert mine["status"] == "published"
+
+    async with get_session() as session:
+        assert (await session.get(ProductReview, fresh_id)).status == "pending"
+
+    # повторный проход никого не находит
+    assert await auto_publish_stale_reviews() == 0

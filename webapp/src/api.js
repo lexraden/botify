@@ -108,6 +108,11 @@ export const fetchSellerReviews = (botId) =>
 // повторная отправка правит ответ
 export const replyToReview = (botId, reviewId, body) =>
   api.post(`/seller/bots/${botId}/reviews/${reviewId}/reply`, { body }).then((r) => r.data)
+// модерация: одобрить публикует, скрыть убирает из витрины (до правки покупателем)
+export const approveReview = (botId, reviewId) =>
+  api.post(`/seller/bots/${botId}/reviews/${reviewId}/approve`).then((r) => r.data)
+export const rejectReview = (botId, reviewId) =>
+  api.post(`/seller/bots/${botId}/reviews/${reviewId}/reject`).then((r) => r.data)
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
 // чат заказа: история читается всегда, писать можно в открытом окне

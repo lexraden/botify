@@ -214,7 +214,9 @@ onBeforeUnmount(() => {
       </div>
       <div v-for="i in o.items" :key="i.product_id" class="item">
         {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
-        <span v-if="i.reviewed" class="reviewed-mark">{{ t('orders.reviewedMark') }}</span>
+        <span v-if="i.reviewed" class="reviewed-mark">{{
+          i.my_review?.status === 'pending' ? t('reviews.statusPending') : t('orders.reviewedMark')
+        }}</span>
       </div>
       <div class="total">{{ t('orders.total', { sum: `${Number(o.total).toFixed(2)} ${o.currency}` }) }}</div>
       <!-- действия — внизу карточки: сначала состав и сумма, потом кнопки.

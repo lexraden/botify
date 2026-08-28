@@ -849,6 +849,10 @@ class SellerReviewOut(BaseModel):
     author_name: str | None
     rating: int
     body: str | None
+    # published | pending | rejected: ожидающие ждут одобрения во вкладке
+    # «Отзывы», отклонённые видны только здесь же, с возможностью вернуть
+    status: str
+    moderated_at: datetime | None
     reply_body: str | None
     reply_at: datetime | None
     created_at: datetime
@@ -879,12 +883,78 @@ async def list_reviews(
             author_name=review.author_name,
             rating=review.rating,
             body=review.body,
+            status=review.status,
+            moderated_at=review.moderated_at,
             reply_body=review.reply_body,
             reply_at=review.reply_at,
             created_at=review.created_at,
         )
         for review, title in result.all()
     ]
+
+
+def _review_out(review: ProductReview, product_title: str) -> SellerReviewOut:
+    return SellerReviewOut(
+        id=review.id,
+        product_title=product_title,
+        author_name=review.author_name,
+        rating=review.rating,
+        body=review.body,
+        status=review.status,
+        moderated_at=review.moderated_at,
+        reply_body=review.reply_body,
+        reply_at=review.reply_at,
+        created_at=review.created_at,
+    )
+
+
+@router.post("/bots/{bot_id}/reviews/{review_id}/approve", response_model=SellerReviewOut)
+async def approve_review(
+    review_id: int,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> SellerReviewOut:
+    """Одобрить отзыв на проверке: он публикуется и идёт в рейтинги."""
+    review = await _own_review(session, shop, review_id)
+    if review.status == "published":
+        return _review_out(review, await _review_product_title(session, review))
+    review.status = "published"
+    review.moderated_at = func.now()
+    await session.commit()
+    await session.refresh(review)
+    return _review_out(review, await _review_product_title(session, review))
+
+
+@router.post("/bots/{bot_id}/reviews/{review_id}/reject", response_model=SellerReviewOut)
+async def reject_review(
+    review_id: int,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> SellerReviewOut:
+    """Отклонить отзыв: из рейтингов и публичных списков он исчезает. Правка
+    покупателем возвращает его на проверку, сам он не публикуется."""
+    review = await _own_review(session, shop, review_id)
+    if review.status == "rejected":
+        return _review_out(review, await _review_product_title(session, review))
+    review.status = "rejected"
+    review.moderated_at = func.now()
+    await session.commit()
+    await session.refresh(review)
+    return _review_out(review, await _review_product_title(session, review))
+
+
+async def _own_review(
+    session: AsyncSession, shop: SellerBot, review_id: int
+) -> ProductReview:
+    review = await session.get(ProductReview, review_id)
+    if review is None or review.bot_id != shop.id:
+        raise HTTPException(status_code=404, detail="review not found")
+    return review
+
+
+async def _review_product_title(session: AsyncSession, review: ProductReview) -> str:
+    product = await session.get(Product, review.product_id)
+    return product.title if product else ""
 
 
 @router.post("/bots/{bot_id}/reviews/{review_id}/reply", response_model=SellerReviewOut)
@@ -895,26 +965,14 @@ async def reply_to_review(
     session: AsyncSession = Depends(get_api_session),
 ) -> SellerReviewOut:
     """Ответ продавца на отзыв. Один на отзыв; повторная отправка правит его."""
-    review = await session.get(ProductReview, review_id)
-    if review is None or review.bot_id != shop.id:
-        raise HTTPException(status_code=404, detail="review not found")
+    review = await _own_review(session, shop, review_id)
 
     review.reply_body = payload.body
     review.reply_at = func.now()
     await session.commit()
     await session.refresh(review)
 
-    product = await session.get(Product, review.product_id)
-    return SellerReviewOut(
-        id=review.id,
-        product_title=product.title if product else "",
-        author_name=review.author_name,
-        rating=review.rating,
-        body=review.body,
-        reply_body=review.reply_body,
-        reply_at=review.reply_at,
-        created_at=review.created_at,
-    )
+    return _review_out(review, await _review_product_title(session, review))
 
 
 class FulfillIn(BaseModel):

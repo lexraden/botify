@@ -344,4 +344,38 @@ describe('BuyerOrders — живые статусы', () => {
     expect(confirmReceived).toHaveBeenCalledWith(1)
     expect(w.text()).toContain('Доставлен')
   })
+
+  it('отзыв на проверке помечен «На проверке» вместо «оценено»', async () => {
+    fetchMyOrders.mockResolvedValue([
+      {
+        id: 7,
+        status: 'delivered',
+        total: '10',
+        currency: 'USDT',
+        items: [
+          {
+            product_id: 1,
+            title: 'Гайд',
+            qty: 1,
+            price: '10',
+            reviewed: true,
+            my_review: { rating: 2, body: null, status: 'pending' },
+          },
+          {
+            product_id: 2,
+            title: 'Бургер',
+            qty: 1,
+            price: '5',
+            reviewed: true,
+            my_review: { rating: 5, body: null, status: 'published' },
+          },
+        ],
+      },
+    ])
+    const w = await mountList()
+    await flushPromises()
+    expect(w.text()).toContain('На проверке')
+    expect(w.text()).toContain('оценено ★')
+    w.unmount()
+  })
 })

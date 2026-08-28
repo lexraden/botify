@@ -11,10 +11,9 @@ beforeAll(() => {
 // поэтому template ref приходит массивом и .click() по нему молча не срабатывает
 // — «плюс» не открывал выбор файлов. Тест падает, если разворачивание массива убрать.
 vi.mock('../../api', () => ({
-  createMailing: vi.fn(),
+  approveReview: vi.fn(),
   deleteProduct: vi.fn(),
   deleteShopLogo: vi.fn(),
-  fetchMailings: vi.fn(() => Promise.resolve([])),
   fetchMe: vi.fn(() => Promise.resolve({})),
   fetchProducts: vi.fn(() => Promise.resolve([])),
   fetchSellerReviews: vi.fn(() => Promise.resolve([])),
@@ -22,6 +21,7 @@ vi.mock('../../api', () => ({
   fetchShopStats: vi.fn(() => Promise.resolve({})),
   fetchShopSummary: vi.fn(() => Promise.resolve(SUMMARY)),
   fulfillOrder: vi.fn(),
+  rejectReview: vi.fn(),
   replyToReview: vi.fn(),
   sendOrderChatPhoto: vi.fn(),
   updateShopName: vi.fn(),

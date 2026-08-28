@@ -42,6 +42,13 @@ class ProductReview(Base, CreatedAtMixin):
     body: Mapped[str | None] = mapped_column(Text)
     author_name: Mapped[str | None] = mapped_column(String(64))
 
+    # Модерация: отзывы с высокой оценкой (>= review_auto_publish_min) видны
+    # сразу, низкие ждут одобрения продавца; через review_moderation_days
+    # ожидающие публикуются сами. Правка оценки пересчитывает статус по тому
+    # же порогу, правка отклонённого возвращает его в ожидание.
+    status: Mapped[str] = mapped_column(String(16), default="published")
+    moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # один ответ продавца на отзыв (не поток); повторная отправка правит его
     reply_body: Mapped[str | None] = mapped_column(Text)
     reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

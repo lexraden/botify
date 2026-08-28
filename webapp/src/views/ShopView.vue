@@ -2,10 +2,9 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  createMailing,
+  approveReview,
   deleteProduct,
   deleteShopLogo,
-  fetchMailings,
   fetchMe,
   fetchProducts,
   fetchShopOrders,
@@ -13,6 +12,7 @@ import {
   fetchShopSummary,
   fetchSellerReviews,
   fulfillOrder,
+  rejectReview,
   replyToReview,
   sendOrderChatPhoto,
   updateShopName,
@@ -30,7 +30,6 @@ const summary = ref(null)
 const stats = ref(null)
 const products = ref([])
 const orders = ref([])
-const mailings = ref([])
 const reviews = ref([])
 const error = ref('')
 // форма ответа на отзыв: один ответ на отзыв, повторная отправка правит его
@@ -56,8 +55,22 @@ async function sendReply() {
     f.sending = false
   }
 }
+
+// модерация отзывов: низкие оценки ждут одобрения (порог и автопубликацию
+// считает бэкенд). Одобрить публикует, скрыть прячет до правки покупателем.
+async function moderateReview(r, action) {
+  try {
+    const updated = action === 'approve'
+      ? await approveReview(botId.value, r.id)
+      : await rejectReview(botId.value, r.id)
+    reviews.value = reviews.value.map((x) => (x.id === updated.id ? updated : x))
+  } catch (e) {
+    actionError.value = e.response?.data?.detail || t('reviews.moderateError')
+  }
+}
+
 // вкладка восстанавливается из ?tab= — возврат из чата заказа открывает заказы
-const tab = ref(['products', 'orders', 'mailings', 'stats'].includes(route.query.tab)
+const tab = ref(['products', 'orders', 'reviews', 'stats'].includes(route.query.tab)
   ? route.query.tab
   : 'products')
 
@@ -177,13 +190,12 @@ const fulfillmentLine = (f) => {
 
 async function reload() {
   const id = botId.value
-  ;[summary.value, stats.value, products.value, orders.value, mailings.value] =
+  ;[summary.value, stats.value, products.value, orders.value] =
     await Promise.all([
       fetchShopSummary(id),
       fetchShopStats(id),
       fetchProducts(id),
       fetchShopOrders(id),
-      fetchMailings(id),
     ])
   // отзывы — второстепенно: не грузятся, остальной кабинет всё равно работает
   reviews.value = await fetchSellerReviews(id).catch(() => [])
@@ -302,28 +314,6 @@ async function submitFulfill() {
   }
 }
 
-const mailingForm = ref({ text: '', button_text: '', button_url: '', sending: false })
-
-async function submitMailing() {
-  const f = mailingForm.value
-  if (f.sending || !f.text) return
-  f.sending = true
-  actionError.value = ''
-  try {
-    await createMailing(botId.value, {
-      text: f.text,
-      button_text: f.button_text || null,
-      button_url: f.button_url || null,
-    })
-    mailingForm.value = { text: '', button_text: '', button_url: '', sending: false }
-    await reload()
-  } catch (e) {
-    actionError.value = e.response?.data?.detail || t('seller.mailingError')
-  } finally {
-    f.sending = false
-  }
-}
-
 // --- идентичность магазина в шапке витрины: показное имя и логотип ---
 // Панель открывается кликом по аватарке в шапке кабинета. Лого уезжает на
 // сервер сразу после выбора файла (как фото товара), имя — по кнопке.
@@ -434,14 +424,23 @@ async function removeLogo() {
             </div>
           </div>
         </div>
-        <!-- профиль продавца: магазины, язык, тема. Системную «Назад» Telegram
-             рисует сам (services/backButton.js), дубль в шапке не нужен -->
-        <button class="icon-btn" :aria-label="t('seller.profileTitle')" @click="router.push(`/shop/${botId}/profile`)">
-          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="8" r="4" />
-            <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
-          </svg>
-        </button>
+        <!-- рассылки и профиль продавца: магазины, язык, тема. Системную
+             «Назад» Telegram рисует сам (services/backButton.js), дубль в
+             шапке не нужен -->
+        <div class="controls">
+          <button class="icon-btn" :aria-label="t('mailings.title')" @click="router.push(`/shop/${botId}/mailings`)">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m3 11 18-5v12L3 13v-2z" />
+              <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+            </svg>
+          </button>
+          <button class="icon-btn" :aria-label="t('seller.profileTitle')" @click="router.push(`/shop/${botId}/profile`)">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <!-- панель идентичности: превью аватара, лого грузится сразу после
@@ -509,7 +508,7 @@ async function removeLogo() {
       <nav>
         <button :class="{ active: tab === 'products' }" @click="tab = 'products'">{{ t('tab.products') }}</button>
         <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">{{ t('tab.orders') }}</button>
-        <button :class="{ active: tab === 'mailings' }" @click="tab = 'mailings'">{{ t('tab.mailings') }}</button>
+        <button :class="{ active: tab === 'reviews' }" @click="tab = 'reviews'">{{ t('tab.reviews') }}</button>
         <button :class="{ active: tab === 'stats' }" @click="tab = 'stats'">{{ t('tab.stats') }}</button>
       </nav>
 
@@ -625,29 +624,63 @@ async function removeLogo() {
         <p v-if="!orders.length" class="empty">{{ t('seller.noOrders') }}</p>
       </template>
 
-      <template v-else-if="tab === 'mailings'">
-        <div class="card mailing-form">
-          <textarea v-model="mailingForm.text" rows="4" :placeholder="t('seller.mailingTextPh')" />
-          <input v-model="mailingForm.button_text" :placeholder="t('seller.mailingBtnTextPh')" />
-          <input v-model="mailingForm.button_url" :placeholder="t('seller.mailingBtnUrlPh')" />
-          <button
-            class="btn btn-primary"
-            :disabled="mailingForm.sending || !mailingForm.text || (!!mailingForm.button_text !== !!mailingForm.button_url)"
-            @click="submitMailing"
-          >
-            {{ mailingForm.sending ? '…' : t('seller.sendAll') }}
-          </button>
-        </div>
-        <div v-for="m in mailings" :key="m.id" class="card row">
-          <div class="info">
-            <b>{{ m.text.slice(0, 60) }}{{ m.text.length > 60 ? '…' : '' }}</b>
-            <span class="muted">
-              {{ { pending: t('mailing.pending'), sending: t('mailing.sending'), done: t('mailing.done') }[m.status] || m.status }}
-              <template v-if="m.status === 'done'"> {{ t('seller.deliveredN', { n: m.sent_count }) }}</template>
-            </span>
+      <template v-else-if="tab === 'reviews'">
+        <!-- что говорят покупатели: личность не раскрывается, только псевдоним.
+             Низкие оценки ждут одобрения, скрытые видны только здесь -->
+        <p v-if="!reviews.length" class="empty">{{ t('seller.noReviews') }}</p>
+        <div v-else class="card reviews-block">
+          <div v-for="r in reviews" :key="r.id" class="seller-review">
+            <div class="sr-head">
+              <span class="stars">
+                {{ '★'.repeat(r.rating) }}<template v-if="r.author_name"> · {{ r.author_name }}</template>
+              </span>
+              <span class="muted sr-title">{{ r.product_title }}</span>
+            </div>
+            <p v-if="r.body">{{ r.body }}</p>
+            <p v-if="r.status !== 'published'" class="sr-status" :class="r.status">
+              {{ r.status === 'pending' ? t('reviews.statusPending') : t('reviews.statusRejected') }}
+            </p>
+
+            <div v-if="r.status !== 'published'" class="mod-actions">
+              <button
+                v-if="r.status === 'pending'"
+                class="btn btn-soft mod"
+                :aria-label="t('reviews.reject')"
+                @click="moderateReview(r, 'reject')"
+              >
+                {{ t('reviews.reject') }}
+              </button>
+              <button class="btn btn-green mod" @click="moderateReview(r, 'approve')">
+                {{ r.status === 'pending' ? t('reviews.approve') : t('reviews.publish') }}
+              </button>
+            </div>
+
+            <div v-if="r.reply_body" class="sr-reply">
+              <b>{{ t('reviews.yourReply') }}</b>
+              <p>{{ r.reply_body }}</p>
+            </div>
+
+            <template v-if="replyForm.reviewId === r.id">
+              <textarea
+                v-model="replyForm.body"
+                class="reply-input"
+                rows="2"
+                maxlength="1000"
+                :placeholder="t('reviews.replyPh')"
+              ></textarea>
+              <p v-if="replyError" class="reply-error">{{ replyError }}</p>
+              <div class="pair">
+                <button class="btn btn-green" :disabled="replyForm.sending" @click="sendReply">
+                  {{ replyForm.sending ? t('wallet.withdrawing') : t('reviews.reply') }}
+                </button>
+                <button class="btn btn-soft" @click="replyForm.reviewId = null">{{ t('common.cancel') }}</button>
+              </div>
+            </template>
+            <a v-else class="sr-reply-link" @click="openReply(r)">
+              {{ r.reply_body ? t('reviews.editReply') : t('reviews.reply') }}
+            </a>
           </div>
         </div>
-        <p v-if="!mailings.length" class="empty">{{ t('seller.noMailings') }}</p>
       </template>
 
       <template v-else>
@@ -720,45 +753,6 @@ async function removeLogo() {
           <p class="hint">
             {{ t('wallet.feeHint', { pct: Number(summary.commission_pct), min: minPayout }) }}
           </p>
-        </div>
-
-        <!-- что говорят покупатели: личность не раскрывается, только псевдоним -->
-        <div v-if="reviews.length" class="card reviews-block">
-          <b>{{ t('reviews.blockTitle') }}</b>
-          <div v-for="r in reviews" :key="r.id" class="seller-review">
-            <div class="sr-head">
-              <span class="stars">
-                {{ '★'.repeat(r.rating) }}<template v-if="r.author_name"> · {{ r.author_name }}</template>
-              </span>
-              <span class="muted sr-title">{{ r.product_title }}</span>
-            </div>
-            <p v-if="r.body">{{ r.body }}</p>
-
-            <div v-if="r.reply_body" class="sr-reply">
-              <b>{{ t('reviews.yourReply') }}</b>
-              <p>{{ r.reply_body }}</p>
-            </div>
-
-            <template v-if="replyForm.reviewId === r.id">
-              <textarea
-                v-model="replyForm.body"
-                class="reply-input"
-                rows="2"
-                maxlength="1000"
-                :placeholder="t('reviews.replyPh')"
-              ></textarea>
-              <p v-if="replyError" class="reply-error">{{ replyError }}</p>
-              <div class="pair">
-                <button class="btn btn-green" :disabled="replyForm.sending" @click="sendReply">
-                  {{ replyForm.sending ? t('wallet.withdrawing') : t('reviews.reply') }}
-                </button>
-                <button class="btn btn-soft" @click="replyForm.reviewId = null">{{ t('common.cancel') }}</button>
-              </div>
-            </template>
-            <a v-else class="sr-reply-link" @click="openReply(r)">
-              {{ r.reply_body ? t('reviews.editReply') : t('reviews.reply') }}
-            </a>
-          </div>
         </div>
 
         <div v-if="summary.limits" class="card plan">
@@ -894,8 +888,6 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 }
 .pair { display: flex; gap: 8px; }
 .pair .btn { height: 42px; }
-.mailing-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
-.mailing-form textarea { resize: none; }
 .stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .metric { display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; }
 .metric b { font-size: 21px; line-height: 1.1; }
@@ -908,6 +900,11 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; flex-shrink: 0; }
 .sr-title { font-size: 12.5px; font-weight: 700; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seller-review p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; }
+.sr-status { font-size: 12.5px; font-weight: 700; }
+.sr-status.pending { color: var(--accent); }
+.sr-status.rejected { color: var(--sub); }
+.mod-actions { display: flex; gap: 8px; margin-top: 8px; }
+.mod-actions .mod { flex: 1; height: 38px; font-size: 13.5px; }
 .sr-reply { margin-top: 6px; border-radius: 10px; background: var(--accent-soft); padding: 8px 10px; }
 .sr-reply b { font-size: 11.5px; color: var(--accent); }
 .sr-reply p { margin: 3px 0 0; font-size: 13px; line-height: 1.45; }
