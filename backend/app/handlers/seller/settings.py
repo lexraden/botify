@@ -33,6 +33,17 @@ class SettingsStates(StatesGroup):
     waiting_greeting = State()
 
 
+async def _refresh_menu_button(bot: SellerBot | None) -> None:
+    """Кнопка меню бота берёт текст из catalog_button_text — после его смены
+    (или смены настроек кнопки) переустанавливаем её. Ленивый импорт: runner
+    импортирует хендлеры, обратный импорт на уровне модуля дал бы цикл."""
+    if bot is None:
+        return
+    from app.bots.runner import apply_seller_menu_button
+
+    await apply_seller_menu_button(bot)
+
+
 # --------------------------------------------------------------------------
 # Доступ и данные: всё строго в контексте одного бота
 # --------------------------------------------------------------------------
@@ -243,6 +254,7 @@ async def toggle_catalog_button(
     bot = await _update_bot(
         bot_record.id, show_catalog_button=not bot_record.show_catalog_button
     )
+    await _refresh_menu_button(bot)
     if callback.message and bot is not None:
         await _edit_menu(callback.message, bot, state)
 
@@ -278,6 +290,7 @@ async def reset_button_text(
         return
     await callback.answer("Сброшено")
     bot = await _update_bot(bot_record.id, catalog_button_text=None)
+    await _refresh_menu_button(bot)
     if callback.message and bot is not None:
         await _edit_menu(callback.message, bot, state)
 
@@ -293,6 +306,7 @@ async def save_button_text(
         return
     bot = await _update_bot(bot_record.id, catalog_button_text=text[:64])
     await state.clear()
+    await _refresh_menu_button(bot)
     await message.answer("✅ Текст кнопки сохранён")
     if bot is not None:
         await show_settings_menu(message, bot)

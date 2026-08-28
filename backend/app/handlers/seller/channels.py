@@ -10,7 +10,6 @@ from aiogram.types import ChatJoinRequest, ChatMemberUpdated
 
 from app.db import get_session
 from app.models import Seller, SellerBot
-from app.handlers.seller.start import ROBOT_BUTTON_TEXT
 from app.services.channels import (
     TgUserInfo,
     deactivate_channel,
@@ -18,6 +17,7 @@ from app.services.channels import (
     register_channel,
     upsert_customer,
 )
+from app.services.notify_texts import buyer_text
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ async def on_join_request(event: ChatJoinRequest, bot: Bot, bot_record: SellerBo
         return
 
     # Лид попадает в базу продавца с источником-каналом сразу по заявке
-    await upsert_customer(
+    customer, _ = await upsert_customer(
         bot_record,
         TgUserInfo(
             telegram_id=event.from_user.id,
@@ -129,17 +129,24 @@ async def on_join_request(event: ChatJoinRequest, bot: Bot, bot_record: SellerBo
         return
 
     # Верификация через reply-клавиатуру: нажатие шлёт обычное сообщение
-    # «Я не робот», которое обрабатывается как /start (handlers/seller/start.py)
+    # «Я не робот», которое обрабатывается как /start (handlers/seller/start.py).
+    # Текст кнопки и сообщение — на языке покупателя; название канала задаёт
+    # третья сторона (экранируем, как в уведомлении продавцу).
+    button_text = buyer_text(customer, "robot.button")
     kb = types.ReplyKeyboardMarkup(
-        keyboard=[[types.KeyboardButton(text=ROBOT_BUTTON_TEXT)]],
+        keyboard=[[types.KeyboardButton(text=button_text)]],
         resize_keyboard=True,
         is_persistent=True,
     )
     try:
         await bot.send_message(
             event.from_user.id,
-            f"Заявка в «{html.escape(channel.title)}» принята ✅\n\n"
-            f"Нажми кнопку «{ROBOT_BUTTON_TEXT}» внизу экрана 👇",
+            buyer_text(
+                customer,
+                "channel.approved",
+                channel=html.escape(channel.title),
+                button=button_text,
+            ),
             reply_markup=kb,
         )
     except Exception:

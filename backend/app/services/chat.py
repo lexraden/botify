@@ -393,13 +393,3 @@ async def latest_open_order(session, bot_id: int, customer_id: int) -> Order | N
         if chat_is_open(order):
             return order
     return None
-
-
-LOCKED_CHAT_TEXT = (
-    "Этот чат закрыт для новых сообщений — окно для обсуждения заказа истекло."
-)
-RATE_LIMITED_TEXT = "Слишком много сообщений подряд — подожди немного."
-TOO_LONG_TEXT = "Сообщение слишком длинное — максимум 1000 символов."
-PHOTO_TOO_BIG_TEXT = "Фото слишком большое — максимум 5 МБ."
-BAD_IMAGE_TEXT = "Пришли, пожалуйста, именно фото — JPEG, PNG, WebP или GIF."
-PHOTO_FAILED_TEXT = "Не получилось принять фото — попробуй отправить ещё раз."

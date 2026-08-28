@@ -45,6 +45,44 @@ def test_unknown_locale_falls_back_to_english(locale):
 
 
 @pytest.mark.asyncio
+async def test_bot_strings_follow_buyer_language():
+    """Строки самого бота — приветствие и кнопка витрины — тоже на языке
+    покупателя, пока продавец не написал свои варианты."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from app.handlers.seller.start import send_welcome
+    from tests.test_hub_menus import FAKE_SETTINGS
+
+    bot_record = SimpleNamespace(
+        id=5,
+        bot_username="shop_bot",
+        welcome_text=None,
+        show_catalog_button=True,
+        catalog_button_text=None,
+    )
+    with patch("app.handlers.seller.start.get_settings", return_value=FAKE_SETTINGS):
+        msg = SimpleNamespace(answer=AsyncMock())
+        await send_welcome(msg, bot_record, _customer(language_code="en"))
+        assert msg.answer.await_args.args[0] == "Welcome to the <b>@shop_bot</b> shop!"
+        assert (
+            msg.answer.await_args.kwargs["reply_markup"].inline_keyboard[0][0].text
+            == "🛍 Open the shop"
+        )
+
+        msg = SimpleNamespace(answer=AsyncMock())
+        await send_welcome(msg, bot_record, _customer(language_code="ru"))
+        assert (
+            msg.answer.await_args.args[0]
+            == "Добро пожаловать в магазин <b>@shop_bot</b>!"
+        )
+        assert (
+            msg.answer.await_args.kwargs["reply_markup"].inline_keyboard[0][0].text
+            == "🛍 Открыть каталог"
+        )
+
+
+@pytest.mark.asyncio
 async def test_x_locale_header_persists_and_beats_telegram_language(db):
     """Ручной выбор из Mini App сохраняется в базе и главнее языка Telegram."""
     bot_id, order_id = await paid_physical_order(db)  # покупатель ru по Telegram

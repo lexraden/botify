@@ -9,22 +9,24 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.config import get_settings
 from app.models import Customer, SellerBot
+from app.services.notify_texts import buyer_text
 
 router = Router()
 
-DEFAULT_BUTTON_TEXT = "🛍 Открыть каталог"
-
 # Верификация вступившего в канал: reply-кнопка внизу чата (ставится при приёме
 # заявки, см. handlers/seller/channels.py). Нажатие приходит обычным сообщением.
-ROBOT_BUTTON_TEXT = "Я не робот 🤖"
-ROBOT_CONFIRM_TEXTS = {"Я не робот", "Я не робот 🤖"}
+# Текст кнопки — на языке покупателя (notify_texts "robot.button"), поэтому
+# набор фраз из всех локалей.
+ROBOT_CONFIRM_TEXTS = {
+    "Я не робот",
+    "Я не робот 🤖",
+    "I'm not a robot",
+    "I'm not a robot 🤖",
+}
 
 
 def is_robot_confirm(text: str | None) -> bool:
     return (text or "").strip() in ROBOT_CONFIRM_TEXTS
-
-
-MY_ORDERS_BUTTON = "🧾 Мои покупки"
 
 
 async def _has_orders(bot_id: int, customer_id: int) -> bool:
@@ -46,36 +48,39 @@ async def _has_orders(bot_id: int, customer_id: int) -> bool:
 async def catalog_keyboard(
     bot_record: SellerBot, customer: Customer | None = None
 ) -> types.InlineKeyboardMarkup | None:
-    """Кнопка витрины — или, если продавец её выключил, вход к своим покупкам.
+    """Кнопка витрины — на языке покупателя (если текст не написал продавец).
 
     Mini App — единственный вход и в каталог, и в историю заказов, и в чат с
     продавцом. Выключенная кнопка каталога оставляла уже заплатившего человека
-    вообще без входа: ни заказа посмотреть, ни написать. Каталог при этом не
-    навязываем — тем, кто ещё ничего не купил, кнопки по-прежнему нет.
+    вообще без входа: ни заказа посмотреть, ни написать. Теперь без заказов
+    тоже отдаём витрину — иначе покупатель оставался без входа вовсе.
     """
     webapp_url = get_settings().effective_webapp_url
     if not webapp_url:
         return None
 
+    url = f"{webapp_url}?bot_id={bot_record.id}"
     if bot_record.show_catalog_button:
-        text = bot_record.catalog_button_text or DEFAULT_BUTTON_TEXT
-        url = f"{webapp_url}?bot_id={bot_record.id}"
+        # текст продавца — его слова, не переводим; дефолт — на языке покупателя
+        label = bot_record.catalog_button_text or buyer_text(customer, "start.button")
     elif customer is not None and await _has_orders(bot_record.id, customer.id):
-        text = MY_ORDERS_BUTTON
+        label = buyer_text(customer, "start.my_orders")
         url = f"{webapp_url}?bot_id={bot_record.id}#/my-orders"
     else:
-        return None
+        # тупик: кнопка выключена, заказов нет — раньше приветствие уходило
+        # вообще без кнопки; витрина нужна в любом случае
+        label = buyer_text(customer, "start.button")
 
     kb = InlineKeyboardBuilder()
     # Mini App получает контекст продавца через query-параметр;
     # витрина фильтрует каталог по этому bot_id (проверка — на бэкенде по initData)
-    kb.button(text=text, web_app=types.WebAppInfo(url=url))
+    kb.button(text=label, web_app=types.WebAppInfo(url=url))
     return kb.as_markup()
 
 
-def welcome_text_for(bot_record: SellerBot) -> str:
-    return bot_record.welcome_text or (
-        f"Добро пожаловать в магазин <b>@{bot_record.bot_username}</b>!"
+def welcome_text_for(bot_record: SellerBot, customer: Customer | None = None) -> str:
+    return bot_record.welcome_text or buyer_text(
+        customer, "start.welcome", username=bot_record.bot_username
     )
 
 
@@ -86,10 +91,12 @@ async def send_welcome(
     ответа «как на /start» — её же использует подтверждение «Я не робот»."""
     kb = await catalog_keyboard(bot_record, customer)
     try:
-        await message.answer(welcome_text_for(bot_record), reply_markup=kb)
+        await message.answer(welcome_text_for(bot_record, customer), reply_markup=kb)
     except Exception:
         # продавец мог сохранить текст с битым HTML — витрина не должна ломаться
-        await message.answer(html.escape(welcome_text_for(bot_record)), reply_markup=kb)
+        await message.answer(
+            html.escape(welcome_text_for(bot_record, customer)), reply_markup=kb
+        )
 
 
 @router.message(CommandStart())
@@ -120,6 +127,7 @@ async def robot_confirm(
     Верификационная reply-клавиатура после нажатия убирается; отдельным
     сообщением потому, что ReplyKeyboardRemove не живёт рядом с inline-кнопкой."""
     await message.answer(
-        "✅ Проверка пройдена", reply_markup=types.ReplyKeyboardRemove()
+        buyer_text(customer, "start.robot_confirmed"),
+        reply_markup=types.ReplyKeyboardRemove(),
     )
     await send_welcome(message, bot_record, customer)

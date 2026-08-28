@@ -22,6 +22,7 @@ from app.models import ChatMessage, Customer, Order, OrderChat, Seller, SellerBo
 from app.models.chat import ChatImage, ChatMessageArchive
 from app.services import chat as chat_service
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
+from app.services.notify_texts import buyer_text
 
 logger = logging.getLogger(__name__)
 
@@ -100,20 +101,20 @@ async def relay_buyer_message(
             # реплей в неизвестное/чужое сообщение и открытых чатов нет:
             # если чаты были — объясняем, если нет — молчим как раньше
             if await _customer_has_chats(session, bot_record.id, customer.id):
-                await message.answer(chat_service.LOCKED_CHAT_TEXT)
+                await message.answer(buyer_text(customer, "chat.locked"))
             return
 
         if not chat_service.chat_is_open(order):
-            await message.answer(chat_service.LOCKED_CHAT_TEXT)
+            await message.answer(buyer_text(customer, "chat.locked"))
             return
 
         try:
             await chat_service.send_message(session, chat, order, "customer", text)
         except chat_service.RateLimitedError:
-            await message.answer(chat_service.RATE_LIMITED_TEXT)
+            await message.answer(buyer_text(customer, "chat.rate_limited"))
             return
         except ValueError:
-            await message.answer(chat_service.TOO_LONG_TEXT)
+            await message.answer(buyer_text(customer, "chat.too_long"))
             return
 
         seller_tg = (await session.get(Seller, chat.seller_id)).telegram_id
@@ -140,10 +141,10 @@ async def relay_buyer_photo(
     photo = message.photo[-1]  # Telegram шлёт набор размеров — нужен самый большой
     caption = (message.caption or "").strip()
     if len(caption) > chat_service.MAX_MESSAGE_LEN:
-        await message.answer(chat_service.TOO_LONG_TEXT)
+        await message.answer(buyer_text(customer, "chat.too_long"))
         return
     if photo.file_size is not None and photo.file_size > MAX_IMAGE_BYTES:
-        await message.answer(chat_service.PHOTO_TOO_BIG_TEXT)
+        await message.answer(buyer_text(customer, "chat.photo_too_big"))
         return
 
     target_chat_id: int | None = None
@@ -167,26 +168,26 @@ async def relay_buyer_photo(
 
         if chat is None or order is None:
             if await _customer_has_chats(session, bot_record.id, customer.id):
-                await message.answer(chat_service.LOCKED_CHAT_TEXT)
+                await message.answer(buyer_text(customer, "chat.locked"))
             return
 
         if not chat_service.chat_is_open(order):
-            await message.answer(chat_service.LOCKED_CHAT_TEXT)
+            await message.answer(buyer_text(customer, "chat.locked"))
             return
 
         try:
             data = await _download_photo(message, photo)
         except Exception:
             logger.exception("Не удалось скачать фото покупателя по заказу %s", order.id)
-            await message.answer(chat_service.PHOTO_FAILED_TEXT)
+            await message.answer(buyer_text(customer, "chat.photo_failed"))
             return
 
         if len(data) > MAX_IMAGE_BYTES:
-            await message.answer(chat_service.PHOTO_TOO_BIG_TEXT)
+            await message.answer(buyer_text(customer, "chat.photo_too_big"))
             return
         mime = sniff_image_mime(data)
         if mime is None:
-            await message.answer(chat_service.BAD_IMAGE_TEXT)
+            await message.answer(buyer_text(customer, "chat.bad_image"))
             return
 
         image = ChatImage(
@@ -200,7 +201,7 @@ async def relay_buyer_photo(
                 session, chat, order, "customer", caption, image_token=image.token
             )
         except chat_service.RateLimitedError:
-            await message.answer(chat_service.RATE_LIMITED_TEXT)
+            await message.answer(buyer_text(customer, "chat.rate_limited"))
             return
 
         seller_tg = (await session.get(Seller, chat.seller_id)).telegram_id

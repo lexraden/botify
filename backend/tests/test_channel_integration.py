@@ -35,11 +35,11 @@ def added_event(chat_id, title="Тестовый канал", can_invite=True):
     )
 
 
-def join_event(chat_id, user_id=555):
+def join_event(chat_id, user_id=555, language_code="ru"):
     return SimpleNamespace(
         chat=SimpleNamespace(id=chat_id),
         from_user=SimpleNamespace(
-            id=user_id, username="lead", first_name="Лид", language_code="ru"
+            id=user_id, username="lead", first_name="Лид", language_code=language_code
         ),
     )
 
@@ -154,6 +154,24 @@ async def test_join_request_sends_reply_keyboard_not_inline(db):
     assert customer.source == f"channel:{chat_id}"
 
 
+async def test_join_request_texts_follow_buyer_language(db):
+    """Иностранец получает английскую кнопку «Я не робот» и английское
+    сообщение о принятой заявке — бот магазина говорит его языком."""
+    seller_id = await make_seller(db)
+    bot_id = await make_bot(db, seller_id, username="en_funnel_bot")
+    _channel_id, chat_id = await seed_channel(db, seller_id, bot_id)
+    bot_record = await load_bot(db, bot_id)
+
+    tg = fake_tg_bot()
+    await ch.on_join_request(join_event(chat_id, language_code="en"), tg, bot_record)
+
+    kb = tg.send_message.await_args.kwargs["reply_markup"]
+    assert kb.keyboard[0][0].text == "I'm not a robot 🤖"
+    message = tg.send_message.await_args.args[1]
+    assert "was approved" in message
+    assert "I'm not a robot 🤖" in message
+
+
 def test_robot_text_matcher():
     """Нажатие reply-кнопки присылает текст кнопки; принимаем оба варианта."""
     assert seller_start.is_robot_confirm("Я не робот")
@@ -198,7 +216,8 @@ async def test_robot_confirm_isolated_per_bot(db):
 
         msg = SimpleNamespace(answer=AsyncMock(), text="Я не робот 🤖")
         await seller_start.robot_confirm(msg, await load_bot(db, bot_b))
-        assert msg.answer.await_args.args[0] == "Добро пожаловать в магазин <b>@bot_b</b>!"
+        # язык неизвестен (customer=None) — дефолт платформы EN
+        assert msg.answer.await_args.args[0] == "Welcome to the <b>@bot_b</b> shop!"
 
 
 async def test_join_request_without_auto_accept_stays_pending(db):

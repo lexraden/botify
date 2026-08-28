@@ -75,6 +75,8 @@ async def test_custom_welcome_and_button_text(db):
 
 
 async def test_catalog_button_can_be_hidden(db):
+    """Выключенная кнопка каталога больше не оставляет покупателя без входа:
+    приветствие всегда уходит с кнопкой витрины (язык неизвестен -> EN)."""
     seller_id = await make_seller(db)
     bot_id = await make_bot(db, seller_id, username="quiet_shop")
     await st._update_bot(bot_id, show_catalog_button=False)
@@ -85,7 +87,9 @@ async def test_catalog_button_can_be_hidden(db):
             msg, SimpleNamespace(args=None), await load_bot(db, bot_id)
         )
 
-    assert msg.answer.call_args.kwargs["reply_markup"] is None
+    btn = msg.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    assert btn.text == "🛍 Open the shop"
+    assert f"bot_id={bot_id}" in btn.web_app.url
 
 
 # --------------------------------------------------------------------------
@@ -120,8 +124,8 @@ async def test_deeplink_settings_is_private_for_stranger(db):
             msg, SimpleNamespace(args="settings"), await load_bot(db, bot_id)
         )
 
-    # чужаку — обычное приветствие покупателя, меню не раскрывается
-    assert "Добро пожаловать в магазин" in msg.answer.call_args.args[0]
+    # чужаку — обычное приветствие покупателя (язык неизвестен -> EN), меню не раскрывается
+    assert "Welcome to the" in msg.answer.call_args.args[0]
 
 
 async def test_settings_callbacks_gated_by_owner(db):
@@ -195,6 +199,20 @@ async def test_save_welcome_cancel_keeps_old(db):
     async with db() as session:
         saved = await session.get(SellerBot, bot_id)
         assert saved.welcome_text == "Старое"
+
+
+async def test_save_button_text_reinstalls_menu_button(db):
+    """Кнопка меню бота берёт текст из catalog_button_text — после сохранения
+    нового текста она переустанавливается, покупатель сразу видит новый вход."""
+    seller_id = await make_seller(db)
+    bot_id = await make_bot(db, seller_id, username="menu_shop")
+
+    msg = SimpleNamespace(answer=AsyncMock(), text="🛒 В магазин")
+    with patch("app.bots.runner.apply_seller_menu_button", new=AsyncMock()) as apply_menu:
+        await st.save_button_text(msg, fake_fsm_state(), await load_bot(db, bot_id))
+
+    apply_menu.assert_awaited_once()
+    assert apply_menu.await_args.args[0].catalog_button_text == "🛒 В магазин"
 
 
 # --------------------------------------------------------------------------

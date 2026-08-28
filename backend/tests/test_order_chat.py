@@ -15,6 +15,7 @@ from app.models import ChatImage, ChatMessage, Customer, Order, OrderChat, Selle
 from app.models.chat import ChatMessageArchive
 from app.security import encrypt_bot_token
 from app.services import chat as chat_service
+from app.services.notify_texts import buyer_text
 from tests.test_payments import make_order, patched_notifications
 
 SELLER_BOT_TOKEN = "111:token-for-tests-aaaaaaaaaaaaaaaaaaaaaa"
@@ -928,7 +929,7 @@ async def test_buyer_photo_too_big_or_not_image_is_rejected(db):
     ) as download:
         await relay_buyer_photo(big, customer=customer, bot_record=bot)
     download.assert_not_awaited()
-    big.answer.assert_awaited_once_with(chat_service.PHOTO_TOO_BIG_TEXT)
+    big.answer.assert_awaited_once_with(buyer_text(customer, "chat.photo_too_big"))
 
     # file_size не пришел — проверка по скачанным байтам
     sneaky = make_tg_photo(file_size=None)
@@ -937,7 +938,7 @@ async def test_buyer_photo_too_big_or_not_image_is_rejected(db):
         new=AsyncMock(return_value=b"\xff\xd8\xff" + b"x" * (5 * 1024 * 1024 + 1)),
     ):
         await relay_buyer_photo(sneaky, customer=customer, bot_record=bot)
-    sneaky.answer.assert_awaited_once_with(chat_service.PHOTO_TOO_BIG_TEXT)
+    sneaky.answer.assert_awaited_once_with(buyer_text(customer, "chat.photo_too_big"))
 
     # скачалось не изображение
     garbage = make_tg_photo()
@@ -945,7 +946,7 @@ async def test_buyer_photo_too_big_or_not_image_is_rejected(db):
         "app.handlers.seller.chat._download_photo", new=AsyncMock(return_value=b"garbage!")
     ):
         await relay_buyer_photo(garbage, customer=customer, bot_record=bot)
-    garbage.answer.assert_awaited_once_with(chat_service.BAD_IMAGE_TEXT)
+    garbage.answer.assert_awaited_once_with(buyer_text(customer, "chat.bad_image"))
 
     async with db() as session:
         assert (await session.execute(select(ChatImage))).scalars().all() == []
@@ -970,7 +971,7 @@ async def test_buyer_long_caption_rejected(db):
     ) as download:
         await relay_buyer_photo(message, customer=customer, bot_record=bot)
     download.assert_not_awaited()
-    message.answer.assert_awaited_once_with(chat_service.TOO_LONG_TEXT)
+    message.answer.assert_awaited_once_with(buyer_text(customer, "chat.too_long"))
 
 
 @pytest.mark.asyncio
@@ -994,4 +995,4 @@ async def test_buyer_photo_rate_limit_shared_with_text(db):
         text = make_tg_message("два")
         await relay_buyer_message(text, customer=customer, bot_record=bot)
 
-    text.answer.assert_awaited_once_with(chat_service.RATE_LIMITED_TEXT)
+    text.answer.assert_awaited_once_with(buyer_text(customer, "chat.rate_limited"))

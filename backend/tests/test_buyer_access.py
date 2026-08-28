@@ -87,13 +87,15 @@ async def test_disabled_shop_does_not_accept_new_orders(db):
 
 @pytest.mark.asyncio
 async def test_hidden_catalog_still_lets_buyers_reach_their_orders(db):
-    """Продавец выключил кнопку каталога. У покупателя с заказом это забирало
-    единственный вход в приложение — вместе с историей и чатом."""
+    """Продавец выключил кнопку каталога. У покупателя с заказом кнопка ведёт
+    в «Мои покупки», а тот, кто ничего не покупал, всё равно получает витрину:
+    раньше он уходил вообще без входа в приложение."""
     from types import SimpleNamespace
     from unittest.mock import patch
 
-    from app.handlers.seller.start import MY_ORDERS_BUTTON, catalog_keyboard
+    from app.handlers.seller.start import catalog_keyboard
     from app.models import Customer
+    from app.services.notify_texts import buyer_text
 
     bot_id = await setup_shop(db)
     async with client() as c:
@@ -104,21 +106,33 @@ async def test_hidden_catalog_still_lets_buyers_reach_their_orders(db):
         shop.show_catalog_button = False
         await session.commit()
         buyer = (await session.execute(select(Customer))).scalars().first()
-        stranger = Customer(telegram_id=999, seller_id=shop.seller_id, bot_id=bot_id)
+        buyer.language_code = "ru"
+        stranger = Customer(
+            telegram_id=999, seller_id=shop.seller_id, bot_id=bot_id, language_code="ru"
+        )
         session.add(stranger)
+        await session.flush()
+        buyer_label = buyer_text(buyer, "start.my_orders")
+        stranger_label = buyer_text(stranger, "start.button")
         await session.commit()
         shop = await session.get(SellerBot, bot_id)
         buyer_id, stranger_id = buyer.id, stranger.id
 
     # без публичного адреса Mini App кнопок нет вовсе — задаём его для проверки
     fake_settings = SimpleNamespace(effective_webapp_url="https://shop.example")
+    ru_buyer = SimpleNamespace(id=buyer_id, locale=None, language_code="ru")
+    ru_stranger = SimpleNamespace(id=stranger_id, locale=None, language_code="ru")
     with patch("app.handlers.seller.start.get_settings", return_value=fake_settings):
-        kb = await catalog_keyboard(shop, SimpleNamespace(id=buyer_id))
+        kb = await catalog_keyboard(shop, ru_buyer)
         assert kb is not None
-        assert kb.inline_keyboard[0][0].text == MY_ORDERS_BUTTON
+        assert kb.inline_keyboard[0][0].text == buyer_label
+        assert kb.inline_keyboard[0][0].web_app.url.endswith("#/my-orders")
 
-        # тем, кто ничего не покупал, каталог не навязываем — кнопки нет
-        assert await catalog_keyboard(shop, SimpleNamespace(id=stranger_id)) is None
+        # тупика больше нет: без заказов тоже есть вход — сама витрина
+        kb = await catalog_keyboard(shop, ru_stranger)
+        assert kb is not None
+        assert kb.inline_keyboard[0][0].text == stranger_label
+        assert "#/my-orders" not in kb.inline_keyboard[0][0].web_app.url
 
 
 @pytest.mark.asyncio

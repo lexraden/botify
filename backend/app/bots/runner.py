@@ -53,6 +53,36 @@ def make_seller_bot(token: str) -> Bot:
     return Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
 
+def menu_button_for(record: SellerBot) -> types.MenuButtonWebApp:
+    """Кнопка меню бота (слева от поля ввода) — постоянный вход в витрину.
+
+    Она не зависит от show_catalog_button (та глобальная на чат): меню должно
+    работать всегда, иначе покупатель без инлайн-кнопки оставался без входа.
+    Текст статичный для всех языков — на этом пути продаёт продавец; Telegram
+    ограничивает длину, обрезаем защитно (точный лимит проверен живьём не был).
+    """
+    label = (record.catalog_button_text or seller_settings.DEFAULT_BUTTON_TEXT)[:64]
+    url = f"{get_settings().effective_webapp_url}?bot_id={record.id}"
+    return types.MenuButtonWebApp(text=label, web_app=types.WebAppInfo(url=url))
+
+
+async def apply_seller_menu_button(record: SellerBot) -> bool:
+    """Ставит кнопку меню витрины отдельным вызовом — для смены текста кнопки
+    из настроек. Возвращает успех."""
+    if not get_settings().effective_webapp_url or record.bot_token_encrypted is None:
+        return False
+    token = decrypt_bot_token(record.bot_token_encrypted)
+    bot = make_seller_bot(token)
+    try:
+        await bot.set_chat_menu_button(menu_button=menu_button_for(record))
+        return True
+    except Exception:
+        logger.exception("Не удалось поставить кнопку меню seller-бота id=%s", record.id)
+        return False
+    finally:
+        await bot.session.close()
+
+
 async def setup_seller_webhook(record: SellerBot) -> bool:
     """Ставит вебхук для одного seller-бота. Возвращает успех."""
     settings = get_settings()
@@ -73,6 +103,12 @@ async def setup_seller_webhook(record: SellerBot) -> bool:
                 drop_pending_updates=True,
                 allowed_updates=SELLER_ALLOWED_UPDATES,
             )
+        try:
+            # кнопка меню ставится там же, где вебхук: при рестарте и при
+            # переподключении бота она восстанавливается сама
+            await bot.set_chat_menu_button(menu_button=menu_button_for(record))
+        except Exception:
+            logger.exception("Не удалось поставить кнопку меню seller-бота id=%s", record.id)
         return True
     except Exception:
         logger.exception("Не удалось поставить вебхук для seller-бота id=%s", record.id)
@@ -89,6 +125,11 @@ async def remove_seller_webhook(record: SellerBot) -> None:
     bot = make_seller_bot(token)
     try:
         await bot.delete_webhook(drop_pending_updates=True)
+        try:
+            # гигиена: бот выключен — витрина убирается и из меню
+            await bot.set_chat_menu_button(menu_button=types.MenuButtonDefault())
+        except Exception:
+            logger.exception("Не удалось сбросить кнопку меню seller-бота id=%s", record.id)
     except Exception:
         logger.exception("Не удалось снять вебхук seller-бота id=%s", record.id)
     finally:
