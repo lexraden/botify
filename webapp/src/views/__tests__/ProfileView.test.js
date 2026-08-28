@@ -111,4 +111,29 @@ describe('ProfileView — профиль покупателя', () => {
     await flushPromises()
     expect(w.text()).toContain('Поддержка')
   })
+
+  it('под плашкой — ссылки на ToS и Privacy, клик открывает документ', async () => {
+    fetchMyOrders.mockResolvedValue([])
+    const w = await mountView()
+    await flushPromises()
+
+    const links = w.findAll('.legal-links button')
+    expect(links.map((b) => b.text())).toEqual([
+      'Условия использования',
+      'Политика конфиденциальности',
+    ])
+
+    await links[0].trigger('click')
+    expect(w.find('[role="dialog"]').exists()).toBe(true)
+    expect(w.find('h3').text()).toBe('Условия использования')
+    // документ настоящий, не заглушка: кап и арбитраж в тексте
+    expect(w.text()).toContain('US$20')
+
+    await w.find('.close').trigger('click')
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
+
+    await links[1].trigger('click')
+    expect(w.find('h3').text()).toBe('Политика конфиденциальности')
+    await w.find('.close').trigger('click')
+  })
 })

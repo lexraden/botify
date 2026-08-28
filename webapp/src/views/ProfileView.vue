@@ -5,6 +5,9 @@ import { fetchShop } from '../api'
 import { t } from '../i18n'
 import BrandBadge from '../components/BrandBadge.vue'
 import BuyerOrders from '../components/BuyerOrders.vue'
+import LegalModal from '../components/LegalModal.vue'
+import { PRIVACY } from '../content/privacy'
+import { TOS } from '../content/tos'
 import { locale, setLocale } from '../services/locale'
 import { setTheme, themePref } from '../services/theme'
 import { openTelegramLink, tg } from '../services/telegram'
@@ -26,6 +29,9 @@ onMounted(async () => {
     /* поддержка — не повод ронять профиль */
   }
 })
+
+// юридические документы платформы: модалка как в онбординге, 'tos' | 'privacy' | null
+const legalDoc = ref(null)
 
 // тема: явный выбор покупателя, иначе как в клиенте Telegram
 const isDark = computed(() =>
@@ -83,7 +89,17 @@ async function toggleLang() {
     </button>
 
     <!-- плашка прижимается к низу экрана, а не липнет к блоку сверху -->
-    <div class="badge-spacer"><BrandBadge /></div>
+    <div class="badge-spacer">
+      <BrandBadge />
+      <!-- юридические документы платформы — открываются модалкой, как в онбординге -->
+      <nav class="legal-links" aria-label="Legal">
+        <button type="button" @click="legalDoc = 'tos'">{{ t('profile.termsOfService') }}</button>
+        <span aria-hidden="true">·</span>
+        <button type="button" @click="legalDoc = 'privacy'">{{ t('profile.privacyPolicy') }}</button>
+      </nav>
+    </div>
+
+    <LegalModal v-if="legalDoc" :docs="legalDoc === 'tos' ? TOS : PRIVACY" @close="legalDoc = null" />
   </div>
 </template>
 
@@ -96,6 +112,24 @@ async function toggleLang() {
   flex-direction: column;
 }
 .badge-spacer { margin-top: auto; }
+.legal-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  button {
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--sub);
+    font-size: 12px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  span { color: var(--sub); font-size: 12px; }
+}
 .top {
   display: flex;
   align-items: center;
