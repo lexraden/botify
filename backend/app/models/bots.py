@@ -51,7 +51,7 @@ class SellerBot(Base, CreatedAtMixin):
     shop_name: Mapped[str | None] = mapped_column(String(64))
 
     # Настройки из /settings самого бота: приветствие покупателю на /start
-    # и кнопка открытия витрины (None -> стандартный «🛍 Открыть каталог»)
+    # и кнопка открытия витрины (None -> стандартный «Open»)
     welcome_text: Mapped[str | None] = mapped_column(Text)
     show_catalog_button: Mapped[bool] = mapped_column(Boolean, default=True)
     catalog_button_text: Mapped[str | None] = mapped_column(String(64))

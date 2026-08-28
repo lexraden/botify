@@ -23,7 +23,7 @@ from app.services.channels import deactivate_channel_by_id
 
 router = Router(name="seller_settings")
 
-DEFAULT_BUTTON_TEXT = "🛍 Открыть каталог"
+DEFAULT_BUTTON_TEXT = "Open"
 OWNER_ONLY = "Настройки доступны только владельцу магазина."
 
 

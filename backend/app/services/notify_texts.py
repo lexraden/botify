@@ -51,7 +51,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "note.sent": "📦 Order #{id} shipped.",
         # строки самого бота магазина покупателю (кроме написанных продавцом)
         "start.welcome": "Welcome to the <b>@{username}</b> shop!",
-        "start.button": "🛍 Open the shop",
+        "start.button": "Open",
         "start.my_orders": "🧾 My orders",
         "robot.button": "I'm not a robot 🤖",
         "start.robot_confirmed": "✅ Verification passed",
@@ -83,7 +83,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "note.sent": "📦 Заказ #{id} отправлен.",
         # строки самого бота магазина покупателю (кроме написанных продавцом)
         "start.welcome": "Добро пожаловать в магазин <b>@{username}</b>!",
-        "start.button": "🛍 Открыть каталог",
+        "start.button": "Open",
         "start.my_orders": "🧾 Мои покупки",
         "robot.button": "Я не робот 🤖",
         "start.robot_confirmed": "✅ Проверка пройдена",

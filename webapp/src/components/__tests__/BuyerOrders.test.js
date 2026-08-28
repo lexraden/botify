@@ -285,10 +285,12 @@ describe('BuyerOrders — живые статусы', () => {
     fetchMyOrders.mockResolvedValue(pendingWithTimer())
     const wrapper = await mountList()
     await flushPromises()
-    expect(wrapper.text()).toContain('осталось 43:12')
+    // таймер живёт в строке итога, справа от суммы
+    expect(wrapper.find('.total .time-left').exists()).toBe(true)
+    expect(wrapper.find('.total .time-left').text()).toBe('43:12')
 
     await vi.advanceTimersByTimeAsync(2000)
-    expect(wrapper.text()).toContain('осталось 43:10')
+    expect(wrapper.find('.total .time-left').text()).toBe('43:10')
     wrapper.unmount()
   })
 
@@ -298,7 +300,7 @@ describe('BuyerOrders — живые статусы', () => {
     ])
     const wrapper = await mountList()
     await flushPromises()
-    expect(wrapper.text()).not.toContain('осталось')
+    expect(wrapper.find('.total .time-left').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -306,7 +308,7 @@ describe('BuyerOrders — живые статусы', () => {
     fetchMyOrders.mockResolvedValue(order('pending_payment'))
     const wrapper = await mountList()
     await flushPromises()
-    expect(wrapper.text()).not.toContain('осталось')
+    expect(wrapper.find('.total .time-left').exists()).toBe(false)
     wrapper.unmount()
   })
 

@@ -218,11 +218,14 @@ onBeforeUnmount(() => {
           i.my_review?.status === 'pending' ? t('reviews.statusPending') : t('orders.reviewedMark')
         }}</span>
       </div>
-      <div class="total">{{ t('orders.total', { sum: `${Number(o.total).toFixed(2)} ${o.currency}` }) }}</div>
+      <!-- итог и, у неоплаченного, таймер до отмены — в одну строку -->
+      <div class="total">
+        <span>{{ t('orders.total', { sum: `${Number(o.total).toFixed(2)} ${o.currency}` }) }}</span>
+        <span v-if="timeLeft(o)" class="time-left">{{ timeLeft(o) }}</span>
+      </div>
       <!-- действия — внизу карточки: сначала состав и сумма, потом кнопки.
            неоплаченный: покупатель может доплатить заново или передумать -->
       <template v-if="o.status === 'pending_payment'">
-        <p v-if="timeLeft(o)" class="time-left">{{ t('orders.timeLeft', { time: timeLeft(o) }) }}</p>
         <div class="pay-actions">
           <button class="pay-btn" :disabled="busyId === o.id" @click="retryPay(o)">
             {{ t('orders.payNow') }}
@@ -292,7 +295,14 @@ onBeforeUnmount(() => {
   margin-bottom: 10px;
   .head { display: flex; justify-content: space-between; margin-bottom: 6px; }
   .item { font-size: 13px; padding: 2px 0; }
-  .total { margin-top: 6px; font-weight: 700; }
+  .total {
+    margin-top: 6px;
+    font-weight: 700;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
 }
 .empty { text-align: center; opacity: 0.6; margin-top: 40px; }
 .pay-actions {
@@ -313,7 +323,6 @@ onBeforeUnmount(() => {
 .cancel-btn { background: var(--surface2); color: var(--red); }
 .action-error { color: var(--red); font-size: 12px; margin: 6px 0 0; }
 .time-left {
-  margin: 8px 0 0;
   font-size: 12px;
   font-weight: 700;
   color: var(--sub);

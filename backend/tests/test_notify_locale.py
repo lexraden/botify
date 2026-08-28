@@ -67,7 +67,7 @@ async def test_bot_strings_follow_buyer_language():
         assert msg.answer.await_args.args[0] == "Welcome to the <b>@shop_bot</b> shop!"
         assert (
             msg.answer.await_args.kwargs["reply_markup"].inline_keyboard[0][0].text
-            == "🛍 Open the shop"
+            == "Open"
         )
 
         msg = SimpleNamespace(answer=AsyncMock())
@@ -78,7 +78,7 @@ async def test_bot_strings_follow_buyer_language():
         )
         assert (
             msg.answer.await_args.kwargs["reply_markup"].inline_keyboard[0][0].text
-            == "🛍 Открыть каталог"
+            == "Open"
         )
 
 
