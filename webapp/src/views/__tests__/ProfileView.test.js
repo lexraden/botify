@@ -112,20 +112,19 @@ describe('ProfileView — профиль покупателя', () => {
     expect(w.text()).toContain('Поддержка')
   })
 
-  it('под плашкой — ссылки на ToS и Privacy: в RU двумя строками, в EN одной', async () => {
+  it('под плашкой — ссылки на ToS и Privacy: одна строка с точкой, в RU и EN', async () => {
     fetchMyOrders.mockResolvedValue([])
     const w = await mountView()
     await flushPromises()
 
     const nav = w.find('.legal-links')
     const links = nav.findAll('button')
-    expect(links.map((b) => b.text())).toEqual([
-      'Условия использования',
-      'Политика конфиденциальности',
-    ])
-    // русская версия: две строки друг над другом, разделителя нет
-    expect(nav.classes()).toContain('stack')
-    expect(nav.find('span').exists()).toBe(false)
+    expect(links.map((b) => b.text())).toEqual(['Условия', 'Конфиденциальность'])
+    // разделитель-точка — обычный текст между двумя кликабельными ссылками
+    const dot = nav.find('span')
+    expect(dot.exists()).toBe(true)
+    expect(dot.text()).toBe('·')
+    expect(dot.element.tagName).toBe('SPAN') // не кнопка и не ссылка
 
     await links[0].trigger('click')
     expect(w.find('[role="dialog"]').exists()).toBe(true)
@@ -135,16 +134,10 @@ describe('ProfileView — профиль покупателя', () => {
     await w.find('.close').trigger('click')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
 
-    // английская версия: одна строка «Terms of Service and Privacy Policy»,
-    // «and» — обычный текст между двумя кликабельными ссылками
     setLocale('en')
     await flushPromises()
     const navEn = w.find('.legal-links')
-    expect(navEn.classes()).not.toContain('stack')
-    const and = navEn.find('span')
-    expect(and.exists()).toBe(true)
-    expect(and.text()).toBe('and')
-    expect(and.element.tagName).toBe('SPAN') // не кнопка и не ссылка
+    expect(navEn.find('span').text()).toBe('·')
     expect(navEn.findAll('button').map((b) => b.text())).toEqual([
       'Terms of Service',
       'Privacy Policy',

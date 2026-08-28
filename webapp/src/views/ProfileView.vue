@@ -91,11 +91,11 @@ async function toggleLang() {
     <!-- плашка прижимается к низу экрана, а не липнет к блоку сверху -->
     <div class="badge-spacer">
       <BrandBadge />
-      <!-- юридические документы: EN — «Terms of Service and Privacy Policy»,
-           «and» между ними — не кликабельный текст; RU — двумя строками -->
-      <nav class="legal-links" :class="{ stack: locale === 'ru' }" aria-label="Legal">
+      <!-- юридические документы: одна строка «Условия · Конфиденциальность» /
+           «Terms of Service · Privacy Policy», точка-разделитель не кликабельна -->
+      <nav class="legal-links" aria-label="Legal">
         <button type="button" @click="legalDoc = 'tos'">{{ t('profile.termsOfService') }}</button>
-        <span v-if="locale !== 'ru'" aria-hidden="true">{{ t('profile.and') }}</span>
+        <span aria-hidden="true">·</span>
         <button type="button" @click="legalDoc = 'privacy'">{{ t('profile.privacyPolicy') }}</button>
       </nav>
     </div>
@@ -116,9 +116,6 @@ async function toggleLang() {
 .legal-links {
   margin-top: 10px;
   text-align: center;
-  /* чуть левее геометрического центра: «and» встаёт ровно над «with» плашки */
-  position: relative;
-  left: -9px;
   button {
     border: 0;
     background: none;
@@ -127,18 +124,11 @@ async function toggleLang() {
     font-size: 12px;
     cursor: pointer;
   }
-  /* «and» между ссылками — с обычным межсловным пробелом, без широких зазоров */
+  /* точка-разделитель между ссылками — с обычным межсловным пробелом */
   span {
     color: var(--sub);
     font-size: 12px;
     margin: 0 4px;
-  }
-  &.stack {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    left: 0; /* в русской версии строка по центру, без сдвига */
   }
 }
 .top {
