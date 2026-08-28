@@ -7,6 +7,7 @@ import BrandBadge from '../components/BrandBadge.vue'
 import ProductCard from '../components/ProductCard.vue'
 import { useCartStore } from '../stores/cart'
 import { apiError } from '../services/apiError'
+import { locale } from '../services/locale'
 
 const router = useRouter()
 const cart = useCartStore()
@@ -32,12 +33,18 @@ function toggleSearch() {
   query.value = ''
 }
 
-// без своего лого — аватар из первой буквы названия
-const initial = computed(() => (shop.value?.shop_name || '?').charAt(0).toUpperCase())
+// Без своего лого — аватар из первой буквы названия. Магазину без показного
+// имени бэкенд подставляет «@username», и «@» в кружке выглядит сбоем —
+// поэтому собаку отбрасываем и берём первую букву адреса.
+const initial = computed(() =>
+  ((shop.value?.shop_name || '').replace(/^@/, '') || '?').charAt(0).toUpperCase(),
+)
 
-// «продажа/продажи/продаж»: русский плюрализм по mod10/mod100
+// «продажа/продажи/продаж»: русские правила счёта. В английском их применять
+// нельзя — вышло бы «21 sale», поэтому там обычное «одна штука или больше».
 const salesWord = computed(() => {
   const n = shop.value?.sales_count ?? 0
+  if (locale.value !== 'ru') return t(n === 1 ? 'store.salesOne' : 'store.salesMany')
   const mod10 = n % 10
   const mod100 = n % 100
   if (mod10 === 1 && mod100 !== 11) return t('store.salesOne')

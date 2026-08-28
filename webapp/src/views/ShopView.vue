@@ -161,10 +161,11 @@ const fmtDateTime = (iso) =>
 // Новый формат fulfillment {value, photos}; старые заказы хранят tracking/url/note
 const fulfillmentLine = (f) => {
   if (!f) return ''
-  if (f.value) {
-    const photos = f.photos ? ` · 📷 ${f.photos}` : ''
-    return `${f.value}${photos}`
-  }
+  const photos = f.photos ? t('seller.photosCount', { n: f.photos }) : ''
+  if (f.value) return photos ? `${f.value} · ${photos}` : f.value
+  // отправка без трека, одними фото: раньше строка выходила пустой и в
+  // карточке оставалось голое «📤» — продавец не видел, что именно отправил
+  if (photos) return photos
   return [
     f.tracking ? t('fulfill.tracking', { v: f.tracking }) : '',
     f.url ? t('fulfill.url', { v: f.url }) : '',
@@ -253,7 +254,11 @@ function onFulfillPhotos(e) {
   const overflow = MAX_FULFILL_PHOTOS - form.photos.length
   if (overflow <= 0) return
   for (const file of files.slice(0, overflow)) {
-    if (file.size > MAX_FULFILL_MB * 1024 * 1024) continue // слишком тяжёлое — пропускаем
+    if (file.size > MAX_FULFILL_MB * 1024 * 1024) {
+      // молча пропущенное фото выглядит как «кнопка не работает»
+      actionError.value = t('form.fileTooBig', { n: MAX_FULFILL_MB })
+      continue
+    }
     form.photos.push({ file, url: URL.createObjectURL(file) })
   }
 }
@@ -274,18 +279,22 @@ async function submitFulfill() {
       value: f.value.trim() || null,
       photos: f.photos.length,
     })
-    // фото — следом за fulfill; сбой одного не отменяет отправку заказа:
-    // текст уже доставлен, а картинку можно переслать из истории чата
+    // Фото — следом за fulfill; сбой одного не отменяет отправку заказа.
+    // Но покупателю уже ушёл пуш «Фото посылки ниже (N шт.)», а форма
+    // отправки после fulfill исчезает — если промолчать, продавец не узнает,
+    // что дослать нечего, и покупатель останется с обещанием без фото.
+    let failed = 0
     for (const p of f.photos) {
       try {
         await sendOrderChatPhoto(botId.value, f.orderId, p.file, '')
       } catch {
-        /* история чата не критична для подтверждения отправки */
+        failed += 1
       }
     }
     revokePhotos(f.photos)
     fulfillForm.value.orderId = null
     await reload()
+    if (failed) actionError.value = t('seller.photosFailed', { n: failed })
   } catch (e) {
     actionError.value = e.response?.data?.detail || t('seller.fulfillError')
   } finally {

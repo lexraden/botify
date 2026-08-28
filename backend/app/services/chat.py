@@ -69,13 +69,18 @@ def _prune_rate_limit(now: float) -> None:
         _sends.pop(key, None)
 
 
-def _check_rate_limit(chat_id: int, sender_role: str) -> None:
+def _check_rate_limit(chat_id: int, sender_role: str, *, min_interval: bool = True) -> None:
+    """`min_interval=False` — сообщение из пачки, которую человек отправил одним
+    действием (фото посылки при отправке заказа уходят отдельными запросами
+    подряд). Двухсекундная пауза здесь не защищает ни от чего: это не спам, а
+    одно нажатие. Общий потолок MAX_MESSAGES_PER_WINDOW остаётся в силе.
+    """
     key = (chat_id, sender_role)
     now = monotonic()
     if len(_last_send_at) > PRUNE_AFTER_KEYS:
         _prune_rate_limit(now)
     last = _last_send_at.get(key)
-    if last is not None and now - last < MIN_SEND_INTERVAL_SEC:
+    if min_interval and last is not None and now - last < MIN_SEND_INTERVAL_SEC:
         raise RateLimitedError()
     window = _sends[key]
     while window and now - window[0] > WINDOW_SEC:
@@ -175,7 +180,10 @@ async def send_message(
         raise ValueError("message body must be up to 1000 chars")
     if not chat_is_open(order):
         raise ChatLockedError()
-    _check_rate_limit(chat.id, sender_role)
+    # Фото уходят пачкой по 2-3 штуки за одно действие продавца, и каждое —
+    # отдельный запрос. С двухсекундной паузой второе и третье получали 429,
+    # а покупателю уже ушёл пуш «Фото посылки ниже (3 шт.)».
+    _check_rate_limit(chat.id, sender_role, min_interval=image_token is None)
 
     message = ChatMessage(
         chat_id=chat.id, sender=sender_role, body=body, image_token=image_token

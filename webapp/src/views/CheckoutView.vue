@@ -38,11 +38,17 @@ async function pay() {
       needsDelivery.value ? { address: address.value.trim() } : null,
     )
     cart.clear()
-    if (order.payment_url) {
-      const tg = window.Telegram?.WebApp
-      if (tg?.openTelegramLink) tg.openTelegramLink(order.payment_url)
-      else window.open(order.payment_url, '_blank')
+    if (!order.payment_url) {
+      // Счёт не создался (Crypto Pay недоступен), но заказ уже есть: бэкенд
+      // намеренно его сохраняет. Молча вернуть покупателя в каталог нельзя —
+      // он не узнает ни про заказ, ни про то, что платить надо заново.
+      // Ведём в «Мои покупки»: там заказ виден и есть кнопка «Оплатить».
+      router.push({ path: '/my-orders', query: { created: order.id, pay: '0' } })
+      return
     }
+    const tg = window.Telegram?.WebApp
+    if (tg?.openTelegramLink) tg.openTelegramLink(order.payment_url)
+    else window.open(order.payment_url, '_blank')
     // промежуточная страница «Мои покупки» мешала: нажали Pay — окно оплаты
     // уже открыто, возвращаем покупателя в магазин, где он и был
     router.push('/')

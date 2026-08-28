@@ -46,6 +46,38 @@ describe('StoreView — шапка магазина и поиск', () => {
     })
   }
 
+  it('без показного имени в кружке буква адреса, а не «@»', async () => {
+    // бэкенд подставляет @username, когда продавец не задал имя магазина —
+    // это состояние по умолчанию у всех существующих магазинов
+    fetchShop.mockResolvedValue({
+      shop_name: '@petshop_bot',
+      logo_url: null,
+      rating: null,
+      sales_count: 0,
+      products: PRODUCTS,
+    })
+    const wrapper = await mountView()
+    await flushPromises()
+    expect(wrapper.find('.avatar.letter').text()).toBe('P')
+  })
+
+  it('английские продажи не склоняются по-русски', async () => {
+    // русские правила счёта давали «21 sale» — на витрине любого магазина
+    // с 21/31/101 продажей у нерусскоязычного покупателя
+    setLocale('en')
+    fetchShop.mockResolvedValue({
+      shop_name: 'Shopik',
+      logo_url: null,
+      rating: null,
+      sales_count: 21,
+      products: PRODUCTS,
+    })
+    const wrapper = await mountView()
+    await flushPromises()
+    expect(wrapper.find('.trust').text().replace(/\s+/g, ' ').trim()).toBe('21 sales')
+    setLocale('ru')
+  })
+
   it('хиро: буква-аватар, имя магазина, trust-строка с рейтингом и продажами', async () => {
     fetchShop.mockResolvedValue({
       shop_name: 'Shopik',

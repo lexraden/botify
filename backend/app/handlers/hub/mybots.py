@@ -11,7 +11,13 @@ from app.config import get_settings
 from app.db import get_session
 from app.models import Seller, SellerBot
 from app.services.bot_connect import delete_bot, disconnect_bot, enable_bot, get_own_bot
-from app.services.bot_recovery import NOT_MANAGED, RESTORED, restore_managed_token
+from app.services.bot_recovery import (
+    ALREADY_OK,
+    NOT_MANAGED,
+    RESTORED,
+    WEBHOOK_PENDING,
+    restore_managed_token,
+)
 
 router = Router()
 
@@ -71,16 +77,30 @@ def add_shop_button(kb: InlineKeyboardBuilder) -> None:
         )
 
 
+def shop_label(bot: SellerBot) -> str:
+    """Как назвать магазин в кнопке или карточке.
+
+    У черновика (магазин заведён через /newshop до создания бота) юзернейма
+    нет, и подстановка через f-строку давала кнопку с подписью «@None».
+    """
+    return f"@{bot.bot_username}" if bot.bot_username else bot.display_name
+
+
 def shops_menu_keyboard(bots: list[SellerBot]) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for bot in bots:
-        kb.button(text=f"@{bot.bot_username}", callback_data=f"mybots:card:{bot.id}")
+        kb.button(text=shop_label(bot), callback_data=f"mybots:card:{bot.id}")
     add_shop_button(kb)
     kb.adjust(1)
     return kb.as_markup()
 
 
 def bot_card_text(bot: SellerBot) -> str:
+    if bot.is_draft:
+        return (
+            f"⚪ <b>{html.escape(bot.display_name)}</b> — бот не создан\n\n"
+            "Магазин заведён, осталось создать бота: /newshop"
+        )
     if bot.webhook_status == "revoked":
         # «работает» здесь было бы враньём: покупатели до магазина не доходят
         return (
@@ -89,12 +109,18 @@ def bot_card_text(bot: SellerBot) -> str:
         )
     if bot.is_active:
         icon = STATUS_ICONS.get(bot.webhook_status, "⚪")
-        return f"{icon} <b>@{bot.bot_username}</b> — работает"
-    return f"⚪ <b>@{bot.bot_username}</b> — отключён"
+        return f"{icon} <b>{shop_label(bot)}</b> — работает"
+    return f"⚪ <b>{shop_label(bot)}</b> — отключён"
 
 
 def bot_card_keyboard(bot: SellerBot) -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
+    if bot.is_draft:
+        # включать нечего, а «Настройки бота» вели бы на t.me/None
+        kb.button(text="🗑 Удалить", callback_data=f"mybots:del:{bot.id}")
+        kb.button(text="⬅️ Все магазины", callback_data="mybots:menu")
+        kb.adjust(1)
+        return kb.as_markup()
     if bot.webhook_status == "revoked" and bot.is_managed:
         # починка в одно нажатие — до всех остальных кнопок
         kb.button(text="🔄 Восстановить магазин", callback_data=f"mybots:fix:{bot.id}")
@@ -253,8 +279,13 @@ async def do_enable(callback: types.CallbackQuery) -> None:
         return
     seller, bot_id = ctx
     bot = await enable_bot(bot_id, seller.id)
+    if bot is None:
+        # черновик: бота нет, включать нечего — раньше тост всё равно
+        # рапортовал «Включён», хотя не произошло ничего
+        await callback.answer("Сначала создай бота: /newshop", show_alert=True)
+        return
     await callback.answer("Включён")
-    if callback.message and bot is not None:
+    if callback.message:
         await callback.message.edit_text(bot_card_text(bot), reply_markup=bot_card_keyboard(bot))
 
 
@@ -273,7 +304,7 @@ async def confirm_delete(callback: types.CallbackQuery) -> None:
     # тот же гард, что и в confirm_disconnect: бота могли уже удалить
     if callback.message and bot is not None:
         await callback.message.edit_text(
-            f"Удалить <b>@{bot.bot_username}</b> навсегда?\n\n"
+            f"Удалить <b>{shop_label(bot)}</b> навсегда?\n\n"
             "⚠️ Вместе с ботом удалится его база покупателей и история рассылок. "
             "Это необратимо.",
             reply_markup=kb.as_markup(),
@@ -340,6 +371,17 @@ async def restore_shop(callback: types.CallbackQuery) -> None:
             f"✅ Магазин <b>@{username}</b> снова работает.\n\n"
             "Токен перевыпущен, покупатели опять доходят. Старый токен из "
             "@BotFather больше не действует."
+        )
+    elif result == ALREADY_OK:
+        text = f"Магазин <b>@{username}</b> уже работает — восстанавливать нечего."
+    elif result == WEBHOOK_PENDING:
+        # токен уже заменён: сказать «не вышло» было бы враньём, продавец
+        # пошёл бы искать старый токен, которого больше нет
+        text = (
+            f"Токен для <b>@{username}</b> выпущен, но магазин ещё не принимает "
+            "сообщения — вебхук не встал с первого раза.\n\n"
+            "Загляни в /mybots через минуту. Старый токен из @BotFather уже "
+            "не действует, брать его оттуда заново не нужно."
         )
     elif result == NOT_MANAGED:
         text = (

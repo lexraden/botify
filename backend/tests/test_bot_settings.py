@@ -274,9 +274,12 @@ async def test_save_channel_greeting(db):
 
 
 def test_card_keyboard_links_to_bot_settings():
-    bot = SimpleNamespace(
+    # настоящая модель, а не SimpleNamespace: клавиатура читает всё больше
+    # полей (is_draft, is_managed, webhook_status), и стаб их молча не имел
+    bot = SellerBot(
         id=7,
         bot_username="deep_shop",
+        bot_token_encrypted=b"x",  # не черновик
         is_active=True,
         webhook_status="active",
         is_managed=False,

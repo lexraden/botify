@@ -423,7 +423,7 @@ async def test_archived_history_keeps_message_order(db):
     texts = ["первое", "второе", "третье", "четвёртое"]
     with (
         patch("app.services.chat.notify_customer", new=AsyncMock(return_value=None)),
-        patch("app.services.chat._check_rate_limit", new=lambda *a: None),
+        patch("app.services.chat._check_rate_limit", new=lambda *a, **kw: None),
     ):
         async with client() as c:
             for text in texts:

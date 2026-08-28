@@ -154,6 +154,12 @@ async def promote_draft(
         # бот наш управляемый: если продавец сменит токен в @BotFather,
         # мы сможем перевыпустить его сами (app/services/bot_recovery.py)
         shop.is_managed = True
+        # Шапка витрины читает shop_name, а не title (api/store.py). Без этой
+        # строки магазин, заведённый как «Кофейня у дома», показывал покупателю
+        # @kofeynya_u_doma_bot — ровно то, ради чего онбординг и начинали с
+        # названия. Своё имя, если продавец успел его задать, не трогаем.
+        if not shop.shop_name and shop.title:
+            shop.shop_name = shop.title[:64]
         await session.commit()
         await session.refresh(shop)
         return shop

@@ -700,3 +700,33 @@ async def test_withdraw_twice_in_a_row_sends_one_transfer(db):
     assert first["ok"] is True and float(first["sent"]) == pytest.approx(95.0)
     assert second["ok"] is False and second["reason"] == "no_funds"
     assert fake_crypto.transfer.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_parcel_photos_go_through_in_one_burst(db):
+    """Фото посылки уходят подряд — второе и третье терялись на rate limit.
+
+    fulfill сразу обещает покупателю «Фото посылки ниже (3 шт.)», а сами фото
+    едут следом отдельными запросами. Двухсекундный интервал резал их в 429,
+    фронт ошибку глотал, и покупатель получал одно фото из трёх.
+    """
+    from app.services.chat import RateLimitedError, _check_rate_limit, _last_send_at, _sends
+
+    chat_id = 987654
+    _sends.pop((chat_id, "seller"), None)
+    _last_send_at.pop((chat_id, "seller"), None)
+
+    # три фото подряд, без пауз
+    for _ in range(3):
+        _check_rate_limit(chat_id, "seller", min_interval=False)
+
+    # а обычное текстовое сообщение сразу следом по-прежнему придерживают
+    with pytest.raises(RateLimitedError):
+        _check_rate_limit(chat_id, "seller")
+
+    # и общий потолок остаётся в силе даже для пачки
+    from app.services.chat import MAX_MESSAGES_PER_WINDOW
+
+    with pytest.raises(RateLimitedError):
+        for _ in range(MAX_MESSAGES_PER_WINDOW + 1):
+            _check_rate_limit(chat_id, "seller", min_interval=False)

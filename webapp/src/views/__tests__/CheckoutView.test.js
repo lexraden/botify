@@ -83,3 +83,40 @@ describe('CheckoutView — доставка', () => {
     expect(router.push).toHaveBeenCalledWith('/')
   })
 })
+
+describe('CheckoutView — счёт не создался', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    delete window.Telegram
+    window.open = vi.fn()
+  })
+
+  it('покупателя ведут в «Мои покупки», а не молча в каталог', async () => {
+    // Бэкенд намеренно сохраняет заказ, когда Crypto Pay недоступен, и
+    // отдаёт payment_url: null. Раньше корзина очищалась, окно оплаты не
+    // открывалось и router.push('/') уводил покупателя в каталог — про
+    // неоплаченный заказ он не узнавал вообще.
+    createOrder.mockResolvedValueOnce({ id: 42, payment_url: null })
+    const w = mountWith('digital')
+    await flushPromises()
+    await w.find('button.pay').trigger('click')
+    await flushPromises()
+
+    expect(window.open).not.toHaveBeenCalled()
+    expect(router.push).toHaveBeenCalledWith({
+      path: '/my-orders',
+      query: { created: 42, pay: '0' },
+    })
+  })
+
+  it('со ссылкой на оплату по-прежнему открывает её и возвращает в каталог', async () => {
+    createOrder.mockResolvedValueOnce({ id: 43, payment_url: 'https://t.me/CryptoBot?start=x' })
+    const w = mountWith('digital')
+    await flushPromises()
+    await w.find('button.pay').trigger('click')
+    await flushPromises()
+
+    expect(window.open).toHaveBeenCalledWith('https://t.me/CryptoBot?start=x', '_blank')
+    expect(router.push).toHaveBeenCalledWith('/')
+  })
+})

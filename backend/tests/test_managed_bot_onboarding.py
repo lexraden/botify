@@ -527,3 +527,141 @@ async def test_mailing_for_shop_without_bot_fails_once(db):
 
     async with db() as session:
         assert (await session.get(Mailing, mailing_id)).status == "failed"
+
+
+# --------------------------------------------------------------------------
+# Как черновик и отозванный токен выглядят в /mybots
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mybots_never_renders_at_none(db):
+    """Кнопка «@None» и ссылка t.me/None — это сбой, а не название магазина."""
+    from app.handlers.hub.mybots import (
+        bot_card_keyboard,
+        bot_card_text,
+        shops_menu_keyboard,
+        shops_menu_text,
+    )
+
+    seller = await _seller(db)
+    draft = await create_draft(seller.id, "Кофейня у дома")
+
+    menu = shops_menu_text([draft])
+    buttons = [b.text for row in shops_menu_keyboard([draft]).inline_keyboard for b in row]
+    card = bot_card_text(draft)
+    card_kb = bot_card_keyboard(draft)
+    urls = [b.url for row in card_kb.inline_keyboard for b in row if b.url]
+
+    assert "None" not in menu and "None" not in card
+    assert not any("None" in text for text in buttons)
+    assert not any("None" in url for url in urls)
+    assert "Кофейня у дома" in card
+    # включать черновик нечего — кнопку не предлагаем
+    labels = [b.text for row in card_kb.inline_keyboard for b in row]
+    assert not any("Включить" in label for label in labels)
+
+
+@pytest.mark.asyncio
+async def test_enable_on_draft_does_not_claim_success(db):
+    """Тост «Включён» врал: enable_bot черновик не включает."""
+    from app.handlers.hub.mybots import do_enable
+
+    seller = await _seller(db)
+    draft = await create_draft(seller.id, "Кофейня")
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=seller.telegram_id),
+        data=f"mybots:on:{draft.id}",
+        message=SimpleNamespace(edit_text=AsyncMock()),
+        answer=AsyncMock(),
+    )
+
+    await do_enable(callback)
+
+    assert "Включён" not in callback.answer.await_args.args[0]
+    callback.message.edit_text.assert_not_awaited()
+
+
+# --------------------------------------------------------------------------
+# Восстановление: двойное нажатие и половинчатый успех
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_second_press_does_not_kill_the_fresh_token(db):
+    """Каждый replaceManagedBotToken убивает токен предыдущего вызова.
+
+    Два нажатия подряд оставляли в базе токен того вызова, чья транзакция
+    закоммитилась последней, — и он мог быть уже мёртвым.
+    """
+    from app.services.bot_recovery import ALREADY_OK, RESTORED, restore_managed_token
+
+    seller, shop = await _connected_shop(db, is_managed=True)
+    replace = AsyncMock(return_value=REPLACEMENT_TOKEN)
+    with (
+        patch("app.bots.hub.hub_bot.replace_managed_bot_token", new=replace),
+        patch("app.bots.runner.setup_seller_webhook", new=AsyncMock(return_value=True)),
+    ):
+        assert await restore_managed_token(shop.id, seller.id) == RESTORED
+        assert await restore_managed_token(shop.id, seller.id) == ALREADY_OK
+
+    assert replace.await_count == 1  # второй токен не выпускали
+    async with db() as session:
+        fresh = await session.get(SellerBot, shop.id)
+        assert decrypt_bot_token(fresh.bot_token_encrypted) == REPLACEMENT_TOKEN
+
+
+@pytest.mark.asyncio
+async def test_webhook_failure_is_not_reported_as_nothing_happened(db):
+    """Токен уже заменён — «не вышло восстановить» отправило бы продавца
+    искать старый токен, которого больше нет."""
+    from app.services.bot_recovery import WEBHOOK_PENDING, restore_managed_token
+
+    seller, shop = await _connected_shop(db, is_managed=True)
+    with (
+        patch(
+            "app.bots.hub.hub_bot.replace_managed_bot_token",
+            new=AsyncMock(return_value=REPLACEMENT_TOKEN),
+        ),
+        patch("app.bots.runner.setup_seller_webhook", new=AsyncMock(return_value=False)),
+    ):
+        assert await restore_managed_token(shop.id, seller.id) == WEBHOOK_PENDING
+
+    async with db() as session:
+        fresh = await session.get(SellerBot, shop.id)
+        # новый токен сохранён: делать вид, что ничего не было, нельзя
+        assert decrypt_bot_token(fresh.bot_token_encrypted) == REPLACEMENT_TOKEN
+
+
+@pytest.mark.asyncio
+async def test_restore_does_not_reopen_a_shop_turned_off_on_purpose(db):
+    """Продавец отключил магазин сам — починка токена не повод открывать его."""
+    from app.services.bot_recovery import restore_managed_token
+
+    seller, shop = await _connected_shop(db, is_managed=True)
+    async with db() as session:
+        record = await session.get(SellerBot, shop.id)
+        record.is_active = False
+        await session.commit()
+
+    with (
+        patch(
+            "app.bots.hub.hub_bot.replace_managed_bot_token",
+            new=AsyncMock(return_value=REPLACEMENT_TOKEN),
+        ),
+        patch("app.bots.runner.setup_seller_webhook", new=AsyncMock(return_value=True)),
+    ):
+        await restore_managed_token(shop.id, seller.id)
+
+    async with db() as session:
+        assert (await session.get(SellerBot, shop.id)).is_active is False
+
+
+@pytest.mark.asyncio
+async def test_promoted_shop_shows_its_name_on_the_storefront(db):
+    """Витрина читает shop_name, а не title — иначе «Кофейня у дома»
+    показывалась покупателю как @kofeynya_u_doma_bot."""
+    seller = await _seller(db)
+    draft = await create_draft(seller.id, "Кофейня у дома")
+    shop = await promote_draft(draft.id, NEW_TOKEN, "kofeynya_u_doma_bot", 7891234567)
+    assert shop.shop_name == "Кофейня у дома"
