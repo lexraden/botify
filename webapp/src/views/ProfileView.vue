@@ -114,11 +114,8 @@ async function toggleLang() {
 }
 .badge-spacer { margin-top: auto; }
 .legal-links {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
   margin-top: 10px;
+  text-align: center;
   button {
     border: 0;
     background: none;
@@ -127,8 +124,18 @@ async function toggleLang() {
     font-size: 12px;
     cursor: pointer;
   }
-  span { color: var(--sub); font-size: 12px; }
-  &.stack { flex-direction: column; gap: 4px; }
+  /* «and» между ссылками — с обычным межсловным пробелом, без широких зазоров */
+  span {
+    color: var(--sub);
+    font-size: 12px;
+    margin: 0 4px;
+  }
+  &.stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
 }
 .top {
   display: flex;
