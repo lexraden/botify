@@ -33,6 +33,7 @@ from app.models import (
     SellerBot,
     ShopEvent,
     ShopLogo,
+    StoreAdmin,
 )
 from app.models.orders import PAID_STATUSES
 from app.payments.payouts import paid_total, pending_total
@@ -192,10 +193,35 @@ async def get_shop(
     seller: Seller = Depends(get_seller),
     session: AsyncSession = Depends(get_api_session),
 ) -> SellerBot:
+    """Магазин для текущего продавца: владелец или приглашённый админ.
+
+    Чужому отдаём ту же 404, что и несуществующему магазину, — сам факт его
+    существования посторонним раскрывать не нужно.
+    """
     bot = await session.get(SellerBot, bot_id)
-    if bot is None or bot.seller_id != seller.id:
+    if bot is None:
         raise HTTPException(status_code=404, detail="shop not found")
+    if bot.seller_id != seller.id:
+        admin = (
+            await session.execute(
+                select(StoreAdmin).where(
+                    StoreAdmin.bot_id == bot.id, StoreAdmin.seller_id == seller.id
+                )
+            )
+        ).scalar_one_or_none()
+        if admin is None:
+            raise HTTPException(status_code=404, detail="shop not found")
     return bot
+
+
+def _require_owner(shop: SellerBot, seller: Seller) -> None:
+    """Деньги и необратимые действия магазина — только владельцу.
+
+    Админ ведёт магазин наравне с владельцем (товары, заказы, рассылки,
+    настройки), но выводит кассу не он, и магазин не он удаляет.
+    """
+    if shop.seller_id != seller.id:
+        raise HTTPException(status_code=403, detail="owner only")
 
 
 # --------------------------------------------------------------------------
@@ -213,35 +239,42 @@ class ShopStateOut(BaseModel):
 @router.post("/bots/{bot_id}/disable", response_model=ShopStateOut)
 async def disable_shop(
     shop: SellerBot = Depends(get_shop),
-    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
 ) -> ShopStateOut:
     from app.services.bot_connect import disconnect_bot
 
-    bot = await disconnect_bot(shop.id, seller.id)
+    # админ тоже может включать/выключать; сервисы проверяют владельца —
+    # подаём владельца магазина, а не того, кто нажал кнопку
+    bot = await disconnect_bot(shop.id, shop.seller_id)
     if bot is None:
         raise HTTPException(status_code=404, detail="shop not found")
-    await _notify_seller(
-        seller,
-        f"⚪ Магазин <b>@{bot.bot_username}</b> отключён через приложение.\n"
-        "Бот не отвечает покупателям, база, товары и заказы сохранены.",
-    )
+    # уведомление — владельцу: действие мог совершить админ из его кабинета
+    owner = await session.get(Seller, shop.seller_id)
+    if owner is not None:
+        await _notify_seller(
+            owner,
+            f"⚪ Магазин <b>@{bot.bot_username}</b> отключён через приложение.\n"
+            "Бот не отвечает покупателям, база, товары и заказы сохранены.",
+        )
     return ShopStateOut(id=bot.id, bot_username=bot.bot_username, is_active=False)
 
 
 @router.post("/bots/{bot_id}/enable", response_model=ShopStateOut)
 async def enable_shop(
     shop: SellerBot = Depends(get_shop),
-    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
 ) -> ShopStateOut:
     from app.services.bot_connect import enable_bot
 
-    bot = await enable_bot(shop.id, seller.id)
+    bot = await enable_bot(shop.id, shop.seller_id)
     if bot is None:
         raise HTTPException(status_code=404, detail="shop not found")
-    await _notify_seller(
-        seller,
-        f"🟢 Магазин <b>@{bot.bot_username}</b> включён — бот снова работает.",
-    )
+    owner = await session.get(Seller, shop.seller_id)
+    if owner is not None:
+        await _notify_seller(
+            owner,
+            f"🟢 Магазин <b>@{bot.bot_username}</b> включён — бот снова работает.",
+        )
     return ShopStateOut(id=bot.id, bot_username=bot.bot_username, is_active=True)
 
 
@@ -250,6 +283,8 @@ async def delete_shop(
     shop: SellerBot = Depends(get_shop),
     seller: Seller = Depends(get_seller),
 ) -> dict:
+    # удаление необратимо и касается владельца, а не ведущего магазин
+    _require_owner(shop, seller)
     from app.services.bot_connect import delete_bot
 
     result = await delete_bot(shop.id, seller.id)
@@ -406,6 +441,9 @@ class ShopSummaryOut(BaseModel):
     payout_paid: Decimal      # уже выплачено этому магазину
     payout_min: Decimal       # минимум, с которого уходит перевод
     limits: LimitsOut
+    # кто открыл кабинет: владелец видит кошелёк, админ — нет (денег касается
+    # только владелец, поэтому фронт прячет wallet-карточку)
+    viewer_role: str = "owner"
 
 
 async def _catalog_usage(session: AsyncSession, bot_id: int) -> tuple[int, int]:
@@ -489,6 +527,7 @@ async def shop_summary(
         payout_paid=await paid_total(session, shop.id),
         payout_min=Decimal(str(get_settings().min_payout_usdt)),
         limits=await _limits_payload(session, seller, shop.id),
+        viewer_role="owner" if shop.seller_id == seller.id else "admin",
     )
 
 
@@ -504,9 +543,12 @@ class WithdrawOut(BaseModel):
 @router.post("/bots/{bot_id}/payouts/withdraw", response_model=WithdrawOut)
 async def withdraw(
     shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
     session: AsyncSession = Depends(get_api_session),
 ) -> WithdrawOut:
     """Забрать накопленное этим магазином.
+
+    Только владелец: админ видит магазин, но не кассу (см. _require_owner).
 
     Касса у каждого бота своя, поэтому кнопка выводит деньги только своего
     магазина; повторное нажатие не задваивает перевод (идемпотентный spend_id).
@@ -515,6 +557,7 @@ async def withdraw(
     а сама попытка перевода отвечает точно. Если бот не открыт, вернётся
     reason=cryptobot_not_started, и приложение покажет этот шаг.
     """
+    _require_owner(shop, seller)
     from app.payments.client import get_crypto_pay
     from app.payments.payouts import flush_shop_payouts
 

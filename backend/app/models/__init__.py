@@ -9,11 +9,13 @@ from app.models.mailings import Mailing
 from app.models.orders import Order, OrderItem, Payout, PayoutBatch
 from app.models.reviews import ProductReview
 from app.models.sellers import Seller
+from app.models.store_admins import StoreAdmin
 
 __all__ = [
     "Base",
     "Seller",
     "SellerBot",
+    "StoreAdmin",
     "Customer",
     "Channel",
     "Mailing",

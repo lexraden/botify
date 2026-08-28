@@ -87,6 +87,10 @@ const minPayout = computed(() => money(summary.value?.payout_min))
 const canWithdraw = computed(() => balance.value > 0 && balance.value >= minPayout.value)
 const leftToMin = computed(() => Math.max(0, minPayout.value - balance.value))
 
+// роли в магазине (summary.viewer_role): админ ведёт всё, кроме денег, —
+// кошелёк и баланс кассы ему не показываем
+const isOwner = computed(() => summary.value?.viewer_role !== 'admin')
+
 // словари надписей строятся как computed, чтобы переключение языка
 // в профиле обновляло кабинет без перезахода
 const WITHDRAW_ERROR = computed(() => ({
@@ -500,7 +504,7 @@ async function removeLogo() {
         <div class="card stat">
           <b class="num">{{ summary.orders_count }}</b><span>{{ t('stat.orders') }}</span>
         </div>
-        <div class="card stat green">
+        <div v-if="isOwner" class="card stat green">
           <b class="num">{{ balance.toFixed(2) }}</b><span>{{ t('wallet.balanceShort') }}</span>
         </div>
       </div>
@@ -707,7 +711,8 @@ async function removeLogo() {
           </div>
         </div>
 
-        <div class="card wallet">
+        <!-- кошелёк — только владельцу: админ видит магазин, но не кассу -->
+        <div v-if="isOwner" class="card wallet">
           <span class="wallet-label">{{ t('wallet.label') }}</span>
           <div class="wallet-sum">
             <b class="num">{{ balance.toFixed(2) }}</b><span>USDT</span>

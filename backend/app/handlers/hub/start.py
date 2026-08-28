@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.db import get_session
 from app.handlers.hub.mybots import send_shops_menu
+from app.handlers.hub.shop_admins import has_admin_shops
 from app.models import Seller, SellerBot
 
 router = Router()
@@ -37,7 +38,9 @@ NO_WEBAPP = (
 WELCOME_BACK = "👋 С возвращением!\n\n{status}"
 
 
-def open_app_keyboard(with_bots: bool = False) -> types.InlineKeyboardMarkup | None:
+def open_app_keyboard(
+    with_bots: bool = False, admin_bots: bool = False
+) -> types.InlineKeyboardMarkup | None:
     webapp_url = get_settings().effective_webapp_url
     if not webapp_url:
         return None
@@ -45,6 +48,10 @@ def open_app_keyboard(with_bots: bool = False) -> types.InlineKeyboardMarkup | N
     kb.button(text="🚀 Открыть приложение", web_app=types.WebAppInfo(url=webapp_url))
     if with_bots:
         kb.button(text="🏪 Мои магазины", callback_data="mybots:list")
+    if admin_bots:
+        # пункт меню для приглашённых админов: ведёт к списку магазинов,
+        # которые им доверили вести
+        kb.button(text="🛠 Магазины, где я администратор", callback_data="adminshops:list")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -99,7 +106,8 @@ async def cmd_start(message: types.Message, state: FSMContext) -> None:
             )
         await session.commit()
 
-    keyboard = open_app_keyboard(with_bots=bool(bots))
+    admin_bots = await has_admin_shops(seller.id) if seller is not None else False
+    keyboard = open_app_keyboard(with_bots=bool(bots), admin_bots=admin_bots)
     if keyboard is None:
         await message.answer(NO_WEBAPP)
         return

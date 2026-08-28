@@ -129,6 +129,8 @@ def bot_card_keyboard(bot: SellerBot) -> types.InlineKeyboardMarkup:
     else:
         kb.button(text="🔁 Включить", callback_data=f"mybots:on:{bot.id}")
         kb.button(text="🗑 Удалить", callback_data=f"mybots:del:{bot.id}")
+    # админы раздаются здесь же, в хабе: список, приглашение по @username/ID
+    kb.button(text="👥 Администраторы", callback_data=f"mybots:admins:{bot.id}")
     # настройки живут в самом seller-боте: диплинк открывает там /settings
     kb.button(
         text="⚙️ Настройки бота",
@@ -145,7 +147,13 @@ async def _seller_for(telegram_id: int) -> Seller | None:
         return result.scalar_one_or_none()
 
 
-async def _owned_bot_from_callback(callback: types.CallbackQuery) -> tuple[Seller, int] | None:
+async def owned_bot_from_callback(callback: types.CallbackQuery) -> tuple[Seller, int] | None:
+    """Гард callback-ов карточки магазина: callback.data вида «…:{bot_id}».
+
+    Возвращает продавца и id магазина или None с алертом, если человек не
+    зарегистрирован или магазин не его. Публичный: используется и хендлерами
+    администраторов (app/handlers/hub/shop_admins.py).
+    """
     if callback.from_user is None or callback.data is None:
         return None
     seller = await _seller_for(callback.from_user.id)
@@ -225,7 +233,7 @@ async def back_to_shops_menu(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("mybots:card:"))
 async def open_bot_card(callback: types.CallbackQuery) -> None:
-    ctx = await _owned_bot_from_callback(callback)
+    ctx = await owned_bot_from_callback(callback)
     if ctx is None:
         return
     seller, bot_id = ctx
@@ -239,7 +247,7 @@ async def open_bot_card(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("mybots:off:"))
 async def confirm_disconnect(callback: types.CallbackQuery) -> None:
-    ctx = await _owned_bot_from_callback(callback)
+    ctx = await owned_bot_from_callback(callback)
     if ctx is None:
         return
     seller, bot_id = ctx
@@ -262,7 +270,7 @@ async def confirm_disconnect(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("mybots:off_yes:"))
 async def do_disconnect(callback: types.CallbackQuery) -> None:
-    ctx = await _owned_bot_from_callback(callback)
+    ctx = await owned_bot_from_callback(callback)
     if ctx is None:
         return
     seller, bot_id = ctx
@@ -274,7 +282,7 @@ async def do_disconnect(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("mybots:on:"))
 async def do_enable(callback: types.CallbackQuery) -> None:
-    ctx = await _owned_bot_from_callback(callback)
+    ctx = await owned_bot_from_callback(callback)
     if ctx is None:
         return
     seller, bot_id = ctx
@@ -291,7 +299,7 @@ async def do_enable(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("mybots:del:"))
 async def confirm_delete(callback: types.CallbackQuery) -> None:
-    ctx = await _owned_bot_from_callback(callback)
+    ctx = await owned_bot_from_callback(callback)
     if ctx is None:
         return
     seller, bot_id = ctx
@@ -313,7 +321,7 @@ async def confirm_delete(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("mybots:del_yes:"))
 async def do_delete(callback: types.CallbackQuery) -> None:
-    ctx = await _owned_bot_from_callback(callback)
+    ctx = await owned_bot_from_callback(callback)
     if ctx is None:
         return
     seller, bot_id = ctx
@@ -354,7 +362,7 @@ async def restore_shop(callback: types.CallbackQuery) -> None:
     магазина, — поэтому правим не сообщение целиком, а отвечаем текстом:
     под кнопкой может быть и то и другое.
     """
-    ctx = await _owned_bot_from_callback(callback)
+    ctx = await owned_bot_from_callback(callback)
     if ctx is None:
         return
     seller, bot_id = ctx
@@ -402,7 +410,7 @@ async def restore_shop(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("mybots:back:"))
 async def back_to_card(callback: types.CallbackQuery) -> None:
-    ctx = await _owned_bot_from_callback(callback)
+    ctx = await owned_bot_from_callback(callback)
     if ctx is None:
         return
     seller, bot_id = ctx
