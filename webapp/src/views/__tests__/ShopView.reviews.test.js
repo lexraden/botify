@@ -45,6 +45,7 @@ const SUMMARY = {
 const REVIEWS = [
   {
     id: 11,
+    order_id: 101,
     product_title: 'Кружка',
     author_name: 'Аноним',
     rating: 2,
@@ -57,6 +58,7 @@ const REVIEWS = [
   },
   {
     id: 12,
+    order_id: 102,
     product_title: 'Кружка',
     author_name: 'Аноним',
     rating: 1,
@@ -69,6 +71,7 @@ const REVIEWS = [
   },
   {
     id: 13,
+    order_id: 103,
     product_title: 'Кружка',
     author_name: 'Аноним',
     rating: 5,
@@ -99,6 +102,13 @@ describe('ShopView — вкладка отзывов и модерация', () 
     expect(w.text()).toContain('Скрыт')
     // опубликованный отзыв виден без бейджа: текст есть, статуса нет
     expect(w.text()).toContain('Отлично')
+    w.unmount()
+  })
+
+  it('продавец видит, к какому заказу относится отзыв', async () => {
+    const w = await mountReviews()
+    const metas = w.findAll('.seller-review .sr-meta')
+    expect(metas.map((m) => m.text())).toEqual(['Заказ #101', 'Заказ #102', 'Заказ #103'])
     w.unmount()
   })
 

@@ -230,6 +230,7 @@ export const DICT = {
     // не одобренные за 7 дней публикуются сами
     'reviews.statusPending': 'На проверке',
     'reviews.statusRejected': 'Скрыт',
+    'reviews.orderLabel': 'Заказ #{n}',
     'reviews.approve': 'Одобрить',
     'reviews.reject': 'Скрыть',
     'reviews.publish': 'Опубликовать',
@@ -558,6 +559,7 @@ export const DICT = {
     // unreviewed ones publish themselves after 7 days
     'reviews.statusPending': 'In review',
     'reviews.statusRejected': 'Hidden',
+    'reviews.orderLabel': 'Order #{n}',
     'reviews.approve': 'Approve',
     'reviews.reject': 'Hide',
     'reviews.publish': 'Publish',

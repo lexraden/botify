@@ -146,6 +146,7 @@ async def test_product_reviews_flow(db):
             r = await c.get(f"/api/seller/bots/{bot_id}/reviews", headers=seller_headers())
             seller_reviews = r.json()
             assert len(seller_reviews) == 1
+            assert seller_reviews[0]["order_id"] == order_id
             assert seller_reviews[0]["product_title"] == "Кроссовки"
             assert seller_reviews[0]["rating"] == 4
             assert seller_reviews[0]["author_name"] == author

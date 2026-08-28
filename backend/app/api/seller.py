@@ -844,6 +844,8 @@ async def list_orders(
 
 class SellerReviewOut(BaseModel):
     id: int
+    # заказ, к которому относится отзыв: продавцу видно, о какой покупке речь
+    order_id: int
     product_title: str
     # имя автора — то же, что видят покупатели на странице товара
     author_name: str | None
@@ -879,6 +881,7 @@ async def list_reviews(
     return [
         SellerReviewOut(
             id=review.id,
+            order_id=review.order_id,
             product_title=title,
             author_name=review.author_name,
             rating=review.rating,
@@ -896,6 +899,7 @@ async def list_reviews(
 def _review_out(review: ProductReview, product_title: str) -> SellerReviewOut:
     return SellerReviewOut(
         id=review.id,
+        order_id=review.order_id,
         product_title=product_title,
         author_name=review.author_name,
         rating=review.rating,

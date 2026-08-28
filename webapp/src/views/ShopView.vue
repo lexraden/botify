@@ -636,6 +636,8 @@ async function removeLogo() {
               </span>
               <span class="muted sr-title">{{ r.product_title }}</span>
             </div>
+            <!-- к какому заказу относится отзыв — продавцу важно понять, о какой покупке речь -->
+            <p class="sr-meta">{{ t('reviews.orderLabel', { n: r.order_id }) }}</p>
             <p v-if="r.body">{{ r.body }}</p>
             <p v-if="r.status !== 'published'" class="sr-status" :class="r.status">
               {{ r.status === 'pending' ? t('reviews.statusPending') : t('reviews.statusRejected') }}
@@ -900,6 +902,7 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; flex-shrink: 0; }
 .sr-title { font-size: 12.5px; font-weight: 700; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seller-review p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; }
+.sr-meta { font-size: 12.5px; color: var(--sub); }
 .sr-status { font-size: 12.5px; font-weight: 700; }
 .sr-status.pending { color: var(--accent); }
 .sr-status.rejected { color: var(--sub); }
