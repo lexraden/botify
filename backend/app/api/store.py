@@ -1,7 +1,7 @@
 """API витрины: покупатель внутри seller-бота. Всё отфильтровано по продавцу бота."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -108,6 +108,8 @@ class OrderOut(BaseModel):
     currency: str
     items: list[OrderItemOut]
     payment_url: str | None = None  # ссылка на оплату в @CryptoBot
+    # когда заказ перестанет ждать оплату; None — не истекает (оплачен/старый)
+    expires_at: datetime | None = None
 
 
 @router.get("", response_model=ShopOut)
@@ -242,6 +244,12 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     # Сумма считается только на сервере, по текущим ценам из БД
     total = sum(products[i.product_id].price * i.qty for i in payload.items)
 
+    # Жизнь заказа = жизнь счёта в Crypto Pay: неоплаченная корзина не должна
+    # висеть в «Моих покупках» вечно. По кнопке «Оплатить» счётчик пойдёт заново.
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=get_settings().unpaid_order_ttl_minutes
+    )
+
     order = Order(
         seller_id=ctx.bot.seller_id,
         bot_id=ctx.bot.id,
@@ -249,6 +257,7 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         total=total,
         currency="USDT",
         comment=payload.comment,
+        expires_at=expires_at,
         delivery=(
             payload.delivery.model_dump(exclude_none=True)
             if needs_delivery and payload.delivery
@@ -284,6 +293,7 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         total=Decimal(total),
         currency=order.currency,
         payment_url=payment_url,
+        expires_at=order.expires_at,
         items=[
             OrderItemOut(
                 product_id=i.product_id,
@@ -330,6 +340,12 @@ async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> Pa
     except Exception:
         logger.exception("Повторный инвойс для заказа %s создать не удалось", order.id)
         raise HTTPException(status_code=502, detail="invoice_failed") from None
+    # Выписали новый часовой счёт — дали заказу столько же. Иначе покупатель,
+    # нажавший «Оплатить» на 59-й минуте, получил бы счёт на минуту.
+    order.expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=get_settings().unpaid_order_ttl_minutes
+    )
+    await ctx.session.commit()
     return PayOut(payment_url=payment_url)
 
 
@@ -385,9 +401,12 @@ async def confirm_received(
 
 @router.get("/orders/my", response_model=list[OrderOut])
 async def my_orders(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> list[OrderOut]:
+    """Свои заказы. Отменённые не показываются: список — это то, что покупатель
+    ждёт оплаты или получения. Строки в базе остаются — сверка платежей
+    (app/payments/reconcile.py) и статистика продолжают их видеть."""
     result = await ctx.session.execute(
         select(Order)
-        .where(Order.customer_id == ctx.customer.id)
+        .where(Order.customer_id == ctx.customer.id, Order.status != "cancelled")
         .order_by(Order.id.desc())
         .limit(50)
     )
@@ -425,6 +444,7 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> list[Ord
                 status=order.status,
                 total=order.total,
                 currency=order.currency,
+                expires_at=order.expires_at,
                 items=[
                     OrderItemOut(
                         product_id=i.product_id,

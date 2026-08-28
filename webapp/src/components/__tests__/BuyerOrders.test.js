@@ -29,6 +29,14 @@ const order = (status) => [
   { id: 1, status, total: '10', currency: 'USDT', items: [{ product_id: 1, title: 'Гайд', qty: 1, price: '10' }] },
 ]
 
+// неоплаченный с серверным сроком жизни (на 43:12 вперёд от «сейчас»)
+const pendingWithTimer = () => [
+  {
+    ...order('pending_payment')[0],
+    expires_at: new Date(Date.now() + (43 * 60 + 12) * 1000).toISOString(),
+  },
+]
+
 describe('BuyerOrders — живые статусы', () => {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -270,6 +278,53 @@ describe('BuyerOrders — живые статусы', () => {
     await wrapper.find('.cancel-btn').trigger('click')
     await flushPromises()
     expect(cancelOrder).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('у неоплаченного заказа с сроком виден отсчёт, он тикает и исчезает на нуле', async () => {
+    fetchMyOrders.mockResolvedValue(pendingWithTimer())
+    const wrapper = await mountList()
+    await flushPromises()
+    expect(wrapper.text()).toContain('осталось 43:12')
+
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(wrapper.text()).toContain('осталось 43:10')
+    wrapper.unmount()
+  })
+
+  it('истёкший срок отсчёт прячет', async () => {
+    fetchMyOrders.mockResolvedValue([
+      { ...order('pending_payment')[0], expires_at: new Date(Date.now() - 60_000).toISOString() },
+    ])
+    const wrapper = await mountList()
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('осталось')
+    wrapper.unmount()
+  })
+
+  it('без expires_at отсчёта нет вовсе', async () => {
+    fetchMyOrders.mockResolvedValue(order('pending_payment'))
+    const wrapper = await mountList()
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('осталось')
+    wrapper.unmount()
+  })
+
+  it('после отмены карточка исчезает и всплывает тост', async () => {
+    window.confirm = vi.fn().mockReturnValue(true)
+    fetchMyOrders
+      .mockResolvedValueOnce(order('pending_payment'))
+      .mockResolvedValue([]) // отменённый больше не приходит
+    cancelOrder.mockResolvedValue({ status: 'cancelled' })
+    const wrapper = await mountList()
+    await flushPromises()
+
+    await wrapper.find('.cancel-btn').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Заказ #1 отменён')
+
+    await vi.advanceTimersByTimeAsync(4000) // тост уходит сам
+    expect(wrapper.text()).not.toContain('Заказ #1 отменён')
     wrapper.unmount()
   })
 

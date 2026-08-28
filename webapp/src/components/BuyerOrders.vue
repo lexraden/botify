@@ -94,6 +94,30 @@ async function removeReview(o, productId) {
 const busyId = ref(null)
 const actionError = ref({ id: null, text: '' })
 
+// Часовой таймер неоплаченного заказа. Один тик на весь список, а не на
+// карточку: отсчёт виден ровно у заказов со сроком из expires_at, ноль —
+// строка пропадает (после прохода джоба на бэкенде уйдёт и сам заказ).
+const now = ref(Date.now())
+let countdownTimer = null
+
+function timeLeft(o) {
+  if (!o.expires_at) return null
+  const total = Math.floor((new Date(o.expires_at).getTime() - now.value) / 1000)
+  if (total <= 0) return null
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
+// Отмена убирает карточку из списка — короткий тост, чтобы нажатие не
+// выглядело сбоем
+const toast = ref('')
+let toastTimer = null
+
+function showToast(text) {
+  toast.value = text
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => (toast.value = ''), 3500)
+}
+
 async function retryPay(o) {
   busyId.value = o.id
   actionError.value = { id: null, text: '' }
@@ -135,6 +159,7 @@ async function doCancel(o) {
     await cancelOrder(o.id)
     // статус сменился на сервере — подтягиваем, не дожидаясь опроса
     await refresh()
+    showToast(t('orders.cancelledNote', { n: o.id }))
   } catch (e) {
     actionError.value = { id: o.id, text: apiError(e, 'orders.cancelError') }
   } finally {
@@ -163,11 +188,14 @@ function refreshIfVisible() {
 onMounted(async () => {
   await refresh()
   timer = setInterval(refreshIfVisible, 10_000)
+  countdownTimer = setInterval(() => (now.value = Date.now()), 1000)
   document.addEventListener('visibilitychange', refreshIfVisible)
 })
 
 onBeforeUnmount(() => {
   clearInterval(timer)
+  clearInterval(countdownTimer)
+  clearTimeout(toastTimer)
   document.removeEventListener('visibilitychange', refreshIfVisible)
 })
 </script>
@@ -192,6 +220,7 @@ onBeforeUnmount(() => {
       <!-- действия — внизу карточки: сначала состав и сумма, потом кнопки.
            неоплаченный: покупатель может доплатить заново или передумать -->
       <template v-if="o.status === 'pending_payment'">
+        <p v-if="timeLeft(o)" class="time-left">{{ t('orders.timeLeft', { time: timeLeft(o) }) }}</p>
         <div class="pay-actions">
           <button class="pay-btn" :disabled="busyId === o.id" @click="retryPay(o)">
             {{ t('orders.payNow') }}
@@ -249,6 +278,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    <div v-if="toast" class="toast">{{ toast }}</div>
   </div>
 </template>
 
@@ -280,6 +310,28 @@ onBeforeUnmount(() => {
 .pay-btn { background: var(--green); color: var(--on-green); }
 .cancel-btn { background: var(--surface2); color: var(--red); }
 .action-error { color: var(--red); font-size: 12px; margin: 6px 0 0; }
+.time-left {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+}
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+  white-space: nowrap;
+}
 .reviewed-mark {
   color: #f59e1b;
   font-size: 11px;

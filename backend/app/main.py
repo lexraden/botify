@@ -55,7 +55,8 @@ async def chat_maintenance_loop() -> None:
 
 async def maintenance_loop() -> None:
     """Обслуживание раз в 10 минут: недоехавшие оплаты, застрявшие рассылки,
-    зависшие заказы, отозванные токены ботов и осиротевшие фото товаров.
+    зависшие заказы, истёкшие неоплаченные, отозванные токены ботов и
+    осиротевшие фото товаров.
 
     Всё это — про то, что ломается молча: вебхук об оплате не дошёл, рассылка
     вечно «идёт», оплаченный заказ никто не отправляет, бот перестал получать
@@ -68,7 +69,11 @@ async def maintenance_loop() -> None:
     from app.services.bot_health import check_revoked_tokens
     from app.services.images import purge_orphan_images
     from app.services.mailing import revive_stuck_mailings
-    from app.services.order_health import auto_confirm_delivery, remind_stuck_orders
+    from app.services.order_health import (
+        auto_confirm_delivery,
+        expire_unpaid_orders,
+        remind_stuck_orders,
+    )
 
     settings = get_settings()
     tick = 600
@@ -81,6 +86,7 @@ async def maintenance_loop() -> None:
             ("оживление рассылок", revive_stuck_mailings),
             ("напоминания по заказам", remind_stuck_orders),
             ("авто-подтверждение получения", auto_confirm_delivery),
+            ("истечение неоплаченных заказов", expire_unpaid_orders),
             ("чистка осиротевших фото", purge_orphan_images),
         ):
             try:

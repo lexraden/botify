@@ -38,6 +38,48 @@ logger = logging.getLogger(__name__)
 MAX_LISTED = 5
 
 
+async def expire_unpaid_orders() -> int:
+    """Отменить заказы, не оплаченные за отведённое время (orders.expires_at).
+
+    Заказ живёт столько же, сколько его счёт в Crypto Pay: без таймера брошенная
+    корзина навсегда оставалась бы в «Моих покупках» и держала бы витрину в
+    невыплаченных. Отмена здесь та же, что и при отмене покупателем, — счёт
+    снимается (`discard_invoice`), чтобы по ссылке из @CryptoBot нельзя было
+    заплатить за отменённый заказ.
+
+    Возвращает число отменённых заказов.
+    """
+    from app.payments.service import discard_invoice
+
+    async with get_session() as session:
+        stale = list(
+            (
+                await session.execute(
+                    select(Order)
+                    .where(
+                        Order.status == "pending_payment",
+                        Order.expires_at.is_not(None),
+                        Order.expires_at < func.now(),
+                    )
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not stale:
+            return 0
+        for order in stale:
+            order.status = "cancelled"
+        await session.commit()
+
+    # после коммита: сетевой вызов, его неудача не откатывает отмену
+    for order in stale:
+        await discard_invoice(order.invoice_id)
+    logger.info("Неоплаченных заказов отменено по таймеру: %d", len(stale))
+    return len(stale)
+
+
 async def auto_confirm_delivery() -> int:
     """Отметить полученными заказы, отправленные давно и без подтверждения.
 

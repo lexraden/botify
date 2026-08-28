@@ -1,6 +1,8 @@
 """Оплата и отмена своего неоплаченного заказа покупателем
 и фильтр неоплаченных из списка заказов продавца."""
 
+from datetime import timedelta
+
 import pytest
 
 from app.models import Order
@@ -88,14 +90,18 @@ async def test_paid_order_cannot_be_paid_or_cancelled(db):
 
 @pytest.mark.asyncio
 async def test_cancel_moves_pending_to_cancelled(db):
+    """Отменённый заказ исчезает из «Моих покупок», но строка в базе остаётся:
+    сверка платежей и статистика продолжают её видеть."""
     bot_id = await setup_shop(db)
     async with client() as c:
         oid = await create_order(c, bot_id)
         r = await c.post(f"/api/store/{bot_id}/orders/{oid}/cancel", headers=buyer_headers())
         assert r.status_code == 200, r.text
         r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
-        by_id = {o["id"]: o["status"] for o in r.json()}
-        assert by_id == {oid: "cancelled"}
+        assert r.json() == []
+        async with db() as session:
+            order = await session.get(Order, oid)
+            assert order.status == "cancelled"
 
 
 @pytest.mark.asyncio
@@ -120,7 +126,7 @@ async def test_seller_list_hides_pending_only_paid_workflows(db):
 
         r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
         by_id = {o["id"]: o["status"] for o in r.json()}
-        assert by_id == {paid: "paid", cancelled: "cancelled"}
+        assert by_id == {paid: "paid"}  # отменённый покупателю не показывается
 
 
 @pytest.mark.asyncio
@@ -148,3 +154,109 @@ async def test_summary_counts_only_paid_orders(db):
         # выручка живёт на том же наборе статусов PAID_STATUSES — цифры не
         # разъезжаются: три корзины по 5, засчитана одна
         assert float(summary["revenue"]) == pytest.approx(5)
+
+
+@pytest.mark.asyncio
+async def test_order_gets_expiry_on_create(db):
+    """Созданный заказ живёт unpaid_order_ttl_minutes и отдаёт срок покупателю."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        oid = await create_order(c, bot_id)
+        async with db() as session:
+            order = await session.get(Order, oid)
+            assert order.expires_at is not None
+            ttl = (order.expires_at - order.created_at).total_seconds()
+            assert ttl == pytest.approx(60 * 60, abs=10)  # дефолт — час
+        r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
+        assert r.json()[0]["expires_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_pay_resets_expiry_clock(db, monkeypatch):
+    """Новый счёт по кнопке «Оплатить» продлевает жизнь заказа: нажал на 59-й
+    минуте — получил новый час, а не минуту. Провалившийся инвойс не продлевает."""
+    async def fake_invoice(order_id, total, shop=None):
+        return f"https://t.me/CryptoBot?start=inv{order_id}"
+
+    async def boom(order_id, total, shop=None):
+        raise RuntimeError("crypto down")
+
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        oid = await create_order(c, bot_id)
+        async with db() as session:
+            order = await session.get(Order, oid)
+            order.expires_at = order.created_at  # почти истёк
+            await session.commit()
+
+        monkeypatch.setattr("app.payments.service.create_invoice_for_order", boom)
+        r = await c.post(f"/api/store/{bot_id}/orders/{oid}/pay", headers=buyer_headers())
+        assert r.status_code == 502
+
+        r = await c.post(f"/api/store/{bot_id}/orders/{oid}/pay", headers=buyer_headers())
+        assert r.status_code == 502
+        async with db() as session:
+            order = await session.get(Order, oid)
+            assert order.expires_at == order.created_at  # счёт не выписан — не продлили
+
+        monkeypatch.setattr("app.payments.service.create_invoice_for_order", fake_invoice)
+        r = await c.post(f"/api/store/{bot_id}/orders/{oid}/pay", headers=buyer_headers())
+        assert r.status_code == 200, r.text
+        async with db() as session:
+            order = await session.get(Order, oid)
+            assert order.expires_at > order.created_at
+            ttl = (order.expires_at - order.created_at).total_seconds()
+            assert ttl == pytest.approx(60 * 60, abs=10)
+
+
+@pytest.mark.asyncio
+async def test_job_cancels_expired_orders(db, monkeypatch):
+    """Джоб отменяет просроченный pending_payment и снимает счёт; живой заказ
+    и оплаченный не трогаются."""
+    from app.services.order_health import expire_unpaid_orders
+
+    async def fake_invoice(order_id, total, shop=None):
+        return f"https://t.me/CryptoBot?start=inv{order_id}"
+
+    monkeypatch.setattr("app.payments.service.create_invoice_for_order", fake_invoice)
+    discarded = []
+
+    async def fake_discard(invoice_id):
+        discarded.append(invoice_id)
+        return True
+
+    monkeypatch.setattr(
+        # джоб импортирует discard_invoice из payments.service при вызове
+        "app.payments.service.discard_invoice",
+        fake_discard,
+    )
+
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        expired = await create_order(c, bot_id)
+        fresh = await create_order(c, bot_id)
+        paid = await create_order(c, bot_id)
+
+    async with db() as session:
+        old = await session.get(Order, expired)
+        old.expires_at = old.created_at - timedelta(hours=1)  # истёк час назад
+        await session.commit()
+        order = await session.get(Order, paid)
+        order.status = "paid"
+        order.expires_at = order.created_at  # оплачен после срока — не трогаем
+        await session.commit()
+
+    assert await expire_unpaid_orders() == 1
+
+    async with db() as session:
+        assert (await session.get(Order, expired)).status == "cancelled"
+        assert (await session.get(Order, fresh)).status == "pending_payment"
+        assert (await session.get(Order, paid)).status == "paid"
+        # счёт снят ровно у истёкшего
+        assert discarded == [(await session.get(Order, expired)).invoice_id]
+
+    # отменённый джобом исчез из «Моих покупок»
+    async with client() as c:
+        r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
+        by_id = {o["id"]: o["status"] for o in r.json()}
+        assert by_id == {fresh: "pending_payment", paid: "paid"}

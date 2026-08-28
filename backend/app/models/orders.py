@@ -39,6 +39,10 @@ class Order(Base, CreatedAtMixin):
     comment: Mapped[str | None] = mapped_column(Text)  # «Add Comment...» с экрана checkout
 
     invoice_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)  # Crypto Pay invoice
+    # Когда неоплаченный заказ перестаёт ждать оплату (app/services/order_health.py).
+    # Живёт столько же, сколько счёт в Crypto Pay: выписали новый счёт — счётчик
+    # пошёл заново. NULL у старых заказов и после оплаты — они не истекают.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Момент доставки (delivered). От него считается окно чата заказа —
     # 72 часа на обсуждение (app/services/chat.py)
