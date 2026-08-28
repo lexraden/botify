@@ -20,11 +20,23 @@ function stored() {
 // null = как в клиенте Telegram, иначе принудительная 'light' | 'dark'
 export const themePref = ref(stored())
 
+// Цвет шапки и фона самого клиента Telegram подгоняем под палитру витрины
+// (styles.css --bg): в обычном окне шапка не должна спорить с контентом,
+// в полноэкранном режиме её и так не видно.
+const CLIENT_BG = { light: '#f6f7f9', dark: '#0e0f13' }
+
 export function applyTheme() {
   const dark = themePref.value
     ? themePref.value === 'dark'
     : tg?.colorScheme === 'dark'
   document.body.classList.toggle('tg-dark', dark)
+  const color = dark ? CLIENT_BG.dark : CLIENT_BG.light
+  try {
+    tg?.setHeaderColor?.(color)
+    tg?.setBackgroundColor?.(color)
+  } catch {
+    /* цвет шапки клиент мог не поддерживать — не критично */
+  }
 }
 
 export function setTheme(pref) {

@@ -42,6 +42,9 @@ body.tg-dark {
 
 body {
   margin: 0;
+  /* полный экран: отступ от статус-бара (ставится из contentSafeAreaInset,
+     см. services/telegram.js); вне полного экрана переменная равна 0 */
+  padding-top: var(--tg-content-top, 0px);
   font-size: 15px;
   background: var(--bg);
   color: var(--text);

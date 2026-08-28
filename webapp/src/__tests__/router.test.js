@@ -5,9 +5,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // модуля, сбрасывается вместе с ним).
 const fetchMe = vi.fn()
 let botId = null
+const fullscreen = { enter: vi.fn(), exit: vi.fn() }
 vi.mock('../api', () => ({ fetchMe: (...args) => fetchMe(...args) }))
 // tg нужен транзитивному i18n (детект языка) — оставляем его пустым
-vi.mock('../services/telegram', () => ({ getBotId: () => botId, tg: undefined }))
+vi.mock('../services/telegram', () => ({
+  getBotId: () => botId,
+  tg: undefined,
+  enterFullscreen: (...args) => fullscreen.enter(...args),
+  exitFullscreen: (...args) => fullscreen.exit(...args),
+}))
 
 async function buildRouter(startPath) {
   window.history.replaceState({}, '', startPath)
@@ -19,6 +25,8 @@ describe('router — bot_id не теряется между переходам�
   afterEach(() => {
     botId = null
     fetchMe.mockReset()
+    fullscreen.enter.mockClear()
+    fullscreen.exit.mockClear()
     vi.resetModules()
   })
 
@@ -49,5 +57,30 @@ describe('router — bot_id не теряется между переходам�
     await router.push('/shops')
     expect(router.currentRoute.value.path).toBe('/shops')
     expect(router.currentRoute.value.query.bot_id).toBeUndefined()
+  })
+})
+
+describe('router — полный экран только на витрине покупателя', () => {
+  afterEach(() => {
+    botId = null
+    fullscreen.enter.mockClear()
+    fullscreen.exit.mockClear()
+    vi.resetModules()
+  })
+
+  it('покупательские экраны входят в полный экран, кабинет выходит из него', async () => {
+    botId = '5'
+    const router = await buildRouter('/')
+    await router.push('/product/7')
+    expect(fullscreen.enter).toHaveBeenCalled()
+    expect(fullscreen.exit).not.toHaveBeenCalled()
+
+    // кабинет продавца — обычное окно, системная шапка на месте
+    await router.push('/shops')
+    expect(fullscreen.exit).toHaveBeenCalled()
+
+    fullscreen.enter.mockClear()
+    await router.push('/my-orders')
+    expect(fullscreen.enter).toHaveBeenCalled()
   })
 })

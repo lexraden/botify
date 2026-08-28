@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getBotId } from './services/telegram'
+import { enterFullscreen, exitFullscreen, getBotId } from './services/telegram'
 import { fetchMe } from './api'
 
 import StoreView from './views/StoreView.vue'
@@ -74,6 +74,19 @@ router.beforeEach(async (to) => {
   } catch {
     return '/onboarding/welcome'
   }
+})
+
+// Полноэкранный режим — только на витрине покупателя (весь покупательский
+// контекст): кабинет продавца и онбординг остаются в обычном окне. Клиенты
+// старше Bot API 8.0 игнорируют вызовы внутри обёртки.
+router.beforeEach((to) => {
+  const sellerArea =
+    to.path === '/shops' ||
+    to.path.startsWith('/shop/') ||
+    to.path.startsWith('/onboarding')
+  if (sellerArea) exitFullscreen()
+  else enterFullscreen()
+  return true
 })
 
 export default router
