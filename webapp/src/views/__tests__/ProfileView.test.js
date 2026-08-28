@@ -135,12 +135,20 @@ describe('ProfileView — профиль покупателя', () => {
     await w.find('.close').trigger('click')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
 
-    // английская версия: одна строка с разделителем
+    // английская версия: одна строка «Terms of Service and Privacy Policy»,
+    // «and» — обычный текст между двумя кликабельными ссылками
     setLocale('en')
     await flushPromises()
     const navEn = w.find('.legal-links')
     expect(navEn.classes()).not.toContain('stack')
-    expect(navEn.find('span').exists()).toBe(true)
+    const and = navEn.find('span')
+    expect(and.exists()).toBe(true)
+    expect(and.text()).toBe('and')
+    expect(and.element.tagName).toBe('SPAN') // не кнопка и не ссылка
+    expect(navEn.findAll('button').map((b) => b.text())).toEqual([
+      'Terms of Service',
+      'Privacy Policy',
+    ])
 
     await navEn.findAll('button')[1].trigger('click')
     expect(w.find('h3').text()).toBe('Privacy Policy')

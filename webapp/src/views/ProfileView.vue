@@ -91,10 +91,11 @@ async function toggleLang() {
     <!-- плашка прижимается к низу экрана, а не липнет к блоку сверху -->
     <div class="badge-spacer">
       <BrandBadge />
-      <!-- юридические документы: EN — одной строкой, RU — двумя друг над другом -->
+      <!-- юридические документы: EN — «Terms of Service and Privacy Policy»,
+           «and» между ними — не кликабельный текст; RU — двумя строками -->
       <nav class="legal-links" :class="{ stack: locale === 'ru' }" aria-label="Legal">
         <button type="button" @click="legalDoc = 'tos'">{{ t('profile.termsOfService') }}</button>
-        <span v-if="locale !== 'ru'" aria-hidden="true">·</span>
+        <span v-if="locale !== 'ru'" aria-hidden="true">{{ t('profile.and') }}</span>
         <button type="button" @click="legalDoc = 'privacy'">{{ t('profile.privacyPolicy') }}</button>
       </nav>
     </div>

@@ -67,6 +67,7 @@ export const DICT = {
     'profile.langToggle': 'Сменить язык',
     'profile.termsOfService': 'Условия использования',
     'profile.privacyPolicy': 'Политика конфиденциальности',
+    'profile.and': 'и',
 
     // карточка товара и товарная страница
     'card.addToCart': 'В корзину',
@@ -395,6 +396,7 @@ export const DICT = {
     'profile.langToggle': 'Toggle language',
     'profile.termsOfService': 'Terms of Service',
     'profile.privacyPolicy': 'Privacy Policy',
+    'profile.and': 'and',
 
     // product card and product page
     'card.addToCart': 'Add',
