@@ -34,7 +34,18 @@ const isDark = computed(() =>
 function toggleTheme() {
   setTheme(isDark.value ? 'light' : 'dark')
 }
-const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
+// Выбор языка уезжает на сервер заголовком X-Locale на ближайшем запросе, а
+// пуши по уже оформленным заказам берут язык из базы. Закрыв приложение сразу
+// после переключения, покупатель получал бы их на старом языке — поэтому
+// дёргаем один запрос сразу. Сбой не важен: следующий запрос донесёт выбор.
+async function toggleLang() {
+  setLocale(locale.value === 'ru' ? 'en' : 'ru')
+  try {
+    await fetchShop()
+  } catch {
+    /* язык уже переключён в интерфейсе, донесём со следующим запросом */
+  }
+}
 </script>
 
 <template>

@@ -271,7 +271,7 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     from app.payments.service import create_invoice_for_order
 
     try:
-        payment_url = await create_invoice_for_order(order.id, Decimal(total))
+        payment_url = await create_invoice_for_order(order.id, Decimal(total), ctx.bot)
     except Exception:
         # Заказ уже создан, оплату можно повторить — checkout не роняем,
         # но причину пишем в лог: иначе «кнопка не работает» не диагностируется
@@ -326,7 +326,7 @@ async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> Pa
         )
     await discard_invoice(order.invoice_id)
     try:
-        payment_url = await create_invoice_for_order(order.id, Decimal(order.total))
+        payment_url = await create_invoice_for_order(order.id, Decimal(order.total), ctx.bot)
     except Exception:
         logger.exception("Повторный инвойс для заказа %s создать не удалось", order.id)
         raise HTTPException(status_code=502, detail="invoice_failed") from None

@@ -5,6 +5,7 @@
 разбираем ответ и что черновик магазина не ломает уже существующий код.
 """
 
+from time import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -58,6 +59,15 @@ def test_username_fits_telegram_limits():
     assert len(name) <= 32
     assert name.endswith("_bot")
     assert not name.startswith("_") and "__" not in name
+
+
+def test_username_never_starts_with_a_digit():
+    """Telegram требует букву в начале — «7 небо» давало 7_nebo_bot,
+    и его же диалог создания отверг бы наше предложение."""
+    for title in ("7 небо", "24 часа", "1С Магазин"):
+        name = suggest_username(title)
+        assert name[0].isalpha(), f"{title} -> {name}"
+        assert name.endswith("_bot") and len(name) <= 32
 
 
 def test_unsuggestable_title_still_gives_valid_username():
@@ -192,7 +202,9 @@ async def test_newshop_asks_for_title_when_management_is_on(db):
     message = SimpleNamespace(
         from_user=SimpleNamespace(id=4242), answer=AsyncMock()
     )
-    state = SimpleNamespace(set_state=AsyncMock(), clear=AsyncMock())
+    state = SimpleNamespace(
+        set_state=AsyncMock(), clear=AsyncMock(), update_data=AsyncMock()
+    )
 
     with patch(
         "app.bots.hub.hub_bot.get_me",
@@ -232,7 +244,11 @@ async def test_button_carries_name_and_username(db):
         from_user=SimpleNamespace(id=seller.telegram_id),
         answer=AsyncMock(side_effect=lambda text, **kw: answers.append((text, kw))),
     )
-    state = SimpleNamespace(clear=AsyncMock(), set_state=AsyncMock())
+    state = SimpleNamespace(
+        clear=AsyncMock(),
+        set_state=AsyncMock(),
+        get_data=AsyncMock(return_value={"asked_at": time()}),
+    )
 
     await got_title(message, state)
 
@@ -665,3 +681,70 @@ async def test_promoted_shop_shows_its_name_on_the_storefront(db):
     draft = await create_draft(seller.id, "Кофейня у дома")
     shop = await promote_draft(draft.id, NEW_TOKEN, "kofeynya_u_doma_bot", 7891234567)
     assert shop.shop_name == "Кофейня у дома"
+
+
+# --------------------------------------------------------------------------
+# Брошенный /newshop
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_repeated_newshop_renames_the_draft(db):
+    """Каждая брошенная попытка оставляла мусорный магазин навсегда."""
+    seller = await _seller(db)
+    first = await create_draft(seller.id, "Кофейня")
+    second = await create_draft(seller.id, "Пекарня")
+
+    assert second.id == first.id  # тот же магазин, новое название
+    assert second.title == "Пекарня"
+    async with db() as session:
+        shops = (await session.execute(select(SellerBot))).scalars().all()
+        assert len(shops) == 1
+
+
+@pytest.mark.asyncio
+async def test_stale_state_does_not_turn_a_greeting_into_a_shop(db):
+    """/newshop, потом /mybots, потом через час «привет» — заводился магазин.
+
+    Состояние FSM живёт в памяти до перезапуска, и снять его было некому.
+    """
+    from app.handlers.hub.newshop import TITLE_TIMEOUT_SEC, got_title
+
+    seller = await _seller(db)
+    message = SimpleNamespace(
+        text="привет",
+        from_user=SimpleNamespace(id=seller.telegram_id),
+        answer=AsyncMock(),
+    )
+    stale = {"asked_at": time() - TITLE_TIMEOUT_SEC - 1}
+    state = SimpleNamespace(
+        clear=AsyncMock(), set_state=AsyncMock(), get_data=AsyncMock(return_value=stale)
+    )
+
+    await got_title(message, state)
+
+    state.clear.assert_awaited()
+    assert await latest_draft(seller.id) is None
+    message.answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_command_instead_of_title_cancels_instead_of_nagging(db):
+    from app.handlers.hub.newshop import got_title
+
+    seller = await _seller(db)
+    message = SimpleNamespace(
+        text="/mybots",
+        from_user=SimpleNamespace(id=seller.telegram_id),
+        answer=AsyncMock(),
+    )
+    state = SimpleNamespace(
+        clear=AsyncMock(),
+        set_state=AsyncMock(),
+        get_data=AsyncMock(return_value={"asked_at": time()}),
+    )
+
+    await got_title(message, state)
+
+    state.clear.assert_awaited()
+    assert await latest_draft(seller.id) is None

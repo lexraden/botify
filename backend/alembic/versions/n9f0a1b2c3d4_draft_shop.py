@@ -45,7 +45,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # черновиков в старой схеме быть не может — удаляем, иначе NOT NULL не встанет
+    # ВНИМАНИЕ: это удаление с потерей данных, а не формальность.
+    #
+    # Черновиков в старой схеме быть не может — без DELETE не встанет обратно
+    # NOT NULL. Но почти все ссылки на seller_bots объявлены ON DELETE CASCADE,
+    # поэтому вместе с черновиком уходят его товары, картинки, покупатели,
+    # отзывы, логотип, каналы и рассылки. Проверено откатом на базе с данными.
+    # Смысл черновика ровно в том, чтобы заводить каталог до бота, так что
+    # терять там есть что — перед откатом снимай дамп.
+    #
+    # Заодно drop_column('title') стирает название, введённое в /newshop.
     op.execute("DELETE FROM seller_bots WHERE bot_token_encrypted IS NULL")
     op.alter_column('seller_bots', 'telegram_bot_id', existing_type=sa.BigInteger(), nullable=False)
     op.alter_column(

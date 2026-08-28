@@ -36,7 +36,7 @@ async def create_order(c, bot_id) -> int:
 
 @pytest.mark.asyncio
 async def test_pay_returns_fresh_invoice_link(db, monkeypatch):
-    async def fake_invoice(order_id, total):
+    async def fake_invoice(order_id, total, shop=None):
         return f"https://t.me/CryptoBot?start=inv{order_id}"
 
     monkeypatch.setattr("app.payments.service.create_invoice_for_order", fake_invoice)
@@ -58,7 +58,7 @@ async def test_pay_returns_fresh_invoice_link(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_pay_survives_provider_failure_as_502(db, monkeypatch):
-    async def boom(order_id, total):
+    async def boom(order_id, total, shop=None):
         raise RuntimeError("crypto down")
 
     monkeypatch.setattr("app.payments.service.create_invoice_for_order", boom)

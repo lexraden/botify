@@ -95,7 +95,7 @@ async def test_repeated_pay_discards_previous_invoice(db):
     deleted: list[int] = []
     fake = SimpleNamespace(delete_invoice=AsyncMock(side_effect=lambda i: deleted.append(i)))
 
-    async def fake_invoice(order_id, total):
+    async def fake_invoice(order_id, total, shop=None):
         from app.db import get_session
 
         async with get_session() as session:

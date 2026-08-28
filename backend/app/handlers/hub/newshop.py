@@ -27,6 +27,7 @@
 
 import html
 import logging
+from time import time
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, StateFilter
@@ -41,6 +42,7 @@ from app.services.shop_draft import (
     can_create_managed_bots,
     create_draft,
     promote_draft,
+    set_webhook_status,
     suggest_username,
 )
 
@@ -50,6 +52,10 @@ router = Router()
 
 MAX_TITLE = 128
 REQUEST_ID = 1
+# Состояние «жду название» живёт в памяти до перезапуска, и никакой другой
+# хендлер его не снимает: /newshop, потом /mybots, потом через час обычное
+# «привет» — и заводился магазин с таким названием. Ограничиваем по времени.
+TITLE_TIMEOUT_SEC = 15 * 60
 
 
 class NewShop(StatesGroup):
@@ -83,6 +89,7 @@ async def cmd_newshop(message: types.Message, state: FSMContext) -> None:
         return
 
     await state.set_state(NewShop.waiting_title)
+    await state.update_data(asked_at=time())
     await message.answer(
         "Как назовём магазин?\n\n"
         "Название увидят покупатели в шапке витрины — из него же я предложу "
@@ -100,8 +107,19 @@ async def got_title(message: types.Message, state: FSMContext) -> None:
         await message.answer(NO_SELLER)
         return
 
+    asked_at = (await state.get_data()).get("asked_at", 0)
+    if time() - asked_at > TITLE_TIMEOUT_SEC:
+        # разговор давно прервали: считать следующую реплику названием нельзя
+        await state.clear()
+        return
+
     title = (message.text or "").strip()
-    if not title or title.startswith("/"):
+    if title.startswith("/"):
+        # команда вместо названия — человек передумал, а не назвал магазин так
+        await state.clear()
+        await message.answer("Ок, отложим. Захочешь вернуться — /newshop.")
+        return
+    if not title:
         await message.answer("Нужно название магазина — просто напиши его текстом.")
         return
     if len(title) > MAX_TITLE:
@@ -187,6 +205,9 @@ async def bot_created(message: types.Message) -> None:
     webhook_ok = await setup_seller_webhook(shop)
     if not webhook_ok:
         logger.warning("Вебхук для магазина %s не встал", shop.id)
+    # статус пишем здесь же, как bot_connect и bot_recovery: иначе магазин
+    # до перезапуска процесса значится «pending» и светится в /mybots жёлтым
+    await set_webhook_status(shop.id, "active" if webhook_ok else "pending")
 
     await message.answer(
         f"✅ Магазин <b>{html.escape(shop.title or '')}</b> подключён к "

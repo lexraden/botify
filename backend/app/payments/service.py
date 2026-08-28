@@ -44,7 +44,7 @@ async def discard_invoice(invoice_id: int | None) -> bool:
         return False
 
 
-async def _invoice_description(order_id: int) -> str:
+def invoice_description(order_id: int, shop: SellerBot | None) -> str:
     """Строка, которую покупатель видит в @CryptoBot над кнопкой оплаты.
 
     Название магазина здесь — единственное место, где оно вообще может
@@ -53,27 +53,23 @@ async def _invoice_description(order_id: int) -> str:
     «Botify App» и «Заказ #12» и не понимает, кому платит.
 
     Имя берём то же, что покупатель минуту назад видел в шапке витрины
-    (`api/store.py:166`), а не `display_name`: последнее — название из
-    /newshop, то есть имя магазина со стороны продавца. Если в счёте окажется
-    третье название, платёж выглядит чужим.
+    (`api/store.py`, ShopOut.shop_name), а не `display_name`: последнее —
+    название из /newshop, то есть имя магазина со стороны продавца. Если в
+    счёте окажется третье название, платёж выглядит чужим.
 
-    Магазин не нашёлся — не повод не дать заплатить: возвращаем как было.
+    Магазин передаётся вызывающим — он у обоих уже в руках (`ctx.bot`).
+    Собственный запрос в БД добавлял бы на платёжный путь и лишний рейс, и
+    новую точку отказа там, где раньше не было ни одной.
     """
-    async with get_session() as session:
-        shop = (
-            await session.execute(
-                select(SellerBot)
-                .join(Order, Order.bot_id == SellerBot.id)
-                .where(Order.id == order_id)
-            )
-        ).scalar_one_or_none()
     if shop is None:
         return f"Заказ #{order_id}"
     name = shop.shop_name or (f"@{shop.bot_username}" if shop.bot_username else None)
     return f"Заказ #{order_id} — {name}" if name else f"Заказ #{order_id}"
 
 
-async def create_invoice_for_order(order_id: int, total: Decimal) -> str | None:
+async def create_invoice_for_order(
+    order_id: int, total: Decimal, shop: SellerBot | None = None
+) -> str | None:
     """Создаёт инвойс Crypto Pay. Возвращает ссылку на оплату (или None без токена)."""
     crypto = get_crypto_pay()
     if crypto is None:
@@ -81,7 +77,7 @@ async def create_invoice_for_order(order_id: int, total: Decimal) -> str | None:
     invoice = await crypto.create_invoice(
         asset="USDT",
         amount=float(total),
-        description=await _invoice_description(order_id),
+        description=invoice_description(order_id, shop),
         payload=f"order:{order_id}",
         allow_comments=False,
         allow_anonymous=False,

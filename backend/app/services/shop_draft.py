@@ -53,19 +53,42 @@ def suggest_username(title: str) -> str:
         # название целиком из символов, которые мы не переводим (иероглифы,
         # эмодзи) — предложить осмысленное нечего, даём нейтральное
         cleaned = f"shop_{secrets.token_hex(3)}"
+    if cleaned[0].isdigit():
+        # Telegram требует, чтобы юзернейм начинался с буквы: «7 небо» дало бы
+        # 7_nebo_bot, и диалог создания отверг бы наше же предложение
+        cleaned = f"shop_{cleaned}"
     return cleaned[: MAX_USERNAME - len(_SUFFIX)].strip("_") + _SUFFIX
 
 
 async def create_draft(seller_id: int, title: str) -> SellerBot:
-    """Завести магазин без бота. Возвращает строку с готовым bot_id."""
+    """Завести магазин без бота. Возвращает строку с готовым bot_id.
+
+    Незаконченный черновик у продавца ровно один: повторный /newshop
+    переименовывает его, а не плодит новый. Иначе каждая брошенная попытка
+    оставляла мусорную строку в кабинете навсегда, а кнопка из первого
+    сообщения привязывала созданного бота к магазину из второго —
+    подтверждение называло один магазин, а бот нёс адрес другого.
+    """
     async with get_session() as session:
-        shop = SellerBot(
-            seller_id=seller_id,
-            title=title.strip()[:128],
-            is_active=False,  # покупателям черновик не показываем
-            webhook_status="pending",
-        )
-        session.add(shop)
+        shop = (
+            await session.execute(
+                select(SellerBot)
+                .where(
+                    SellerBot.seller_id == seller_id,
+                    SellerBot.bot_token_encrypted.is_(None),
+                )
+                .order_by(SellerBot.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if shop is None:
+            shop = SellerBot(
+                seller_id=seller_id,
+                is_active=False,  # покупателям черновик не показываем
+                webhook_status="pending",
+            )
+            session.add(shop)
+        shop.title = title.strip()[:128]
         await session.commit()
         await session.refresh(shop)
         return shop
@@ -115,6 +138,19 @@ MANAGEMENT_OFF = (
     "Флаг приходит только в getMe, в обычном меню настроек его нет.\n\n"
     "Пока не включено — подключай бота как раньше, токеном через приложение."
 )
+
+
+async def set_webhook_status(shop_id: int, status: str) -> None:
+    """Записать исход установки вебхука.
+
+    Отдельной функцией, потому что вебхук ставится уже после promote_draft:
+    ему нужен bot_id, а тот появляется только вместе с записанным токеном.
+    """
+    async with get_session() as session:
+        shop = await session.get(SellerBot, shop_id)
+        if shop is not None:
+            shop.webhook_status = status
+            await session.commit()
 
 
 class DraftPromotionError(Exception):

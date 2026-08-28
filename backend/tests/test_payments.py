@@ -1,4 +1,5 @@
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -187,6 +188,33 @@ async def test_invoice_paid_survives_broken_payload(db):
 
 
 @pytest.mark.asyncio
+async def test_invoice_description_is_actually_wired_into_the_invoice(db):
+    """Тесты звали приватный помощник, а не проверяли, что он подключён:
+    возврат старой строки в create_invoice оставил бы их зелёными."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.payments.service import create_invoice_for_order
+
+    order_id = await make_order(db)
+    async with db() as session:
+        shop = (await session.execute(select(SellerBot))).scalars().first()
+        shop.shop_name = "Кофейня у дома"
+        await session.commit()
+        shop_obj = shop
+
+    fake = MagicMock()
+    fake.create_invoice = AsyncMock(
+        return_value=SimpleNamespace(invoice_id=1, bot_invoice_url="https://x")
+    )
+    with patch("app.payments.service.get_crypto_pay", return_value=fake):
+        await create_invoice_for_order(order_id, Decimal("5"), shop_obj)
+
+    assert fake.create_invoice.await_args.kwargs["description"] == (
+        f"Заказ #{order_id} — Кофейня у дома"
+    )
+
+
+@pytest.mark.asyncio
 async def test_invoice_description_names_the_shop(db):
     """«Recipient» в счёте — имя приложения Crypto Pay, одно на всю платформу.
 
@@ -194,7 +222,7 @@ async def test_invoice_description_names_the_shop(db):
     быть: иначе покупатель видит «Botify App» и «Заказ #12» и не понимает,
     кому платит.
     """
-    from app.payments.service import _invoice_description
+    from app.payments.service import invoice_description
 
     order_id = await make_order(db)
     async with db() as session:
@@ -203,22 +231,23 @@ async def test_invoice_description_names_the_shop(db):
         # имя из /newshop другое — в счёт должно попасть витринное
         shop.title = "черновик кофейни"
         await session.commit()
-
-    assert await _invoice_description(order_id) == f"Заказ #{order_id} — Кофейня у дома"
+        assert invoice_description(order_id, shop) == f"Заказ #{order_id} — Кофейня у дома"
 
 
 @pytest.mark.asyncio
 async def test_invoice_description_falls_back_to_username(db):
     """Без показного имени витрина показывает @username — и счёт тоже."""
-    from app.payments.service import _invoice_description
+    from app.payments.service import invoice_description
 
     order_id = await make_order(db)
-    assert await _invoice_description(order_id) == f"Заказ #{order_id} — @shop_bot"
+    async with db() as session:
+        shop = (await session.execute(select(SellerBot))).scalars().first()
+        assert invoice_description(order_id, shop) == f"Заказ #{order_id} — @shop_bot"
 
 
 @pytest.mark.asyncio
 async def test_invoice_description_survives_missing_shop(db):
     """Магазин не нашёлся — это не повод не дать заплатить."""
-    from app.payments.service import _invoice_description
+    from app.payments.service import invoice_description
 
-    assert await _invoice_description(999999) == "Заказ #999999"
+    assert invoice_description(999999, None) == "Заказ #999999"

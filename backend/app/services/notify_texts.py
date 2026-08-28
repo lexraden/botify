@@ -14,7 +14,15 @@ from app.services.channels import CUSTOMER_LOCALES
 
 
 def buyer_locale(customer: Customer | None) -> str:
-    """RU/EN для уведомлений конкретному покупателю."""
+    """RU/EN для уведомлений конкретному покупателю.
+
+    Правило то же, что во фронте (`webapp/src/services/locale.js`), и входы те
+    же: явный выбор и `language_code`. Расходятся они, когда `customers.locale`
+    у нас есть, а localStorage на устройстве уже нет (чистка кэша, переустановка,
+    другое устройство): приложение снова определяет язык само, а пуши идут на
+    прежнем выбранном. Отсюда и начинается разбор жалобы «бот пишет не на том
+    языке» — лечится повторным переключением в профиле.
+    """
     if customer is not None and customer.locale in CUSTOMER_LOCALES:
         return customer.locale
     code = str(customer.language_code or "").lower() if customer is not None else ""
