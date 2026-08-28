@@ -1,17 +1,41 @@
 import { defineStore } from 'pinia'
-import { getBotId } from '../services/telegram'
+import { getBotId, tg } from '../services/telegram'
 
-// Корзина переживает закрытие Mini App: храним её в localStorage отдельно
-// на каждый магазин (bot_id), чтобы товары двух ботов не смешивались.
+// Покупатель на бэкенде — пара (telegram_id, bot_id), и корзина хранится так
+// же: отдельно на каждый магазин и на каждого пользователя, чтобы товары не
+// смешивались ни между ботами, ни между аккаунтами Telegram на одном
+// устройстве. «anon» — браузер и тесты без Telegram-контекста.
+function telegramUserId() {
+  return tg?.initDataUnsafe?.user?.id ?? 'anon'
+}
+
 function storageKey() {
+  return `botify-cart:${getBotId() ?? 'default'}:${telegramUserId()}`
+}
+
+function legacyKey() {
   return `botify-cart:${getBotId() ?? 'default'}`
 }
 
+// Разделение по покупателю добавило telegram_id в ключ (был
+// botify-cart:<bot_id>). Старую корзину один раз переносим в новый ключ: на
+// устройстве её всё равно создал кто-то один, и забрать её должен именно он.
 function loadSavedItems() {
   try {
-    const raw = localStorage.getItem(storageKey())
-    const parsed = raw ? JSON.parse(raw) : null
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    const fresh = localStorage.getItem(storageKey())
+    if (fresh != null) {
+      const parsed = JSON.parse(fresh)
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    }
+    const legacyRaw = localStorage.getItem(legacyKey())
+    if (legacyRaw == null) return {}
+    const parsed = JSON.parse(legacyRaw)
+    const items = parsed && typeof parsed === 'object' ? parsed : {}
+    localStorage.removeItem(legacyKey())
+    if (Object.keys(items).length) {
+      localStorage.setItem(storageKey(), JSON.stringify(items))
+    }
+    return items
   } catch {
     return {} // битый JSON не должен ломать витрину
   }

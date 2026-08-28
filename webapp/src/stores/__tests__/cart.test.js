@@ -1,15 +1,76 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useCartStore } from '../cart'
 
+// telegram читается в момент создания store (не при импорте модуля), поэтому
+// живого геттера достаточно — пересобирать модуль не нужно
+const state = vi.hoisted(() => ({ tg: undefined }))
+vi.mock('../../services/telegram', () => ({
+  get tg() {
+    return state.tg
+  },
+  getBotId: () => null, // в тестах нет ?bot_id= в адресе
+}))
+
 const PRODUCT = { id: 1, title: 'Кофе', price: '3.50', stock: 2 }
 
-// в тестах bot_id недоступен (нет ?bot_id= в адресе) — ключ общий, «default»
-const KEY = 'botify-cart:default'
+// без Telegram-контекста покупатель — «anon», магазин — «default»
+const KEY = 'botify-cart:default:anon'
 
 beforeEach(() => {
   localStorage.clear()
   setActivePinia(createPinia())
+})
+
+afterEach(() => {
+  state.tg = undefined
+})
+
+describe('ключ корзины с покупателем', () => {
+  it('telegram_id попадает в ключ: разные аккаунты не делят корзину', () => {
+    state.tg = { initDataUnsafe: { user: { id: 111 } } }
+    const cart = useCartStore()
+    cart.add(PRODUCT)
+    expect(JSON.parse(localStorage.getItem('botify-cart:default:111'))['1'].qty).toBe(1)
+    expect(localStorage.getItem(KEY)).toBe(null)
+
+    state.tg = { initDataUnsafe: { user: { id: 222 } } }
+    const other = useCartStore(createPinia()) // fresh pinia = как новое открытие
+    expect(other.count).toBe(0)
+  })
+})
+
+describe('перенос старой корзины (ключ без telegram_id)', () => {
+  it('старый ключ переезжает в новый и удаляется', () => {
+    localStorage.setItem(
+      'botify-cart:default',
+      JSON.stringify({ '7': { product: { id: 7, title: 'Чай', price: '1', stock: null }, qty: 2 } }),
+    )
+    const cart = useCartStore()
+    expect(cart.qtyOf(7)).toBe(2)
+    expect(localStorage.getItem('botify-cart:default')).toBe(null)
+    // перенос записан в новый ключ: следующее открытие читает уже его
+    expect(JSON.parse(localStorage.getItem(KEY))['7'].qty).toBe(2)
+  })
+
+  it('пустая старая корзина просто удаляется', () => {
+    localStorage.setItem('botify-cart:default', JSON.stringify({}))
+    const cart = useCartStore()
+    expect(cart.count).toBe(0)
+    expect(localStorage.getItem('botify-cart:default')).toBe(null)
+  })
+
+  it('своя корзина важнее старой: перенос не затирает существующие позиции', () => {
+    localStorage.setItem(KEY, JSON.stringify({ '1': { product: PRODUCT, qty: 1 } }))
+    localStorage.setItem(
+      'botify-cart:default',
+      JSON.stringify({ '7': { product: { id: 7, title: 'Чай', price: '1', stock: null }, qty: 2 } }),
+    )
+    const cart = useCartStore()
+    expect(cart.qtyOf(1)).toBe(1)
+    expect(cart.qtyOf(7)).toBe(0)
+    expect(localStorage.getItem('botify-cart:default')).not.toBe(null) // чужую корзину не трогаем
+  })
 })
 
 describe('cart — сохранение между открытиями приложения', () => {
