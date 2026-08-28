@@ -116,6 +116,15 @@ async def send_mailing(mailing_id: int) -> None:
         if mailing is None:
             return
         bot_record = await session.get(SellerBot, mailing.bot_id)
+        if bot_record is None or bot_record.bot_token_encrypted is None:
+            # Магазин без бота (черновик) отправить рассылку не может. Раньше
+            # расшифровка пустого токена падала на каждой попытке, строка
+            # оставалась в sending, revive_stuck_mailings возвращала её в
+            # pending — и так по кругу без конца.
+            mailing.status = "failed"
+            await session.commit()
+            logger.warning("Рассылка %s: у магазина нет бота", mailing_id)
+            return
         customers = (
             (
                 await session.execute(

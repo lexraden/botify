@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { fetchMe, disableShop, enableShop, deleteShop } from '../api'
 import { t } from '../i18n'
+import { shopInitial, shopLabel } from '../services/shopName'
 import { locale, setLocale } from '../services/locale'
 import { setTheme, themePref } from '../services/theme'
 import { openTelegramLink, tg } from '../services/telegram'
@@ -41,8 +42,8 @@ async function onToggle(bot) {
   const res = bot.is_active ? await disableShop(bot.id) : await enableShop(bot.id)
   menuBotId.value = null
   note.value = res.is_active
-    ? t('shops.enabledNote', { n: res.bot_username })
-    : t('shops.disabledNote', { n: res.bot_username })
+    ? t('shops.enabledNote', { n: shopLabel(res) })
+    : t('shops.disabledNote', { n: shopLabel(res) })
   await reload()
 }
 
@@ -53,8 +54,8 @@ async function onDelete(bot) {
   menuBotId.value = null
   note.value =
     res.status === 'deleted'
-      ? t('shops.deletedNote', { n: bot.bot_username })
-      : t('shops.hasOrdersNote', { n: bot.bot_username })
+      ? t('shops.deletedNote', { n: shopLabel(bot) })
+      : t('shops.hasOrdersNote', { n: shopLabel(bot) })
   await reload()
 }
 
@@ -112,11 +113,11 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
     <!-- список подключенных ботов -->
     <div v-for="bot in bots" :key="bot.id" class="card shop">
       <div class="main" @click="goShop(bot)">
-        <div class="avatar">{{ bot.bot_username.charAt(0).toUpperCase() }}</div>
+        <div class="avatar">{{ shopInitial(bot) }}</div>
         <div class="info">
-          <b>@{{ bot.bot_username }}</b>
-          <span :class="bot.is_active ? 'on' : 'off'">
-            {{ bot.is_active ? t('shops.works') : t('shops.off') }}
+          <b>{{ shopLabel(bot) }}</b>
+          <span :class="bot.is_draft ? 'off' : bot.is_active ? 'on' : 'off'">
+            {{ bot.is_draft ? t('shops.draft') : bot.is_active ? t('shops.works') : t('shops.off') }}
           </span>
         </div>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--sub)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -127,7 +128,7 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
 
       <!-- подтверждение удаления раскрывается на месте карточки -->
       <template v-if="confirmDeleteId === bot.id">
-        <p class="danger-q">{{ t('shops.deleteQ', { n: bot.bot_username }) }}</p>
+        <p class="danger-q">{{ t('shops.deleteQ', { n: shopLabel(bot) }) }}</p>
         <div class="actions">
           <button class="btn danger" @click="onDelete(bot)">{{ t('shops.yesDelete') }}</button>
           <button class="btn btn-soft" @click="confirmDeleteId = null">{{ t('common.cancel') }}</button>
@@ -135,7 +136,7 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
       </template>
       <template v-else-if="menuBotId === bot.id">
         <div class="actions">
-          <button class="btn btn-soft" @click="onToggle(bot)">
+          <button v-if="!bot.is_draft" class="btn btn-soft" @click="onToggle(bot)">
             {{ bot.is_active ? t('shops.disableBtn') : t('shops.enableBtn') }}
           </button>
           <button class="btn btn-soft" @click="askDelete(bot)">{{ t('shops.deleteBtn') }}</button>

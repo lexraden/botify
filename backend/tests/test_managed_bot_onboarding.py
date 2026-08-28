@@ -483,3 +483,47 @@ async def test_token_check_skips_drafts(db):
         await session.commit()
 
     assert await check_revoked_tokens() == 0
+
+
+@pytest.mark.asyncio
+async def test_draft_shop_answers_404_not_500(db):
+    """Черновик пускали до расшифровки токена — на угадываемом id это 500.
+
+    `get_buyer_any_shop` не требует активного магазина (свои заказы у
+    отключённого магазина остаются доступны), поэтому черновик проходил
+    проверку на 404 и падал на `decrypt(None)`.
+    """
+    from tests.test_api import buyer_headers, client
+
+    seller = await _seller(db)
+    draft = await create_draft(seller.id, "Кофейня")
+
+    async with client() as c:
+        # витрина (get_buyer) и «свои заказы» (get_buyer_any_shop, который
+        # намеренно пускает отключённые магазины — там и был пробой)
+        for path in (f"/api/store/{draft.id}", f"/api/store/{draft.id}/orders/my"):
+            r = await c.get(path, headers=buyer_headers())
+            assert r.status_code == 404, f"{path} -> {r.status_code}"
+
+
+@pytest.mark.asyncio
+async def test_mailing_for_shop_without_bot_fails_once(db):
+    """Рассылка без бота падала каждый раз и вечно оживала из sending."""
+    from app.models import Mailing
+    from app.services.mailing import send_mailing
+
+    seller = await _seller(db)
+    draft = await create_draft(seller.id, "Кофейня")
+    async with db() as session:
+        mailing = Mailing(
+            seller_id=seller.id, bot_id=draft.id, text="Привет", status="sending"
+        )
+        session.add(mailing)
+        await session.commit()
+        await session.refresh(mailing)
+        mailing_id = mailing.id
+
+    await send_mailing(mailing_id)  # раньше — ValidationError на decrypt(None)
+
+    async with db() as session:
+        assert (await session.get(Mailing, mailing_id)).status == "failed"

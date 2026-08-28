@@ -36,7 +36,11 @@ async def _buyer_context(
     историю покупок нельзя.
     """
     bot = await session.get(SellerBot, bot_id)
-    if bot is None or (require_active and not bot.is_active):
+    # Черновик отсеиваем вместе с несуществующим магазином: бота у него нет,
+    # значит и подписать initData нечем. Без этой проверки require_active=False
+    # пропускал черновик дальше, и расшифровка пустого токена давала 500
+    # на угадываемом id вместо честного 404.
+    if bot is None or bot.bot_token_encrypted is None or (require_active and not bot.is_active):
         raise HTTPException(status_code=404, detail="shop not found")
 
     token = decrypt_bot_token(bot.bot_token_encrypted)
