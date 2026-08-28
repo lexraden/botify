@@ -5,6 +5,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.config import get_settings
 from app.handlers.hub import admin as hub_admin
+from app.handlers.hub import lang as hub_lang
 from app.handlers.hub import mybots as hub_mybots
 from app.handlers.hub import newshop as hub_newshop
 from app.handlers.hub import shop_admins as hub_shop_admins
@@ -31,6 +32,9 @@ hub_bot = Bot(
 
 hub_dp = Dispatcher(storage=MemoryStorage())
 hub_dp.include_router(hub_admin.router)
+# lang сразу после admin: команда /lang должна срабатывать и посреди чужих
+# FSM-диалогов (newshop, приглашение админа), не попадая в их ловушки текста
+hub_dp.include_router(hub_lang.router)
 hub_dp.include_router(hub_mybots.router)
 # shop_admins раньше newshop и start: свой FSM на текст (@username или ID
 # приглашаемого админа) и кнопка «Магазины, где я администратор» из /start
@@ -45,16 +49,9 @@ async def setup_hub_webhook() -> None:
     settings = get_settings()
     if not settings.webhook_base_url:
         return
-    from aiogram.types import BotCommand
-
-    await hub_bot.set_my_commands(
-        [
-            BotCommand(command="start", description="Начать / настройка"),
-            BotCommand(command="mybots", description="Мои магазины"),
-            BotCommand(command="adminshops", description="Магазины, где я админ"),
-            BotCommand(command="newshop", description="Новый магазин"),
-        ]
-    )
+    # дефолтное меню — русское (исторический язык hub-бота); список общий
+    # с пер-чатовыми перезаписями после выбора языка в /lang
+    await hub_bot.set_my_commands(hub_lang.COMMANDS["ru"])
     url = f"{settings.webhook_base_url}{HUB_WEBHOOK_PATH}"
     info = await hub_bot.get_webhook_info()
     if info.url != url:

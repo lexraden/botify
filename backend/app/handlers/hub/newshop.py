@@ -36,8 +36,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 from app.db import get_session
 from app.models import Seller
+from app.services.seller_texts import seller_locale, text
 from app.services.shop_draft import (
-    MANAGEMENT_OFF,
     DraftPromotionError,
     can_create_managed_bots,
     create_draft,
@@ -77,24 +77,23 @@ async def _seller_for(message: types.Message) -> Seller | None:
         ).scalar_one_or_none()
 
 
-NO_SELLER = "Сначала нажми /start — я заведу тебя в системе."
-
-
 @router.message(Command("newshop"))
 async def cmd_newshop(message: types.Message, state: FSMContext) -> None:
     # спрашиваем до вопроса про название: иначе человек введёт его, получит
     # кнопку и упрётся в «this bot doesn't support managing bots»
     if not await can_create_managed_bots():
-        await message.answer(MANAGEMENT_OFF, reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(
+            text("ru", "newshop.management_off"), reply_markup=types.ReplyKeyboardRemove()
+        )
         return
 
     await state.set_state(NewShop.waiting_title)
     await state.update_data(asked_at=time())
+    # локаль берём у продавца: он мог переключить язык до запуска онбординга
+    seller = await _seller_for(message)
+    locale = seller_locale(seller) if seller is not None else "ru"
     await message.answer(
-        "Как назовём магазин?\n\n"
-        "Название увидят покупатели в шапке витрины — из него же я предложу "
-        "адрес для бота.\n\n"
-        "Например: <b>Кофейня у дома</b>",
+        text(locale, "newshop.ask_title"),
         reply_markup=types.ReplyKeyboardRemove(),
     )
 
@@ -104,8 +103,9 @@ async def got_title(message: types.Message, state: FSMContext) -> None:
     seller = await _seller_for(message)
     if seller is None:
         await state.clear()
-        await message.answer(NO_SELLER)
+        await message.answer(text("ru", "hub.no_seller"))
         return
+    locale = seller_locale(seller)
 
     asked_at = (await state.get_data()).get("asked_at", 0)
     if time() - asked_at > TITLE_TIMEOUT_SEC:
@@ -117,13 +117,13 @@ async def got_title(message: types.Message, state: FSMContext) -> None:
     if title.startswith("/"):
         # команда вместо названия — человек передумал, а не назвал магазин так
         await state.clear()
-        await message.answer("Ок, отложим. Захочешь вернуться — /newshop.")
+        await message.answer(text(locale, "newshop.cancel"))
         return
     if not title:
-        await message.answer("Нужно название магазина — просто напиши его текстом.")
+        await message.answer(text(locale, "newshop.need_title"))
         return
     if len(title) > MAX_TITLE:
-        await message.answer(f"Слишком длинное название — до {MAX_TITLE} символов.")
+        await message.answer(text(locale, "newshop.title_too_long", n=MAX_TITLE))
         return
 
     await state.clear()
@@ -135,7 +135,7 @@ async def got_title(message: types.Message, state: FSMContext) -> None:
         keyboard=[
             [
                 types.KeyboardButton(
-                    text=f"🤖 Создать бота «{title[:40]}»",
+                    text=text(locale, "newshop.btn_create", title=title[:40]),
                     request_managed_bot=types.KeyboardButtonRequestManagedBot(
                         request_id=REQUEST_ID,
                         suggested_name=title[:64],
@@ -148,11 +148,12 @@ async def got_title(message: types.Message, state: FSMContext) -> None:
         one_time_keyboard=True,
     )
     await message.answer(
-        f"Магазин <b>{html.escape(title)}</b> готов.\n\n"
-        "Остался бот — через него покупатели попадут в витрину. "
-        "Создам его сам, тебе только подтвердить.\n\n"
-        f"Предложу адрес: <code>@{username}</code> — Telegram даст поправить, "
-        "если он занят.",
+        text(
+            locale,
+            "newshop.ready",
+            title=html.escape(title),
+            username=username,
+        ),
         reply_markup=kb,
     )
 
@@ -166,8 +167,11 @@ async def bot_created(message: types.Message) -> None:
 
     seller = await _seller_for(message)
     if seller is None:
-        await message.answer(NO_SELLER, reply_markup=types.ReplyKeyboardRemove())
+        await message.answer(
+            text("ru", "hub.no_seller"), reply_markup=types.ReplyKeyboardRemove()
+        )
         return
+    locale = seller_locale(seller)
 
     created = message.managed_bot_created.bot_user
     logger.info("Создан managed-бот %s (@%s)", created.id, created.username)
@@ -176,8 +180,7 @@ async def bot_created(message: types.Message) -> None:
     if shop is None:
         # кнопку нажали, не заводя магазин: без черновика прицепить бота некуда
         await message.answer(
-            "Бот создан, но магазина для него нет. Начни с /newshop — "
-            "и я подключу его к новому магазину.",
+            text(locale, "newshop.no_draft"),
             reply_markup=types.ReplyKeyboardRemove(),
         )
         return
@@ -187,8 +190,7 @@ async def bot_created(message: types.Message) -> None:
     except Exception:
         logger.exception("Не удалось получить токен managed-бота %s", created.id)
         await message.answer(
-            "Бот создан, но забрать его токен не вышло. "
-            "Напиши мне — разберёмся вручную.",
+            text(locale, "newshop.token_failed"),
             reply_markup=types.ReplyKeyboardRemove(),
         )
         return
@@ -197,7 +199,7 @@ async def bot_created(message: types.Message) -> None:
         shop = await promote_draft(shop.id, token, created.username or "", created.id)
     except DraftPromotionError as exc:
         await message.answer(
-            f"Бот создан, но подключить его не вышло: {html.escape(str(exc))}.",
+            text(locale, "newshop.promote_failed", error=html.escape(str(exc))),
             reply_markup=types.ReplyKeyboardRemove(),
         )
         return
@@ -210,13 +212,16 @@ async def bot_created(message: types.Message) -> None:
     await set_webhook_status(shop.id, "active" if webhook_ok else "pending")
 
     await message.answer(
-        f"✅ Магазин <b>{html.escape(shop.title or '')}</b> подключён к "
-        f"@{html.escape(shop.bot_username or '')}.\n\n"
-        + (
-            "Открой приложение и добавь первый товар."
-            if webhook_ok
-            else "Бот создан, но вебхук пока не встал — сообщения покупателей "
-            "могут не доходить. Загляни в /mybots через минуту."
+        text(
+            locale,
+            "newshop.done",
+            title=html.escape(shop.title or ""),
+            username=html.escape(shop.bot_username or ""),
+            next=(
+                text(locale, "newshop.done_next")
+                if webhook_ok
+                else text(locale, "newshop.done_webhook")
+            ),
         ),
         reply_markup=types.ReplyKeyboardRemove(),
     )

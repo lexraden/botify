@@ -14,6 +14,7 @@ from app.money import fmt
 from app.models import Customer, Order, OrderItem, Payout, Product, Seller, SellerBot
 from app.payments.client import get_crypto_pay
 from app.security import decrypt_bot_token
+from app.services import seller_texts
 from app.services.notify_texts import buyer_text
 
 logger = logging.getLogger(__name__)
@@ -226,6 +227,8 @@ async def handle_invoice_paid(
         order_id, order_total = order.id, order.total
         customer_tg = customer.telegram_id
         seller_tg = seller.telegram_id
+        # язык пуши продавцу фиксируем до коммита: дальше сессия закрыта
+        seller_locale = seller_texts.seller_locale(seller)
 
         # Токен бота покупателя — для уведомления в ЛС
         await session.refresh(customer, ["bot"])
@@ -261,16 +264,23 @@ async def handle_invoice_paid(
     try:
         await hub_bot.send_message(
             seller_tg,
-            f"💰 Твой товар купили! Заказ #{order_id} на {fmt(order_total)} USDT оплачен.\n"
-            + (
-                "Digital-контент выдан автоматически."
-                if digital_lines and all_digital
-                else "Открой кабинет, чтобы отправить заказ и прикрепить трек/ссылку."
+            seller_texts.text(
+                seller_locale,
+                "push.paid",
+                id=order_id,
+                total=fmt(order_total),
+                next=(
+                    seller_texts.text(seller_locale, "push.paid_digital")
+                    if digital_lines and all_digital
+                    else seller_texts.text(seller_locale, "push.paid_fulfill")
+                ),
             )
             + (
-                "\n\n⚠️ Не хватило остатка: "
-                + ", ".join(html.escape(t) for t in sold_out)
-                + ".\nДеньги за заказ уже приняты — свяжись с покупателем в чате заказа."
+                seller_texts.text(
+                    seller_locale,
+                    "push.paid_sold_out",
+                    items=", ".join(html.escape(t) for t in sold_out),
+                )
                 if sold_out
                 else ""
             ),

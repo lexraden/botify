@@ -31,6 +31,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.models import Order, Seller, SellerBot
 from app.money import fmt
+from app.services.seller_texts import seller_locale, text
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +158,12 @@ async def remind_stuck_orders() -> int:
             seller = await session.get(Seller, seller_id)
             if seller is None:
                 continue
-            messages.append((seller.telegram_id, _reminder_text(orders, shop_names, hours)))
+            messages.append(
+                (
+                    seller.telegram_id,
+                    _reminder_text(orders, shop_names, hours, seller_locale(seller)),
+                )
+            )
 
         # отметку ставим до отправки: упавший пуш не должен превратиться
         # в бесконечное напоминание на каждом тике
@@ -171,26 +177,30 @@ async def remind_stuck_orders() -> int:
     return len(stuck)
 
 
-def _reminder_text(orders: list[Order], shop_names: dict[int, str], hours: float) -> str:
+def _reminder_text(
+    orders: list[Order], shop_names: dict[int, str], hours: float, locale: str = "ru"
+) -> str:
     listed = orders[:MAX_LISTED]
     lines = [
-        f"• Заказ #{o.id} на {fmt(o.total)} {o.currency} "
-        f"(@{html.escape(shop_names.get(o.bot_id, 'магазин'))})"
+        text(
+            locale,
+            "push.stuck.item",
+            id=o.id,
+            amount=fmt(o.total),
+            currency=o.currency,
+            shop=html.escape(shop_names.get(o.bot_id, text(locale, "shops.word"))),
+        )
         for o in listed
     ]
     if len(orders) > MAX_LISTED:
-        lines.append(f"• …и ещё {len(orders) - MAX_LISTED}")
+        lines.append(text(locale, "push.stuck.more", n=len(orders) - MAX_LISTED))
 
-    head = (
-        f"📦 Заказ оплачен больше {int(hours)} ч назад, но ещё не отправлен:"
-        if len(orders) == 1
-        else f"📦 Заказы оплачены больше {int(hours)} ч назад, но ещё не отправлены:"
-    )
+    head_key = "push.stuck.one" if len(orders) == 1 else "push.stuck.many"
     return (
-        f"{head}\n\n"
+        text(locale, head_key, hours=int(hours))
+        + "\n\n"
         + "\n".join(lines)
-        + "\n\nПокупатель уже заплатил и ждёт. Открой кабинет и отправь — "
-        "или напиши ему в чат заказа, если нужна пауза."
+        + text(locale, "push.stuck.tail")
     )
 
 

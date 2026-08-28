@@ -23,6 +23,7 @@ from app.models import (
     ShopLogo,
 )
 from app.models.orders import PAID_STATUSES
+from app.services import seller_texts
 from app.services.reviews import notify_new_review, random_author_name
 
 logger = logging.getLogger(__name__)
@@ -553,10 +554,11 @@ async def send_order_chat_message(
         raise HTTPException(status_code=429, detail="too_many_messages")
 
     out = BuyerChatMessageOut.model_validate(message)
-    seller_tg = (await ctx.session.get(Seller, order.seller_id)).telegram_id
+    seller = await ctx.session.get(Seller, order.seller_id)
+    seller_tg = seller.telegram_id
     await ctx.session.commit()
 
-    await notify_seller(seller_tg, order.id)
+    await notify_seller(seller_tg, order.id, locale=seller_texts.seller_locale(seller))
     return out
 
 
@@ -700,9 +702,12 @@ async def leave_review(
         out.append(BuyerReviewOut.model_validate(review))
     await ctx.session.commit()
 
-    seller_tg = (await ctx.session.get(Seller, order.seller_id)).telegram_id
+    seller = await ctx.session.get(Seller, order.seller_id)
+    seller_tg = seller.telegram_id
     for title, rating, body in created:
-        await notify_new_review(seller_tg, title, rating, body)
+        await notify_new_review(
+            seller_tg, title, rating, body, locale=seller_texts.seller_locale(seller)
+        )
     return out
 
 

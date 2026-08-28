@@ -21,6 +21,7 @@ from app.db import get_session
 from app.models import ChatMessage, Customer, Order, OrderChat, Seller, SellerBot
 from app.models.chat import ChatImage, ChatMessageArchive
 from app.services import chat as chat_service
+from app.services import seller_texts
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 from app.services.notify_texts import buyer_text
 
@@ -117,11 +118,12 @@ async def relay_buyer_message(
             await message.answer(buyer_text(customer, "chat.too_long"))
             return
 
-        seller_tg = (await session.get(Seller, chat.seller_id)).telegram_id
+        seller = await session.get(Seller, chat.seller_id)
+        seller_tg, seller_locale = seller.telegram_id, seller_texts.seller_locale(seller)
         order_id = order.id
         await session.commit()
 
-    await chat_service.notify_seller(seller_tg, order_id)
+    await chat_service.notify_seller(seller_tg, order_id, locale=seller_locale)
 
 
 async def _download_photo(message: types.Message, photo) -> bytes:
@@ -204,8 +206,9 @@ async def relay_buyer_photo(
             await message.answer(buyer_text(customer, "chat.rate_limited"))
             return
 
-        seller_tg = (await session.get(Seller, chat.seller_id)).telegram_id
+        seller = await session.get(Seller, chat.seller_id)
+        seller_tg, seller_locale = seller.telegram_id, seller_texts.seller_locale(seller)
         order_id = order.id
         await session.commit()
 
-    await chat_service.notify_seller(seller_tg, order_id, has_photo=True)
+    await chat_service.notify_seller(seller_tg, order_id, has_photo=True, locale=seller_locale)

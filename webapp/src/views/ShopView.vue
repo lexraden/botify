@@ -88,7 +88,7 @@ const canWithdraw = computed(() => balance.value > 0 && balance.value >= minPayo
 const leftToMin = computed(() => Math.max(0, minPayout.value - balance.value))
 
 // роли в магазине (summary.viewer_role): админ ведёт всё, кроме денег, —
-// кошелёк и баланс кассы ему не показываем
+// кошелёк с выводом ему не показываем (баланс кассы сверху виден)
 const isOwner = computed(() => summary.value?.viewer_role !== 'admin')
 
 // словари надписей строятся как computed, чтобы переключение языка
@@ -504,7 +504,7 @@ async function removeLogo() {
         <div class="card stat">
           <b class="num">{{ summary.orders_count }}</b><span>{{ t('stat.orders') }}</span>
         </div>
-        <div v-if="isOwner" class="card stat green">
+        <div class="card stat green">
           <b class="num">{{ balance.toFixed(2) }}</b><span>{{ t('wallet.balanceShort') }}</span>
         </div>
       </div>

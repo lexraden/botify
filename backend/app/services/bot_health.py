@@ -23,6 +23,7 @@ from sqlalchemy import select
 from app.db import get_session
 from app.models import Seller, SellerBot
 from app.security import decrypt_bot_token
+from app.services.seller_texts import seller_locale, text
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ async def check_revoked_tokens() -> int:
         return 0
 
     async with get_session() as session:
-        notify: list[tuple[int, int, str, bool]] = []
+        notify: list[tuple[int, int, str, bool, str]] = []
         for bot_id, username in revoked:
             record = await session.get(SellerBot, bot_id)
             # статус мог измениться, пока мы ходили в Telegram
@@ -93,41 +94,30 @@ async def check_revoked_tokens() -> int:
             record.webhook_status = REVOKED
             seller = await session.get(Seller, record.seller_id)
             if seller is not None:
-                notify.append((seller.telegram_id, bot_id, username, record.is_managed))
+                notify.append(
+                    (seller.telegram_id, bot_id, username, record.is_managed, seller_locale(seller))
+                )
         await session.commit()
 
-    for seller_tg, bot_id, username, is_managed in notify:
-        await _notify_revoked(seller_tg, bot_id, username, is_managed)
+    for seller_tg, bot_id, username, is_managed, locale in notify:
+        await _notify_revoked(seller_tg, bot_id, username, is_managed, locale)
     logger.warning("Ботов с отозванным токеном: %d", len(revoked))
     return len(revoked)
 
 
-def revoked_text(bot_username: str, is_managed: bool) -> str:
+def revoked_text(bot_username: str, is_managed: bool, locale: str = "ru") -> str:
     """Что написать продавцу. Разный текст: у управляемого бота починка — одно
     нажатие, у подключённого вручную придётся идти за токеном."""
     import html
 
-    head = (
-        f"🔴 Магазин @{html.escape(bot_username)} перестал получать сообщения.\n\n"
-        "Похоже, токен бота отозван или перевыпущен в @BotFather — покупатели "
-        "сейчас не могут ни написать, ни оформить заказ.\n\n"
-    )
+    head = text(locale, "push.revoked.head", username=html.escape(bot_username))
     if is_managed:
-        return head + (
-            "Этого бота создавал я, поэтому починить могу сам: нажми кнопку, и я "
-            "выпущу новый токен.\n\n"
-            "⚠️ Тот токен, который ты получил в @BotFather, после этого работать "
-            "перестанет. Если он нужен тебе для своих скриптов — не восстанавливай, "
-            "напиши мне."
-        )
-    return head + (
-        "Чтобы починить: возьми в @BotFather свежий токен этого бота и подключи "
-        "магазин заново — каталог, заказы и касса останутся на месте."
-    )
+        return head + text(locale, "push.revoked.managed")
+    return head + text(locale, "push.revoked.unmanaged")
 
 
 async def _notify_revoked(
-    seller_tg: int, bot_id: int, bot_username: str, is_managed: bool
+    seller_tg: int, bot_id: int, bot_username: str, is_managed: bool, locale: str = "ru"
 ) -> None:
     from app.bots.hub import hub_bot
     from app.handlers.hub.mybots import restore_keyboard
@@ -135,8 +125,8 @@ async def _notify_revoked(
     try:
         await hub_bot.send_message(
             seller_tg,
-            revoked_text(bot_username, is_managed),
-            reply_markup=restore_keyboard(bot_id) if is_managed else None,
+            revoked_text(bot_username, is_managed, locale),
+            reply_markup=restore_keyboard(bot_id, locale) if is_managed else None,
         )
     except Exception:
         logger.exception("Не удалось уведомить продавца об отозванном токене")

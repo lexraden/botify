@@ -31,6 +31,7 @@ from app.db import get_session
 from app.money import fmt
 from app.models import Payout, PayoutBatch, Seller, SellerBot
 from app.payments.client import get_crypto_pay
+from app.services import seller_texts
 
 logger = logging.getLogger(__name__)
 
@@ -60,20 +61,22 @@ def _is_too_small(error: str | None) -> bool:
     return "amount_too_small" in reason or "min_amount" in reason
 
 
-def _failure_message(amount: Decimal | float, error: str | None) -> str:
+def _failure_message(amount: Decimal | float, error: str | None, locale: str = "ru") -> str:
     """Понятная причина вместо универсального «нажми /start»."""
     reason = (error or "").lower()
     if _is_not_started(error):
-        hint = "Открой @CryptoBot и нажми Start — деньги придут туда."
+        hint = seller_texts.text(locale, "payout.hint.not_started")
     elif "transfer" in reason and ("disabled" in reason or "not allowed" in reason):
-        hint = "Переводы отключены в настройках платформы — я уже разбираюсь."
+        hint = seller_texts.text(locale, "payout.hint.disabled")
     elif "not_enough" in reason or "insufficient" in reason:
-        hint = "На стороне платформы не хватило баланса — попробуй вывести позже."
+        hint = seller_texts.text(locale, "payout.hint.not_enough")
     else:
-        hint = "Деньги на месте: нажми «Вывести» ещё раз, когда проблема уйдёт."
+        hint = seller_texts.text(locale, "payout.hint.default")
     # текст ошибки приходит от провайдера и уходит продавцу с parse_mode=HTML
     detail = f"\n\n<code>{html.escape(error)}</code>" if error else ""
-    return f"⚠️ Выплата {fmt(amount)} USDT пока не ушла.\n{hint}{detail}"
+    return seller_texts.text(
+        locale, "push.payout_fail", amount=fmt(amount), hint=hint
+    ) + detail
 
 
 async def pending_total(session, bot_id: int) -> Decimal:
@@ -169,6 +172,8 @@ async def flush_shop_payouts(bot_id: int) -> PayoutResult:
         # а не её порядковый id (после сброса базы id начнутся заново)
         spend_token = batch.spend_id
         seller_tg, shop_name = seller.telegram_id, shop.bot_username
+        # язык пушей продавцу фиксируем до коммита: дальше сессия закрыта
+        locale = seller_texts.seller_locale(seller)
         await session.commit()
 
     try:
@@ -195,8 +200,9 @@ async def flush_shop_payouts(bot_id: int) -> PayoutResult:
                 await session.commit()
         await _notify_seller(
             seller_tg,
-            f"💸 Выплата <b>{fmt(amount)} USDT</b> по магазину @{shop_name} "
-            "отправлена в @CryptoBot.",
+            seller_texts.text(
+                locale, "push.payout_sent", amount=fmt(amount), shop=shop_name
+            ),
         )
         return PayoutResult(ok=True)
 
@@ -206,7 +212,7 @@ async def flush_shop_payouts(bot_id: int) -> PayoutResult:
         return PayoutResult(ok=True)
 
     if outcome != "too_small":
-        await _notify_seller(seller_tg, _failure_message(amount, error))
+        await _notify_seller(seller_tg, _failure_message(amount, error, locale))
     if _is_not_started(error):
         return PayoutResult(ok=False, reason="cryptobot_not_started")
     return PayoutResult(ok=False, reason=outcome)  # too_small | failed

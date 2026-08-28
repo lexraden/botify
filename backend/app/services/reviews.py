@@ -14,6 +14,7 @@ from app.bots.hub import hub_bot
 from app.config import get_settings
 from app.db import get_session
 from app.models import ProductReview
+from app.services import seller_texts
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ def random_author_name() -> str:
 
 
 async def notify_new_review(
-    seller_tg: int, product_title: str, rating: int, body: str | None
+    seller_tg: int, product_title: str, rating: int, body: str | None, locale: str = "ru"
 ) -> None:
     """Новый отзыв -> пуш продавцу в hub-бот. Правки оценки не уведомляются.
 
@@ -44,13 +45,13 @@ async def notify_new_review(
     Обрезаем до экранирования — чтобы срез не разрубил html-сущность.
     """
     title = html.escape(product_title[:120])
-    text = (
-        f"⭐ Новый отзыв о «{title}»: {'★' * rating}\n"
-        + (f"«{html.escape(body[:300])}»\n" if body else "")
-        + "Ответить можно в кабинете, вкладка «Отзывы»."
+    text_out = (
+        seller_texts.text(locale, "push.review.head", title=title, stars="★" * rating)
+        + (seller_texts.text(locale, "push.review.body", body=html.escape(body[:300])) if body else "")
+        + seller_texts.text(locale, "push.review.tail")
     )
     try:
-        await hub_bot.send_message(seller_tg, text)
+        await hub_bot.send_message(seller_tg, text_out)
     except Exception:
         logger.exception("Не удалось уведомить продавца о новом отзыве")
 

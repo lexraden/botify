@@ -131,15 +131,6 @@ async def can_create_managed_bots() -> bool:
     return bool(me.can_manage_bots)
 
 
-MANAGEMENT_OFF = (
-    "Создание бота одной кнопкой пока не включено у платформы.\n\n"
-    "Это чинится в @BotFather: открой его мини-апп (синяя кнопка «Open» слева "
-    "от поля ввода) → выбери бота платформы → включи <b>Bot Management Mode</b>. "
-    "Флаг приходит только в getMe, в обычном меню настроек его нет.\n\n"
-    "Пока не включено — подключай бота как раньше, токеном через приложение."
-)
-
-
 async def set_webhook_status(shop_id: int, status: str) -> None:
     """Записать исход установки вебхука.
 

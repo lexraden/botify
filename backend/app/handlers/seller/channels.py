@@ -10,6 +10,7 @@ from aiogram.types import ChatJoinRequest, ChatMemberUpdated
 
 from app.db import get_session
 from app.models import Seller, SellerBot
+from app.services import seller_texts
 from app.services.channels import (
     TgUserInfo,
     deactivate_channel,
@@ -30,15 +31,15 @@ def _can_invite_users(event: ChatMemberUpdated) -> bool:
     return getattr(event.new_chat_member, "can_invite_users", True) is not False
 
 
-def _channel_texts(channel, bot_record: SellerBot, invite_ok: bool) -> tuple[str, str]:
+def _channel_texts(
+    channel, bot_record: SellerBot, invite_ok: bool, locale: str = "ru"
+) -> tuple[str, str]:
     """(текст в hub-бот, текст в собственный бот продавца)."""
     # название канала задаёт третья сторона: без экранирования «<» в нём
     # ломает parse_mode=HTML, и уведомление до продавца не доходит
     title = html.escape(channel.title)
-    hub_text = (
-        f"✅ Бот @{bot_record.bot_username} добавлен в «{title}».\n"
-        "Заявки на вступление будут приниматься автоматически, а каждый "
-        "вступивший — попадать в твою базу."
+    hub_text = seller_texts.text(
+        locale, "push.channel_added", username=bot_record.bot_username, title=title
     )
     if invite_ok:
         own_text = (
@@ -88,7 +89,9 @@ async def on_bot_added_to_chat(event: ChatMemberUpdated, bot: Bot, bot_record: S
         seller = await session.get(Seller, bot_record.seller_id)
     if seller is None:
         return
-    hub_text, own_text = _channel_texts(channel, bot_record, _can_invite_users(event))
+    hub_text, own_text = _channel_texts(
+        channel, bot_record, _can_invite_users(event), seller_texts.seller_locale(seller)
+    )
     await _notify_seller_both_bots(bot, bot_record, seller, hub_text, own_text)
 
 

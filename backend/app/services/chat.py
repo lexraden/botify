@@ -28,6 +28,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.models import ChatMessage, Order, OrderChat, SellerBot
 from app.models.chat import ChatMessageArchive
+from app.services import seller_texts
 from app.models.orders import PAID_STATUSES
 from app.security import decrypt_bot_token
 from app.services.notify_texts import text as notify_text
@@ -267,7 +268,9 @@ async def notify_customer_photo(
         await bot.session.close()
 
 
-async def notify_seller(seller_tg: int, order_id: int, has_photo: bool = False) -> None:
+async def notify_seller(
+    seller_tg: int, order_id: int, has_photo: bool = False, locale: str = "ru"
+) -> None:
     """Сообщение покупателя -> пуш продавцу в hub-бот (без деталей личности)."""
     from app.bots.hub import hub_bot
 
@@ -275,7 +278,9 @@ async def notify_seller(seller_tg: int, order_id: int, has_photo: bool = False) 
     try:
         await hub_bot.send_message(
             seller_tg,
-            f"💬 Новое сообщение по заказу #{order_id}{photo_mark} — открой кабинет.",
+            seller_texts.text(
+                locale, "push.chat_message", id=order_id, photo=photo_mark
+            ),
         )
     except Exception:
         logger.exception("Не удалось уведомить продавца о сообщении по заказу %s", order_id)

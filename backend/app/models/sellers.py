@@ -17,6 +17,12 @@ class Seller(Base, CreatedAtMixin):
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str | None] = mapped_column(String(128))
     language_code: Mapped[str | None] = mapped_column(String(8))
+    # Ручной выбор языка hub-бота (/lang). None = не выбирал: тогда ru* по
+    # language_code идёт RU, остальным EN, а при неизвестном языке Telegram —
+    # RU (у покупателей наоборот: неизвестный — EN, платформа для них англ.
+    # по умолчанию; у продавцов hub всегда был русским, и молча переводить
+    # существующих на EN нельзя). Разбор правила — services/seller_texts.py.
+    locale: Mapped[str | None] = mapped_column(String(8))
 
     # Онбординг идёт в Mini App; прогресс хранится здесь, чтобы пересоздание
     # webview (уход в @BotFather и обратно) не сбрасывало шаг.

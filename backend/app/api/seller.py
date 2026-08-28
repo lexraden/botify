@@ -39,6 +39,7 @@ from app.models.orders import PAID_STATUSES
 from app.payments.payouts import paid_total, pending_total
 from app.plans import SERVICE_TYPES, is_pro, limits_for, over_limit
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
+from app.services.seller_texts import seller_text
 
 router = APIRouter(prefix="/seller")
 
@@ -164,7 +165,7 @@ async def connect_bot(
 
         ikb = InlineKeyboardBuilder()
         ikb.button(
-            text="🏪 Открыть магазин",
+            text=seller_text(seller, "btn.open_shop"),
             web_app=WebAppInfo(url=f"{webapp_url.rstrip('/')}/shop/{result.bot_record.id}"),
         )
         ikb.adjust(1)
@@ -172,11 +173,7 @@ async def connect_bot(
 
     await _notify_seller(
         seller,
-        f"🎉 Бот <b>@{result.bot_username}</b> подключён!\n\n"
-        "Что дальше:\n"
-        "• добавь первый товар или услугу в приложении\n"
-        "• поделись ссылкой на бота с покупателями — каждый, кто напишет ему, "
-        "попадёт в твою базу",
+        seller_text(seller, "api.connected", username=result.bot_username),
         reply_markup=kb,
     )
 
@@ -253,8 +250,7 @@ async def disable_shop(
     if owner is not None:
         await _notify_seller(
             owner,
-            f"⚪ Магазин <b>@{bot.bot_username}</b> отключён через приложение.\n"
-            "Бот не отвечает покупателям, база, товары и заказы сохранены.",
+            seller_text(owner, "api.disabled", username=bot.bot_username),
         )
     return ShopStateOut(id=bot.id, bot_username=bot.bot_username, is_active=False)
 
@@ -273,7 +269,7 @@ async def enable_shop(
     if owner is not None:
         await _notify_seller(
             owner,
-            f"🟢 Магазин <b>@{bot.bot_username}</b> включён — бот снова работает.",
+            seller_text(owner, "api.enabled", username=bot.bot_username),
         )
     return ShopStateOut(id=bot.id, bot_username=bot.bot_username, is_active=True)
 
@@ -291,14 +287,13 @@ async def delete_shop(
     if result == "deleted":
         await _notify_seller(
             seller,
-            f"🗑 Магазин <b>@{shop.bot_username}</b> удалён вместе с базой покупателей.",
+            seller_text(seller, "api.deleted", username=shop.bot_username),
         )
         return {"status": "deleted"}
     if result == "has_orders":
         await _notify_seller(
             seller,
-            f"У покупателей <b>@{shop.bot_username}</b> есть заказы — историю продаж "
-            "удалять нельзя, поэтому магазин просто отключён.",
+            seller_text(seller, "api.has_orders", username=shop.bot_username),
         )
         return {"status": "has_orders"}
     raise HTTPException(status_code=404, detail="shop not found")
@@ -331,9 +326,12 @@ async def set_shop_name(
     await session.commit()
     await _notify_seller(
         seller,
-        f"🏪 Название магазина теперь <b>{html.escape(shop.shop_name)}</b>."
-        if shop.shop_name
-        else f"🏪 Название магазина сброшено к <b>@{html.escape(shop.bot_username or '')}</b>.",
+        seller_text(
+            seller,
+            "api.name_set" if shop.shop_name else "api.name_reset",
+            name=html.escape(shop.shop_name or ""),
+            username=html.escape(shop.bot_username or ""),
+        ),
     )
     return {"shop_name": shop.shop_name}
 

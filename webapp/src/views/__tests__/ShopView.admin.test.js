@@ -55,11 +55,12 @@ describe('ShopView — кабинет для админа магазина', () 
     expect(w.find('.stats .card.green').exists()).toBe(true)
   })
 
-  it('админу кошелёк и баланс не показываются — деньги не его зона', async () => {
+  it('админу кошелёк не показывается, но баланс кассы виден', async () => {
     fetchShopSummary.mockResolvedValue({ ...SUMMARY, viewer_role: 'admin' })
     const w = await mountStats()
     expect(w.find('.card.wallet').exists()).toBe(false)
-    expect(w.find('.stats .card.green').exists()).toBe(false)
+    // баланс сверху админ видит — скрыт только сам кошелёк с выводом
+    expect(w.find('.stats .card.green').exists()).toBe(true)
     // остальной кабинет работает: статистика и тариф на месте
     expect(w.findAll('.stats-grid .metric').length).toBeGreaterThan(0)
     expect(w.find('.card.plan').exists()).toBe(true)

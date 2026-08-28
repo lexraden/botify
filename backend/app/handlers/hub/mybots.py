@@ -1,4 +1,9 @@
-"""Управление магазинами: меню «Мои магазины», карточки, включение/удаление."""
+"""Управление магазинами: меню «Мои магазины», карточки, включение/удаление.
+
+Все тексты — на языке продавца (services/seller_texts.py); у билдеров текстов
+локаль — последний параметр со значением «ru», чтобы прямые вызовы из тестов
+и старые места не таили в себе смену языка.
+"""
 
 import html
 
@@ -18,51 +23,50 @@ from app.services.bot_recovery import (
     WEBHOOK_PENDING,
     restore_managed_token,
 )
+from app.services.seller_texts import seller_locale, text
 
 router = Router()
 
 STATUS_ICONS = {"active": "🟢", "pending": "🟡", "failed": "🔴", "revoked": "🔴"}
 
-SHOPS_PITCH = (
-    "Каждый бот живёт своей жизнью: свой каталог, свои покупатели, своя касса."
-)
 
-NO_SHOPS = "У тебя пока нет подключённых магазинов."
-
-
-def restore_keyboard(bot_id: int) -> types.InlineKeyboardMarkup:
+def restore_keyboard(bot_id: int, locale: str = "ru") -> types.InlineKeyboardMarkup:
     """Кнопка «выпустить новый токен» — для бота, созданного нашей кнопкой.
 
     Уезжает в пуш от `bot_health`, поэтому живёт здесь, рядом с хендлером,
     который её ловит.
     """
     kb = InlineKeyboardBuilder()
-    kb.button(text="🔄 Восстановить магазин", callback_data=f"mybots:fix:{bot_id}")
+    kb.button(text=text(locale, "btn.restore"), callback_data=f"mybots:fix:{bot_id}")
     return kb.as_markup()
 
 
-def bot_status_line(bot: SellerBot) -> str:
+def bot_status_line(bot: SellerBot, locale: str = "ru") -> str:
     """Строка одного магазина в общем списке."""
     if bot.is_draft:
         # магазин заведён, бот ещё не создан — зовём закончить, а не пугаем
-        return f"⚪ <b>{html.escape(bot.display_name)}</b> — бот не создан, /newshop"
+        return text(locale, "status.draft", name=html.escape(bot.display_name))
     if not bot.is_active:
-        return f"⚪ <b>@{bot.bot_username}</b> — отключён"
+        return text(locale, "status.disabled", username=bot.bot_username)
     icon = STATUS_ICONS.get(bot.webhook_status, "⚪")
     if bot.webhook_status == "revoked":
         # отозванный токен чинится только переподключением, поэтому пишем
         # прямо здесь, а не прячем за цветом кружка
-        fix = "нажми «Восстановить»" if bot.is_managed else "подключи заново"
-        return f"{icon} <b>@{bot.bot_username}</b> — токен отозван, {fix}"
-    return f"{icon} <b>@{bot.bot_username}</b> — включён"
+        fix = (
+            text(locale, "status.fix.managed")
+            if bot.is_managed
+            else text(locale, "status.fix.unmanaged")
+        )
+        return text(locale, "status.revoked", icon=icon, username=bot.bot_username, fix=fix)
+    return text(locale, "status.active", icon=icon, username=bot.bot_username)
 
 
-def shops_menu_text(bots: list[SellerBot]) -> str:
-    lines = "\n".join(bot_status_line(bot) for bot in bots)
-    return f"🏪 <b>Твои магазины</b>\n\n{lines}\n\n{SHOPS_PITCH}"
+def shops_menu_text(bots: list[SellerBot], locale: str = "ru") -> str:
+    lines = "\n".join(bot_status_line(bot, locale) for bot in bots)
+    return f"{text(locale, 'shops.header')}\n\n{lines}\n\n{text(locale, 'shops.pitch')}"
 
 
-def add_shop_button(kb: InlineKeyboardBuilder) -> None:
+def add_shop_button(kb: InlineKeyboardBuilder, locale: str = "ru") -> None:
     """Кнопка «подключить ещё магазин» — диплинк сразу на шаг подключения.
 
     Гард входа в вебаппе перехватывает только «/», поэтому прямой URL
@@ -72,7 +76,7 @@ def add_shop_button(kb: InlineKeyboardBuilder) -> None:
     webapp_url = get_settings().effective_webapp_url
     if webapp_url:
         kb.button(
-            text="➕ Подключить ещё магазин",
+            text=text(locale, "btn.add_shop"),
             web_app=types.WebAppInfo(url=f"{webapp_url.rstrip('/')}/onboarding/bot"),
         )
 
@@ -86,57 +90,53 @@ def shop_label(bot: SellerBot) -> str:
     return f"@{bot.bot_username}" if bot.bot_username else bot.display_name
 
 
-def shops_menu_keyboard(bots: list[SellerBot]) -> types.InlineKeyboardMarkup:
+def shops_menu_keyboard(bots: list[SellerBot], locale: str = "ru") -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     for bot in bots:
         kb.button(text=shop_label(bot), callback_data=f"mybots:card:{bot.id}")
-    add_shop_button(kb)
+    add_shop_button(kb, locale)
     kb.adjust(1)
     return kb.as_markup()
 
 
-def bot_card_text(bot: SellerBot) -> str:
+def bot_card_text(bot: SellerBot, locale: str = "ru") -> str:
     if bot.is_draft:
-        return (
-            f"⚪ <b>{html.escape(bot.display_name)}</b> — бот не создан\n\n"
-            "Магазин заведён, осталось создать бота: /newshop"
+        return text(
+            locale, "card.draft", name=html.escape(bot.display_name)
         )
     if bot.webhook_status == "revoked":
         # «работает» здесь было бы враньём: покупатели до магазина не доходят
-        return (
-            f"🔴 <b>@{bot.bot_username}</b> — токен отозван\n\n"
-            "Магазин не получает сообщения от покупателей."
-        )
+        return text(locale, "card.revoked", username=bot.bot_username)
     if bot.is_active:
         icon = STATUS_ICONS.get(bot.webhook_status, "⚪")
-        return f"{icon} <b>{shop_label(bot)}</b> — работает"
-    return f"⚪ <b>{shop_label(bot)}</b> — отключён"
+        return text(locale, "card.active", icon=icon, label=shop_label(bot))
+    return text(locale, "card.disabled", label=shop_label(bot))
 
 
-def bot_card_keyboard(bot: SellerBot) -> types.InlineKeyboardMarkup:
+def bot_card_keyboard(bot: SellerBot, locale: str = "ru") -> types.InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     if bot.is_draft:
         # включать нечего, а «Настройки бота» вели бы на t.me/None
-        kb.button(text="🗑 Удалить", callback_data=f"mybots:del:{bot.id}")
-        kb.button(text="⬅️ Все магазины", callback_data="mybots:menu")
+        kb.button(text=text(locale, "btn.delete"), callback_data=f"mybots:del:{bot.id}")
+        kb.button(text=text(locale, "btn.back_all"), callback_data="mybots:menu")
         kb.adjust(1)
         return kb.as_markup()
     if bot.webhook_status == "revoked" and bot.is_managed:
         # починка в одно нажатие — до всех остальных кнопок
-        kb.button(text="🔄 Восстановить магазин", callback_data=f"mybots:fix:{bot.id}")
+        kb.button(text=text(locale, "btn.restore"), callback_data=f"mybots:fix:{bot.id}")
     if bot.is_active:
-        kb.button(text="🔌 Отключить", callback_data=f"mybots:off:{bot.id}")
+        kb.button(text=text(locale, "btn.off"), callback_data=f"mybots:off:{bot.id}")
     else:
-        kb.button(text="🔁 Включить", callback_data=f"mybots:on:{bot.id}")
-        kb.button(text="🗑 Удалить", callback_data=f"mybots:del:{bot.id}")
+        kb.button(text=text(locale, "btn.on"), callback_data=f"mybots:on:{bot.id}")
+        kb.button(text=text(locale, "btn.delete"), callback_data=f"mybots:del:{bot.id}")
     # админы раздаются здесь же, в хабе: список, приглашение по @username/ID
-    kb.button(text="👥 Администраторы", callback_data=f"mybots:admins:{bot.id}")
+    kb.button(text=text(locale, "btn.admins"), callback_data=f"mybots:admins:{bot.id}")
     # настройки живут в самом seller-боте: диплинк открывает там /settings
     kb.button(
-        text="⚙️ Настройки бота",
+        text=text(locale, "btn.settings"),
         url=f"https://t.me/{bot.bot_username}?start=settings",
     )
-    kb.button(text="⬅️ Все магазины", callback_data="mybots:menu")
+    kb.button(text=text(locale, "btn.back_all"), callback_data="mybots:menu")
     kb.adjust(2)
     return kb.as_markup()
 
@@ -158,11 +158,11 @@ async def owned_bot_from_callback(callback: types.CallbackQuery) -> tuple[Seller
         return None
     seller = await _seller_for(callback.from_user.id)
     if seller is None:
-        await callback.answer("Сначала /start", show_alert=True)
+        await callback.answer(text("ru", "alert.start_first"), show_alert=True)
         return None
     bot_id = int(callback.data.split(":")[-1])
     if await get_own_bot(bot_id, seller.id) is None:
-        await callback.answer("Бот не найден", show_alert=True)
+        await callback.answer(text(seller_locale(seller), "alert.bot_not_found"), show_alert=True)
         return None
     return seller, bot_id
 
@@ -182,10 +182,13 @@ async def send_shops_menu(message: types.Message, seller: Seller) -> None:
     по каждому магазину и подключение следующего — вместо прежних
     N+1 отдельных сообщений."""
     bots = await _seller_bots(seller.id)
+    locale = seller_locale(seller)
     if not bots:
-        await message.answer(NO_SHOPS)
+        await message.answer(text(locale, "shops.none"))
         return
-    await message.answer(shops_menu_text(bots), reply_markup=shops_menu_keyboard(bots))
+    await message.answer(
+        shops_menu_text(bots, locale), reply_markup=shops_menu_keyboard(bots, locale)
+    )
 
 
 @router.message(Command("mybots"))
@@ -194,7 +197,7 @@ async def my_bots(message: types.Message) -> None:
         return
     seller = await _seller_for(message.from_user.id)
     if seller is None:
-        await message.answer("Нажми /start, чтобы зарегистрироваться.")
+        await message.answer(text("ru", "msg.register"))
         return
     await send_shops_menu(message, seller)
 
@@ -206,7 +209,7 @@ async def my_bots_button(callback: types.CallbackQuery) -> None:
         return
     seller = await _seller_for(callback.from_user.id)
     if seller is None:
-        await callback.message.answer("Нажми /start, чтобы зарегистрироваться.")
+        await callback.message.answer(text("ru", "msg.register"))
         return
     # новым сообщением, а не правкой: под ней стартовый экран
     # с кнопкой «Открыть приложение», его трогать нельзя
@@ -220,14 +223,15 @@ async def back_to_shops_menu(callback: types.CallbackQuery) -> None:
         return
     seller = await _seller_for(callback.from_user.id)
     if seller is None:
-        await callback.message.answer("Нажми /start, чтобы зарегистрироваться.")
+        await callback.message.answer(text("ru", "msg.register"))
         return
     bots = await _seller_bots(seller.id)
     if not bots:
-        await callback.message.edit_text(NO_SHOPS)
+        await callback.message.edit_text(text(seller_locale(seller), "shops.none"))
         return
     await callback.message.edit_text(
-        shops_menu_text(bots), reply_markup=shops_menu_keyboard(bots)
+        shops_menu_text(bots, seller_locale(seller)),
+        reply_markup=shops_menu_keyboard(bots, seller_locale(seller)),
     )
 
 
@@ -241,7 +245,8 @@ async def open_bot_card(callback: types.CallbackQuery) -> None:
     bot = await get_own_bot(bot_id, seller.id)
     if callback.message and bot is not None:
         await callback.message.edit_text(
-            bot_card_text(bot), reply_markup=bot_card_keyboard(bot)
+            bot_card_text(bot, seller_locale(seller)),
+            reply_markup=bot_card_keyboard(bot, seller_locale(seller)),
         )
 
 
@@ -251,19 +256,18 @@ async def confirm_disconnect(callback: types.CallbackQuery) -> None:
     if ctx is None:
         return
     seller, bot_id = ctx
+    locale = seller_locale(seller)
     await callback.answer()
     bot = await get_own_bot(bot_id, seller.id)
     kb = InlineKeyboardBuilder()
-    kb.button(text="Да, отключить", callback_data=f"mybots:off_yes:{bot_id}")
-    kb.button(text="Отмена", callback_data=f"mybots:back:{bot_id}")
+    kb.button(text=text(locale, "btn.yes_off"), callback_data=f"mybots:off_yes:{bot_id}")
+    kb.button(text=text(locale, "btn.cancel"), callback_data=f"mybots:back:{bot_id}")
     kb.adjust(2)
     # бот мог исчезнуть между списком и нажатием (удалён из другой вкладки) —
     # без гарда подтверждение падало бы на bot_username
     if callback.message and bot is not None:
         await callback.message.edit_text(
-            f"Отключить <b>@{bot.bot_username}</b>?\n\n"
-            "Бот перестанет отвечать покупателям и принимать заявки в каналы. "
-            "База покупателей, товары и заказы сохранятся — включить можно в любой момент.",
+            text(locale, "off.confirm", username=bot.bot_username),
             reply_markup=kb.as_markup(),
         )
 
@@ -275,9 +279,12 @@ async def do_disconnect(callback: types.CallbackQuery) -> None:
         return
     seller, bot_id = ctx
     bot = await disconnect_bot(bot_id, seller.id)
-    await callback.answer("Отключён")
+    await callback.answer(text(seller_locale(seller), "toast.off"))
     if callback.message and bot is not None:
-        await callback.message.edit_text(bot_card_text(bot), reply_markup=bot_card_keyboard(bot))
+        await callback.message.edit_text(
+            bot_card_text(bot, seller_locale(seller)),
+            reply_markup=bot_card_keyboard(bot, seller_locale(seller)),
+        )
 
 
 @router.callback_query(F.data.startswith("mybots:on:"))
@@ -286,15 +293,18 @@ async def do_enable(callback: types.CallbackQuery) -> None:
     if ctx is None:
         return
     seller, bot_id = ctx
+    locale = seller_locale(seller)
     bot = await enable_bot(bot_id, seller.id)
     if bot is None:
         # черновик: бота нет, включать нечего — раньше тост всё равно
         # рапортовал «Включён», хотя не произошло ничего
-        await callback.answer("Сначала создай бота: /newshop", show_alert=True)
+        await callback.answer(text(locale, "alert.draft_no_bot"), show_alert=True)
         return
-    await callback.answer("Включён")
+    await callback.answer(text(locale, "toast.on"))
     if callback.message:
-        await callback.message.edit_text(bot_card_text(bot), reply_markup=bot_card_keyboard(bot))
+        await callback.message.edit_text(
+            bot_card_text(bot, locale), reply_markup=bot_card_keyboard(bot, locale)
+        )
 
 
 @router.callback_query(F.data.startswith("mybots:del:"))
@@ -303,18 +313,17 @@ async def confirm_delete(callback: types.CallbackQuery) -> None:
     if ctx is None:
         return
     seller, bot_id = ctx
+    locale = seller_locale(seller)
     await callback.answer()
     bot = await get_own_bot(bot_id, seller.id)
     kb = InlineKeyboardBuilder()
-    kb.button(text="🗑 Да, удалить навсегда", callback_data=f"mybots:del_yes:{bot_id}")
-    kb.button(text="Отмена", callback_data=f"mybots:back:{bot_id}")
+    kb.button(text=text(locale, "btn.yes_delete"), callback_data=f"mybots:del_yes:{bot_id}")
+    kb.button(text=text(locale, "btn.cancel"), callback_data=f"mybots:back:{bot_id}")
     kb.adjust(1)
     # тот же гард, что и в confirm_disconnect: бота могли уже удалить
     if callback.message and bot is not None:
         await callback.message.edit_text(
-            f"Удалить <b>{shop_label(bot)}</b> навсегда?\n\n"
-            "⚠️ Вместе с ботом удалится его база покупателей и история рассылок. "
-            "Это необратимо.",
+            text(locale, "del.confirm", label=shop_label(bot)),
             reply_markup=kb.as_markup(),
         )
 
@@ -325,33 +334,34 @@ async def do_delete(callback: types.CallbackQuery) -> None:
     if ctx is None:
         return
     seller, bot_id = ctx
+    locale = seller_locale(seller)
     bot = await get_own_bot(bot_id, seller.id)
     result = await delete_bot(bot_id, seller.id)
     if callback.message is None:
         return
     if result == "deleted":
-        await callback.answer("Удалён")
+        await callback.answer(text(locale, "toast.deleted"))
         # сразу назад к списку: видно, что магазин исчез, и можно
         # тут же подключить следующий
         bots = await _seller_bots(seller.id)
         if bots:
             await callback.message.edit_text(
-                shops_menu_text(bots), reply_markup=shops_menu_keyboard(bots)
+                shops_menu_text(bots, locale),
+                reply_markup=shops_menu_keyboard(bots, locale),
             )
         else:
-            await callback.message.edit_text(NO_SHOPS)
+            await callback.message.edit_text(text(locale, "shops.none"))
     elif result == "has_orders":
         await callback.answer()
         kb = InlineKeyboardBuilder()
-        kb.button(text="⬅️ Все магазины", callback_data="mybots:menu")
+        kb.button(text=text(locale, "btn.back_all"), callback_data="mybots:menu")
         kb.adjust(1)
         await callback.message.edit_text(
-            f"У покупателей <b>@{bot.bot_username}</b> есть заказы — историю продаж "
-            "удалять нельзя, поэтому бот просто отключён. Подключить обратно: /mybots.",
+            text(locale, "del.has_orders", username=bot.bot_username),
             reply_markup=kb.as_markup(),
         )
     else:
-        await callback.answer("Бот не найден", show_alert=True)
+        await callback.answer(text(locale, "alert.bot_not_found"), show_alert=True)
 
 
 @router.callback_query(F.data.startswith("mybots:fix:"))
@@ -366,46 +376,31 @@ async def restore_shop(callback: types.CallbackQuery) -> None:
     if ctx is None:
         return
     seller, bot_id = ctx
+    locale = seller_locale(seller)
     if callback.message is None:
         return
 
-    await callback.answer("Восстанавливаю…")
+    await callback.answer(text(locale, "restore.doing"))
     result = await restore_managed_token(bot_id, seller.id)
     bot = await get_own_bot(bot_id, seller.id)
     username = bot.bot_username if bot else ""
 
     if result == RESTORED:
-        text = (
-            f"✅ Магазин <b>@{username}</b> снова работает.\n\n"
-            "Токен перевыпущен, покупатели опять доходят. Старый токен из "
-            "@BotFather больше не действует."
-        )
+        text_out = text(locale, "restore.restored", username=username)
     elif result == ALREADY_OK:
-        text = f"Магазин <b>@{username}</b> уже работает — восстанавливать нечего."
+        text_out = text(locale, "restore.already_ok", username=username)
     elif result == WEBHOOK_PENDING:
         # токен уже заменён: сказать «не вышло» было бы враньём, продавец
         # пошёл бы искать старый токен, которого больше нет
-        text = (
-            f"Токен для <b>@{username}</b> выпущен, но магазин ещё не принимает "
-            "сообщения — вебхук не встал с первого раза.\n\n"
-            "Загляни в /mybots через минуту. Старый токен из @BotFather уже "
-            "не действует, брать его оттуда заново не нужно."
-        )
+        text_out = text(locale, "restore.webhook_pending", username=username)
     elif result == NOT_MANAGED:
-        text = (
-            f"Бота <b>@{username}</b> создавал не я, поэтому выпустить ему токен "
-            "не могу. Возьми свежий токен в @BotFather и подключи магазин заново."
-        )
+        text_out = text(locale, "restore.not_managed", username=username)
     else:
-        text = (
-            f"Не вышло восстановить <b>@{username}</b>. Возможно, у платформы "
-            "забрали доступ к боту в @BotFather. Подключить можно и вручную — "
-            "свежим токеном оттуда же."
-        )
+        text_out = text(locale, "restore.failed", username=username)
 
     kb = InlineKeyboardBuilder()
-    kb.button(text="⬅️ Все магазины", callback_data="mybots:menu")
-    await callback.message.answer(text, reply_markup=kb.as_markup())
+    kb.button(text=text(locale, "btn.back_all"), callback_data="mybots:menu")
+    await callback.message.answer(text_out, reply_markup=kb.as_markup())
 
 
 @router.callback_query(F.data.startswith("mybots:back:"))
@@ -417,4 +412,7 @@ async def back_to_card(callback: types.CallbackQuery) -> None:
     await callback.answer()
     bot = await get_own_bot(bot_id, seller.id)
     if callback.message and bot is not None:
-        await callback.message.edit_text(bot_card_text(bot), reply_markup=bot_card_keyboard(bot))
+        await callback.message.edit_text(
+            bot_card_text(bot, seller_locale(seller)),
+            reply_markup=bot_card_keyboard(bot, seller_locale(seller)),
+        )
