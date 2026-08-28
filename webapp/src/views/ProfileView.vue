@@ -116,6 +116,9 @@ async function toggleLang() {
 .legal-links {
   margin-top: 10px;
   text-align: center;
+  /* чуть левее геометрического центра: «and» встаёт ровно над «with» плашки */
+  position: relative;
+  left: -7px;
   button {
     border: 0;
     background: none;
@@ -135,6 +138,7 @@ async function toggleLang() {
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    left: 0; /* в русской версии строка по центру, без сдвига */
   }
 }
 .top {
