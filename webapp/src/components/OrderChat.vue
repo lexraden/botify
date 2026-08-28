@@ -135,7 +135,8 @@ const fmtTime = (iso) =>
           :placeholder="t('chat.messagePh')"
           @keydown.enter.prevent="send"
         />
-        <button class="send" :disabled="sending || !draft.trim()" @click="send">➤</button>
+        <!-- подсвечена всегда: клик с пустым полем просто ничего не отправляет -->
+        <button class="send" :disabled="sending" @click="send">➤</button>
       </div>
     </template>
   </div>

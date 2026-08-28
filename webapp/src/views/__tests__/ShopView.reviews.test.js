@@ -105,10 +105,25 @@ describe('ShopView — вкладка отзывов и модерация', () 
     w.unmount()
   })
 
-  it('продавец видит, к какому заказу относится отзыв', async () => {
+  it('имя, затем звёзды; заказ справа в строке имени, товар под ним', async () => {
     const w = await mountReviews()
-    const metas = w.findAll('.seller-review .sr-meta')
-    expect(metas.map((m) => m.text())).toEqual(['Заказ #101', 'Заказ #102', 'Заказ #103'])
+    const reviews = w.findAll('.seller-review')
+    expect(reviews.map((r) => r.find('.sr-head .stars').text())).toEqual([
+      'Аноним · ★★',
+      'Аноним · ★',
+      'Аноним · ★★★★★',
+    ])
+    // номер заказа — справа в строке имени, товар — под ней
+    expect(reviews.map((r) => r.find('.sr-head .sr-order').text())).toEqual([
+      'Заказ #101',
+      'Заказ #102',
+      'Заказ #103',
+    ])
+    expect(reviews.map((r) => r.find('.sr-meta').text())).toEqual([
+      'Кружка',
+      'Кружка',
+      'Кружка',
+    ])
     w.unmount()
   })
 

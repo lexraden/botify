@@ -53,6 +53,18 @@ describe('OrderChat — чат заказа', () => {
     )
   })
 
+  it('кнопка отправки подсвечена и при пустом поле: клик просто ничего не шлёт', async () => {
+    fetchOrderChat.mockResolvedValue(openChat)
+    const wrapper = mount(OrderChat, { props: { botId: 1, orderId: 10 } })
+    await flushPromises()
+
+    const send = wrapper.find('.send')
+    expect(send.attributes('disabled')).toBeUndefined()
+    await send.trigger('click')
+    await flushPromises()
+    expect(sendOrderChatMessage).not.toHaveBeenCalled()
+  })
+
   it('отправка уходит в API и перечитывает историю', async () => {
     fetchOrderChat
       .mockResolvedValueOnce(openChat)
