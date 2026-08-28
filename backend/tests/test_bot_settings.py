@@ -88,9 +88,8 @@ async def test_catalog_button_can_be_hidden(db):
         )
 
     btn = msg.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
-    assert btn.text == "Open"
+    assert btn.text == "🛍 Open the shop"
     assert f"bot_id={bot_id}" in btn.web_app.url
-
 
 # --------------------------------------------------------------------------
 # Диплинк t.me/<bot>?start=settings и гард владельца
