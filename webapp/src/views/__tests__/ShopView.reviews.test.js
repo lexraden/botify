@@ -105,7 +105,7 @@ describe('ShopView — вкладка отзывов и модерация', () 
     w.unmount()
   })
 
-  it('имя, затем звёзды; заказ справа в строке имени, товар под ним', async () => {
+  it('имя, затем звёзды; справа колонкой — заказ, под ним товар', async () => {
     const w = await mountReviews()
     const reviews = w.findAll('.seller-review')
     expect(reviews.map((r) => r.find('.sr-head .stars').text())).toEqual([
@@ -113,13 +113,13 @@ describe('ShopView — вкладка отзывов и модерация', () 
       'Аноним · ★',
       'Аноним · ★★★★★',
     ])
-    // номер заказа — справа в строке имени, товар — под ней
+    // заказ и товар — в правой колонке шапки, товар под заказом
     expect(reviews.map((r) => r.find('.sr-head .sr-order').text())).toEqual([
       'Заказ #101',
       'Заказ #102',
       'Заказ #103',
     ])
-    expect(reviews.map((r) => r.find('.sr-meta').text())).toEqual([
+    expect(reviews.map((r) => r.find('.sr-head .sr-meta').text())).toEqual([
       'Кружка',
       'Кружка',
       'Кружка',

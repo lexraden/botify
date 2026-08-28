@@ -631,11 +631,13 @@ async function removeLogo() {
         <div v-else class="card reviews-block">
           <div v-for="r in reviews" :key="r.id" class="seller-review">
             <div class="sr-head">
-              <!-- имя, потом звёзды; справа — номер заказа: видно, о какой покупке речь -->
+              <!-- слева имя со звёздами; справа колонкой — заказ, под ним товар -->
               <span class="stars"><template v-if="r.author_name">{{ r.author_name }} · </template>{{ '★'.repeat(r.rating) }}</span>
-              <span class="muted sr-order">{{ t('reviews.orderLabel', { n: r.order_id }) }}</span>
+              <span class="sr-right">
+                <span class="muted sr-order">{{ t('reviews.orderLabel', { n: r.order_id }) }}</span>
+                <span class="sr-meta">{{ r.product_title }}</span>
+              </span>
             </div>
-            <p class="sr-meta">{{ r.product_title }}</p>
             <p v-if="r.body">{{ r.body }}</p>
             <p v-if="r.status !== 'published'" class="sr-status" :class="r.status">
               {{ r.status === 'pending' ? t('reviews.statusPending') : t('reviews.statusRejected') }}
@@ -898,9 +900,10 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .seller-review { border-top: 1px solid var(--surface2); padding-top: 8px; }
 .sr-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; flex-shrink: 0; }
-.sr-order { font-size: 12.5px; font-weight: 700; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-right { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
+.sr-order { font-size: 12.5px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seller-review p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; }
-.sr-meta { font-size: 12.5px; color: var(--sub); }
+.sr-meta { font-size: 12.5px; color: var(--sub); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sr-status { font-size: 12.5px; font-weight: 700; }
 .sr-status.pending { color: var(--accent); }
 .sr-status.rejected { color: var(--sub); }
