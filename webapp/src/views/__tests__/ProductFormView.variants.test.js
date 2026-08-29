@@ -84,75 +84,87 @@ describe('ProductFormView — вариации', () => {
     return w
   }
 
-  it('без вариаций форма показывает цену и остаток самого товара', async () => {
+  it('по умолчанию вариаций нет — обычная форма', async () => {
     const w = await mountNew()
     expect(w.find('.variant-card').exists()).toBe(false)
-    expect(priceInputs(w).length).toBe(1)
+    // цена одна, поле названия вариации не показано
+    expect(priceInputs(w)).toHaveLength(1)
+    expect(w.find('.add-variant').exists()).toBe(true)
   })
 
-  it('«+» заводит вариацию и наследует базовые данные товара', async () => {
+  it('товар без вариаций сохраняется без них — в базе не заводится ни строки', async () => {
+    const w = await mountNew()
+    saveProduct.mockResolvedValue({})
+    await w.findAll('input')[0].setValue('Кружка')
+    await priceInputs(w)[0].setValue('7')
+    await w.find('.actions .btn-primary').trigger('click')
+    await flushPromises()
+
+    const [, body] = saveProduct.mock.calls[0]
+    expect(body.variants).toEqual([])
+    expect(body.price).toBe('7')
+  })
+
+  it('«+» открывает такой же блок ниже, ничего не требуя заранее', async () => {
     const w = await mountNew()
     await priceInputs(w)[0].setValue('12')
-    await w.find('.variant-tabs .add').trigger('click')
+    await w.find('.add-variant').trigger('click')
 
-    const card = w.find('.variant-card')
-    expect(card.exists()).toBe(true)
-    // цена вариации предзаполнена ценой товара
-    expect(priceInputs(w)[0].element.value).toBe('12')
+    expect(w.findAll('.variant-card')).toHaveLength(1)
+    // блок наследует цену товара — правит продавец только отличия
+    expect(priceInputs(w)[1].element.value).toBe('12')
   })
 
-  it('вкладки переключают поля на выбранную вариацию', async () => {
-    const w = await mountExisting()
-    // открыта первая: её цена 5
-    expect(priceInputs(w)[0].element.value).toBe('5')
-
-    const tabs = w.findAll('.variant-tabs .tab')
-    await tabs[1].trigger('click') // вторая вариация
-    expect(priceInputs(w)[0].element.value).toBe('11')
-  })
-
-  it('подписи вкладок собираются из свойств вариации', async () => {
-    const w = await mountExisting()
-    const labels = w.findAll('.variant-tabs .tab .label').map((n) => n.text())
-    expect(labels.slice(0, 2)).toEqual(['Красный', 'Синий'])
-  })
-
-  it('сохранение шлёт вариации, а цену товара — минимальную из них', async () => {
-    const w = await mountExisting()
+  it('базовые поля становятся первой вариацией, добавленный блок — второй', async () => {
+    const w = await mountNew()
     saveProduct.mockResolvedValue({})
+    await w.findAll('input')[0].setValue('Футболка')
+    await priceInputs(w)[0].setValue('5')
+    await w.find('.add-variant').trigger('click')
+    await priceInputs(w)[1].setValue('11')
     await w.find('.actions .btn-primary').trigger('click')
     await flushPromises()
 
     const [, body] = saveProduct.mock.calls[0]
     expect(body.variants).toHaveLength(2)
-    expect(body.variants[0]).toMatchObject({
-      id: 10,
-      price: '5',
-      compare_at_price: '9',
-      stock: 3,
-      attributes: { Цвет: 'Красный' },
-      images: ['/api/images/a'],
-    })
-    // витринная цена товара — минимальная по вариациям
+    expect(body.variants.map((v) => v.price)).toEqual(['5', '11'])
+    // витринная цена товара — минимальная из вариаций
     expect(body.price).toBe('5')
   })
 
-  it('старая цена ниже текущей не сохраняется', async () => {
-    const w = await mountExisting()
-    // у первой вариации ставим старую цену ниже текущей
-    const inputs = priceInputs(w)
-    await inputs[1].setValue('1') // compare_at_price
+  it('название вариации уходит свойством', async () => {
+    const w = await mountNew()
+    saveProduct.mockResolvedValue({})
+    await w.findAll('input')[0].setValue('Футболка')
+    await priceInputs(w)[0].setValue('5')
+    await w.find('.add-variant').trigger('click')
+    // первое текстовое поле блока — название вариации
+    const labels = w.findAll('.variant-card input')
+    await labels[0].setValue('Синий, L')
     await w.find('.actions .btn-primary').trigger('click')
     await flushPromises()
 
-    expect(saveProduct).not.toHaveBeenCalled()
-    expect(w.find('.error').text()).toBeTruthy()
+    const [, body] = saveProduct.mock.calls[0]
+    expect(Object.values(body.variants[1].attributes)).toEqual(['Синий, L'])
   })
 
-  it('удаление вариации убирает вкладку', async () => {
+  it('сохранённый товар раскладывается обратно: первая в форму, остальные блоками', async () => {
+    const w = await mountExisting()
+    // базовая цена — от первой вариации
+    expect(priceInputs(w)[0].element.value).toBe('5')
+    // вторая пришла отдельным блоком
+    expect(w.findAll('.variant-card')).toHaveLength(1)
+    expect(priceInputs(w)[1].element.value).toBe('11')
+  })
+
+  it('убрать блок можно, и тогда остаётся обычный товар', async () => {
     const w = await mountExisting()
     await w.find('.variant-head .danger').trigger('click')
-    // осталась одна вариация плюс кнопка «добавить»
-    expect(w.findAll('.variant-tabs .tab')).toHaveLength(2)
+    expect(w.findAll('.variant-card')).toHaveLength(0)
+
+    saveProduct.mockResolvedValue({})
+    await w.find('.actions .btn-primary').trigger('click')
+    await flushPromises()
+    expect(saveProduct.mock.calls[0][1].variants).toEqual([])
   })
 })

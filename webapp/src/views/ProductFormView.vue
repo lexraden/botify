@@ -5,7 +5,6 @@ import { fetchProducts, saveProduct, uploadProductImage } from '../api'
 import { t } from '../i18n'
 import { apiError } from '../services/apiError'
 import { MAX_PICK_MB } from '../services/imageCompress'
-import VariantTabs from '../components/VariantTabs.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,108 +24,80 @@ const form = ref({
   is_active: true,
 })
 
-// --- вариации ---
-// Товар либо без них (цена и остаток на нём самом — так было всегда), либо с
-// ними, и тогда цена, остаток и фото живут в вариации. Витринные price/stock
-// товара бэкенд пересчитывает сам при сохранении, поэтому здесь их не трогаем.
-//
-// Свойства («Цвет: Красный») редактируются массивом пар, а не объектом:
-// в объекте две пустых строки схлопнулись бы в одну, а пустое имя нельзя
-// было бы править. В объект набор превращается только при сохранении.
-const variants = ref([])
-const activeVariant = ref(0)
-const hasVariants = computed(() => form.value.type === 'physical' && variants.value.length > 0)
-const current = computed(() => variants.value[activeVariant.value] || null)
-const MAX_ATTRS = 6
-
-function blankVariant() {
-  // новая вариация наследует базовые данные товара — продавцу остаётся
-  // поправить только то, чем она отличается
-  return {
-    id: null,
-    sku: '',
-    attrs: [{ name: '', value: '' }],
-    price: form.value.price || '',
-    compare_at_price: '',
-    stock: form.value.stock || '',
-    images: form.value.image_url ? [form.value.image_url] : [],
-    is_active: true,
-  }
-}
+// --- дополнительные вариации ---
+// Заполнять ничего заранее не нужно: обычная форма — это и есть товар (он же
+// первая вариация). Нажали «+» — снизу открылся такой же блок: подпись, фото,
+// цена, остаток. Не нажали — товар сохраняется как раньше, без вариаций
+// вовсе, и в базе у него не появляется ни одной строки.
+const extras = ref([])
+// id первой вариации и её подпись: базовые поля формы — это она и есть
+const baseVariantId = ref(null)
+const baseLabel = ref('')
+const hasVariants = computed(() => form.value.type === 'physical' && extras.value.length > 0)
 
 function addVariant() {
-  variants.value.push(blankVariant())
-  activeVariant.value = variants.value.length - 1
+  extras.value.push({
+    id: null,
+    label: '',
+    image_url: '',
+    price: form.value.price || '',
+    stock: form.value.stock || '',
+  })
 }
 
 function removeVariant(i) {
-  variants.value.splice(i, 1)
-  if (activeVariant.value >= variants.value.length) {
-    activeVariant.value = Math.max(0, variants.value.length - 1)
-  }
+  extras.value.splice(i, 1)
 }
 
-function addAttr(variant) {
-  if (variant.attrs.length < MAX_ATTRS) variant.attrs.push({ name: '', value: '' })
+// Подпись вариации — одно свободное поле («Красный, M»), а не набор пар:
+// в базе это по-прежнему словарь свойств, просто с единственным ключом
+function labelToAttributes(label) {
+  const value = String(label).trim()
+  return value ? { [t('form.variantAttr')]: value } : null
 }
 
-function dropAttr(variant, i) {
-  variant.attrs.splice(i, 1)
-  if (!variant.attrs.length) variant.attrs.push({ name: '', value: '' })
+function attributesToLabel(attributes) {
+  return Object.values(attributes || {})
+    .map((x) => String(x).trim())
+    .filter(Boolean)
+    .join(', ')
 }
 
-// подпись вариации для вкладки — только заполненные свойства
-function attrsObject(variant) {
-  const out = {}
-  for (const { name, value } of variant.attrs) {
-    const key = String(name).trim()
-    const val = String(value).trim()
-    if (key && val) out[key] = val
-  }
-  return Object.keys(out).length ? out : null
-}
+// Фото вариации: тот же загрузчик и то же сжатие, что у главного фото товара
+const extraFileInput = ref(null)
+const uploadingFor = ref(null) // индекс блока, у которого идёт загрузка
 
-// вкладкам нужен объект свойств — считаем его на лету
-const tabVariants = computed(() =>
-  variants.value.map((v) => ({ attributes: attrsObject(v), is_active: v.is_active })),
-)
-
-// Фото вариации: загружаются в ту, что открыта сейчас. Тот же загрузчик и то
-// же сжатие, что у главного фото товара — путь один на всё приложение.
-const variantFileInput = ref(null)
-const uploadingVariantImage = ref(false)
-const MAX_VARIANT_IMAGES = 8
-
-async function onPickVariantImage(e) {
-  const files = Array.from(e.target.files || [])
+async function onPickExtraImage(e) {
+  const file = e.target.files?.[0]
   e.target.value = ''
-  const variant = current.value
-  if (!files.length || !variant) return
+  const i = uploadingFor.value
+  const variant = extras.value[i]
+  if (!file || !variant) {
+    uploadingFor.value = null
+    return
+  }
   imageError.value = ''
-  const room = MAX_VARIANT_IMAGES - variant.images.length
-  if (room <= 0) return
-  uploadingVariantImage.value = true
+  if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+    imageError.value = t('form.fileTooBig', { n: MAX_IMAGE_MB })
+    uploadingFor.value = null
+    return
+  }
   try {
-    for (const file of files.slice(0, room)) {
-      if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
-        imageError.value = t('form.fileTooBig', { n: MAX_IMAGE_MB })
-        continue
-      }
-      const res = await uploadProductImage(botId.value, file)
-      variant.images.push(res.url)
-    }
+    const res = await uploadProductImage(botId.value, file)
+    variant.image_url = res.url
   } catch (err) {
     imageError.value = apiError(err, 'form.uploadError')
   } finally {
-    uploadingVariantImage.value = false
+    uploadingFor.value = null
   }
 }
 
-function dropVariantImage(i) {
-  current.value?.images.splice(i, 1)
+function pickExtraImage(i) {
+  uploadingFor.value = i
+  extraFileInput.value.click()
 }
 
-// кол-во на складе — целое от 0; пустое поле значит «не учитывать» (только у товаров)
+// кол-во на складе// кол-во на складе — целое от 0; пустое поле значит «не учитывать» (только у товаров)
 const stockInvalid = computed(
   () =>
     form.value.type === 'physical' &&
@@ -193,19 +164,23 @@ onMounted(async () => {
       stock: p.stock == null ? '' : String(p.stock),
       is_active: p.is_active,
     }
-    variants.value = (p.variants || []).map((v) => ({
-      id: v.id,
-      sku: v.sku || '',
-      attrs: Object.entries(v.attributes || {}).map(([name, value]) => ({ name, value })) || [],
-      price: v.price == null ? '' : String(Number(v.price)),
-      compare_at_price: v.compare_at_price == null ? '' : String(Number(v.compare_at_price)),
-      stock: v.stock == null ? '' : String(v.stock),
-      images: [...(v.images || [])],
-      is_active: v.is_active !== false,
-    }))
-    // у вариации без свойств должна остаться пустая строка для ввода
-    for (const v of variants.value) {
-      if (!v.attrs.length) v.attrs.push({ name: '', value: '' })
+    // Первая вариация — это и есть базовые поля формы; остальные ложатся
+    // блоками ниже. Так продавец видит ровно то же, что заполнял.
+    const saved = p.variants || []
+    if (saved.length) {
+      const [first, ...rest] = saved
+      form.value.price = first.price == null ? '' : String(Number(first.price))
+      form.value.stock = first.stock == null ? '' : String(first.stock)
+      if (first.images?.length) form.value.image_url = first.images[0]
+      baseVariantId.value = first.id
+      baseLabel.value = attributesToLabel(first.attributes)
+      extras.value = rest.map((v) => ({
+        id: v.id,
+        label: attributesToLabel(v.attributes),
+        image_url: v.images?.[0] || '',
+        price: v.price == null ? '' : String(Number(v.price)),
+        stock: v.stock == null ? '' : String(v.stock),
+      }))
     }
   }
 })
@@ -221,47 +196,48 @@ function normalPrice(raw) {
 async function submit() {
   if (saving.value) return
 
-  // У товара с вариациями цена и остаток берутся из них: витринные price и
-  // stock товара бэкенд пересчитает сам. Но price в запросе обязателен, так
-  // что шлём минимальную — она же и окажется в ответе.
-  let price = normalPrice(form.value.price)
-  const payloadVariants = hasVariants.value
-    ? variants.value.map((v) => ({
-        id: v.id,
-        sku: v.sku || null,
-        attributes: attrsObject(v),
-        price: normalPrice(v.price),
-        compare_at_price: v.compare_at_price === '' ? null : normalPrice(v.compare_at_price),
-        stock: v.stock === '' ? null : Number(v.stock),
-        images: v.images.length ? v.images : null,
-        is_active: v.is_active,
-      }))
-    : null
+  const basePrice = normalPrice(form.value.price)
+  if (basePrice === null) {
+    error.value = t('form.priceInvalid')
+    return
+  }
 
-  if (payloadVariants) {
-    const bad = payloadVariants.findIndex((v) => v.price === null)
+  // Вариации отправляем только если продавец нажимал «+». Первая — это
+  // базовые поля формы: их же он и заполнял как обычно.
+  let payloadVariants = null
+  let price = basePrice
+  if (hasVariants.value) {
+    const rows = [
+      {
+        id: baseVariantId.value,
+        label: baseLabel.value,
+        price: basePrice,
+        stock: form.value.stock,
+        image_url: form.value.image_url,
+      },
+      ...extras.value.map((v) => ({ ...v, price: normalPrice(v.price) })),
+    ]
+    const bad = rows.findIndex((v) => v.price === null)
     if (bad !== -1) {
-      activeVariant.value = bad
       error.value = t('form.priceInvalid')
       return
     }
-    const noDiscount = payloadVariants.findIndex(
-      (v) => v.compare_at_price !== null && Number(v.compare_at_price) <= Number(v.price),
-    )
-    if (noDiscount !== -1) {
-      activeVariant.value = noDiscount
-      error.value = t('form.compareInvalid')
-      return
-    }
+    payloadVariants = rows.map((v) => ({
+      id: v.id,
+      sku: null,
+      attributes: labelToAttributes(v.label),
+      price: v.price,
+      compare_at_price: null,
+      stock: v.stock === '' ? null : Number(v.stock),
+      images: v.image_url ? [v.image_url] : null,
+      is_active: true,
+    }))
+    // витринная цена товара — минимальная из вариаций; бэкенд пересчитает её
+    // сам, но price в запросе обязателен
     price = payloadVariants.reduce(
       (min, v) => (min === null || Number(v.price) < Number(min) ? v.price : min),
       null,
     )
-  }
-
-  if (price === null) {
-    error.value = t('form.priceInvalid')
-    return
   }
 
   saving.value = true
@@ -359,93 +335,79 @@ async function submit() {
     <label>{{ t('form.descLabel') }}</label>
     <textarea v-model="form.description" rows="3" :placeholder="t('form.descPh')" />
 
-    <!-- Вариации только у физического товара: у услуги или файла нет ни
-         размера, ни цвета — бэкенд их для остальных типов и не принимает. -->
+    <!-- Цена и остаток — как обычно. Если продавец добавит вариации, эти же
+         поля станут первой из них: заполнять заранее ничего не нужно. -->
+    <template v-if="hasVariants">
+      <label>{{ t('form.variantLabelField') }}</label>
+      <input v-model="baseLabel" maxlength="64" :placeholder="t('form.variantLabelPh')" />
+    </template>
+
+    <label>{{ t('form.priceLabel') }}</label>
+    <input v-model="form.price" inputmode="decimal" placeholder="9.99" />
+
     <template v-if="form.type === 'physical'">
-      <label>{{ t('form.variantsLabel') }}</label>
-      <p class="hint">{{ t('form.variantsHint') }}</p>
-      <VariantTabs
-        :variants="tabVariants"
-        :active="activeVariant"
-        @select="activeVariant = $event"
-        @add="addVariant"
-      />
-    </template>
-
-    <!-- Без вариаций цена и остаток живут на самом товаре, как и раньше -->
-    <template v-if="!hasVariants">
-      <label>{{ t('form.priceLabel') }}</label>
-      <input v-model="form.price" inputmode="decimal" placeholder="9.99" />
-
-      <template v-if="form.type === 'physical'">
-        <label>{{ t('form.stockLabel') }}</label>
-        <input v-model="form.stock" inputmode="numeric" :placeholder="t('form.stockPh')" />
-        <p v-if="stockInvalid" class="error">{{ t('form.stockInvalid') }}</p>
-      </template>
-    </template>
-
-    <!-- Поля открытой вариации -->
-    <div v-else-if="current" class="variant-card">
-      <div class="variant-head">
-        <b>{{ t('form.variantN', { n: activeVariant + 1 }) }}</b>
-        <button type="button" class="link danger" @click="removeVariant(activeVariant)">
-          {{ t('form.removeVariant') }}
-        </button>
-      </div>
-
-      <label>{{ t('form.attrsLabel') }}</label>
-      <div v-for="(row, i) in current.attrs" :key="i" class="attr-row">
-        <input v-model="row.name" maxlength="64" :placeholder="t('form.attrNamePh')" />
-        <input v-model="row.value" maxlength="64" :placeholder="t('form.attrValuePh')" />
-        <button type="button" class="drop" :aria-label="t('form.remove')" @click="dropAttr(current, i)">✕</button>
-      </div>
-      <button
-        v-if="current.attrs.length < MAX_ATTRS"
-        type="button"
-        class="link"
-        @click="addAttr(current)"
-      >{{ t('form.addAttr') }}</button>
-
-      <label>{{ t('form.priceLabel') }}</label>
-      <input v-model="current.price" inputmode="decimal" placeholder="9.99" />
-
-      <label>{{ t('form.compareLabel') }}</label>
-      <p class="hint">{{ t('form.compareHint') }}</p>
-      <input v-model="current.compare_at_price" inputmode="decimal" placeholder="19.99" />
-
       <label>{{ t('form.stockLabel') }}</label>
-      <input v-model="current.stock" inputmode="numeric" :placeholder="t('form.stockPh')" />
+      <input v-model="form.stock" inputmode="numeric" :placeholder="t('form.stockPh')" />
+      <p v-if="stockInvalid" class="error">{{ t('form.stockInvalid') }}</p>
+    </template>
 
-      <label>{{ t('form.skuLabel') }}</label>
-      <input v-model="current.sku" maxlength="64" :placeholder="t('form.skuPh')" />
-
-      <label>{{ t('form.variantPhotos') }}</label>
+    <!-- Дополнительные вариации: такой же блок, только ниже -->
+    <template v-if="form.type === 'physical'">
       <input
-        ref="variantFileInput"
+        ref="extraFileInput"
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
-        multiple
         hidden
-        @change="onPickVariantImage"
+        @change="onPickExtraImage"
       />
-      <div class="gallery">
-        <div v-for="(url, i) in current.images" :key="url + i" class="shot">
-          <img :src="url" alt="" />
-          <button type="button" class="drop" :aria-label="t('form.remove')" @click="dropVariantImage(i)">✕</button>
+
+      <div v-for="(v, i) in extras" :key="i" class="variant-card">
+        <div class="variant-head">
+          <b>{{ t('form.variantN', { n: i + 2 }) }}</b>
+          <button type="button" class="link danger" @click="removeVariant(i)">
+            {{ t('form.removeVariant') }}
+          </button>
         </div>
+
+        <label>{{ t('form.variantLabelField') }}</label>
+        <input v-model="v.label" maxlength="64" :placeholder="t('form.variantLabelPh')" />
+
+        <label>{{ t('form.photoLabel') }}</label>
         <button
-          v-if="current.images.length < MAX_VARIANT_IMAGES"
+          v-if="!v.image_url"
+          class="drop-zone small"
           type="button"
-          class="shot add"
-          :disabled="uploadingVariantImage"
-          @click="variantFileInput.click()"
-        >{{ uploadingVariantImage ? '…' : '+' }}</button>
+          :disabled="uploadingFor === i"
+          @click="pickExtraImage(i)"
+        >
+          <span class="drop-icon">+</span>
+          <span>{{ uploadingFor === i ? t('form.uploading') : t('form.pickPhoto') }}</span>
+        </button>
+        <div v-else class="image-box wide">
+          <div class="thumb big"><img :src="v.image_url" :alt="v.label" /></div>
+          <div class="image-actions">
+            <button class="btn btn-soft act" type="button" @click="pickExtraImage(i)">
+              {{ uploadingFor === i ? '…' : t('form.replace') }}
+            </button>
+            <button class="btn btn-soft act" type="button" @click="v.image_url = ''">
+              {{ t('form.remove') }}
+            </button>
+          </div>
+        </div>
+
+        <label>{{ t('form.priceLabel') }}</label>
+        <input v-model="v.price" inputmode="decimal" placeholder="9.99" />
+
+        <label>{{ t('form.stockLabel') }}</label>
+        <input v-model="v.stock" inputmode="numeric" :placeholder="t('form.stockPh')" />
       </div>
 
-      <label class="check">
-        <input type="checkbox" v-model="current.is_active" /> {{ t('form.variantActive') }}
-      </label>
-    </div>
+      <button type="button" class="add-variant" @click="addVariant">
+        <span class="drop-icon">+</span>
+        <span>{{ t('form.addVariant') }}</span>
+      </button>
+      <p class="hint">{{ t('form.variantsHint') }}</p>
+    </template>
 
     <template v-if="form.type !== 'physical'">
       <label>{{ t('form.digitalUrlLabel') }}</label>
@@ -539,4 +501,12 @@ textarea { resize: none; }
   border: 1.5px dashed var(--accent); background: var(--accent-soft);
   color: var(--accent); font-size: 22px; font-weight: 700; cursor: pointer;
 }
+.add-variant {
+  width: 100%; margin-top: 10px; padding: 13px; border-radius: 14px;
+  border: 1.5px dashed var(--accent); background: var(--accent-soft);
+  color: var(--accent); font-size: 14px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.add-variant .drop-icon { font-size: 20px; }
+.drop-zone.small { min-height: 96px; }
 </style>
