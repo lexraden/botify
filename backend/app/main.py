@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import logging
 from contextlib import asynccontextmanager
 from decimal import Decimal
@@ -132,7 +133,11 @@ app.include_router(admin.router, prefix="/api")
 
 
 def check_telegram_secret(secret: str | None) -> None:
-    if secret != get_settings().telegram_webhook_secret:
+    # compare_digest, а не «!=»: сравнение секрета обычной строкой выходит из
+    # цикла на первом несовпавшем символе. Рядом (webapp_auth, payments/client)
+    # константное сравнение уже используется — пусть будет везде одинаково.
+    expected = get_settings().telegram_webhook_secret
+    if secret is None or not hmac.compare_digest(secret, expected):
         raise HTTPException(status_code=403, detail="bad secret token")
 
 

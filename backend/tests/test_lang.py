@@ -113,7 +113,10 @@ async def test_lang_set_persists_and_confirms_in_new_language(db):
     applied.assert_awaited_once()
 
 
-async def test_unknown_seller_gets_start_first_alert():
+async def test_unknown_seller_gets_start_first_alert(db):
+    # фикстура нужна не ради данных, а ради жизненного цикла движка: set_lang
+    # ходит в базу, и без db соединение остаётся в пуле от уже закрытого
+    # event loop — следующий тест с db падает на «attached to a different loop»
     callback = fake_callback(fake_message(), "lang:set:en", user_id=404404)
     await lang.set_lang(callback)
     args, kwargs = callback.answer.await_args
