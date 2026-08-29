@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { fetchProducts, saveProduct, uploadProductImage } from '../api'
 import { t } from '../i18n'
 import { apiError } from '../services/apiError'
+import { MAX_PICK_MB } from '../services/imageCompress'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,7 +38,7 @@ const uploadingImage = ref(false)
 const imageError = ref('')
 // спиннер в маленьком окне: и пока файл грузится, и пока картинка не отрисовалась
 const imgLoading = ref(false)
-const MAX_IMAGE_MB = 5
+const MAX_IMAGE_MB = MAX_PICK_MB
 
 watch(
   () => form.value.image_url,

@@ -21,6 +21,7 @@ import {
 } from '../api'
 import { t, intlLocale } from '../i18n'
 import { openTelegramLink } from '../services/telegram'
+import { MAX_PICK_MB } from '../services/imageCompress'
 
 const route = useRoute()
 const router = useRouter()
@@ -239,7 +240,7 @@ async function removeProduct(p) {
 // того, как сам fulfill принял сервер.
 const MAX_FULFILL_PHOTOS = 3
 // как у фото товара и лого магазина: тяжёлое молча не берём
-const MAX_FULFILL_MB = 5
+const MAX_FULFILL_MB = MAX_PICK_MB
 
 const fulfillPhotoInput = ref(null)
 const fulfillForm = ref({ orderId: null, value: '', photos: [], sending: false })
@@ -321,7 +322,7 @@ async function submitFulfill() {
 // --- идентичность магазина в шапке витрины: показное имя и логотип ---
 // Панель открывается кликом по аватарке в шапке кабинета. Лого уезжает на
 // сервер сразу после выбора файла (как фото товара), имя — по кнопке.
-const MAX_LOGO_MB = 5
+const MAX_LOGO_MB = MAX_PICK_MB
 
 const identityOpen = ref(false)
 const shopName = ref('')

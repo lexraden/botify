@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { getBotId, getInitData } from './services/telegram'
+import { compressImage } from './services/imageCompress'
 import { storedLocale } from './services/locale'
 import { startLoading, stopLoading } from './services/loading'
 
@@ -77,9 +78,9 @@ export const fetchShopStats = (botId) => api.get(`/seller/bots/${botId}/stats`).
 export const updateShopName = (botId, name) =>
   api.put(`/seller/bots/${botId}/shop-name`, { shop_name: name }).then((r) => r.data)
 // лого: сырые байты файла, тип сервер определяет по содержимому
-export const uploadShopLogo = (botId, file) =>
+export const uploadShopLogo = async (botId, file) =>
   api
-    .post(`/seller/bots/${botId}/shop-logo`, file, {
+    .post(`/seller/bots/${botId}/shop-logo`, await compressImage(file), {
       headers: { 'Content-Type': 'application/octet-stream' },
     })
     .then((r) => r.data)
@@ -95,9 +96,9 @@ export const saveProduct = (botId, product) =>
 export const deleteProduct = (botId, id) =>
   api.delete(`/seller/bots/${botId}/products/${id}`).then((r) => r.data)
 // фото товара: сырые байты файла, тип сервер определяет по содержимому
-export const uploadProductImage = (botId, file) =>
+export const uploadProductImage = async (botId, file) =>
   api
-    .post(`/seller/bots/${botId}/product-image`, file, {
+    .post(`/seller/bots/${botId}/product-image`, await compressImage(file), {
       headers: { 'Content-Type': 'application/octet-stream' },
     })
     .then((r) => r.data)
@@ -121,13 +122,13 @@ export const fetchOrderChat = (botId, orderId, silent = false) =>
 export const sendOrderChatMessage = (botId, orderId, body) =>
   api.post(`/seller/bots/${botId}/orders/${orderId}/chat/messages`, { body }).then((r) => r.data)
 // фото в чат: сырые байты файла (как у фото товара), черновик уезжает подписью
-export const sendOrderChatPhoto = (botId, orderId, file, caption) =>
+export const sendOrderChatPhoto = async (botId, orderId, file, caption) =>
   api
     .post(
       `/seller/bots/${botId}/orders/${orderId}/chat/photo${
         caption ? `?caption=${encodeURIComponent(caption)}` : ''
       }`,
-      file,
+      await compressImage(file),
       { headers: { 'Content-Type': 'application/octet-stream' } },
     )
     .then((r) => r.data)
