@@ -521,23 +521,15 @@ textarea { resize: none; }
 .variant-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .link { border: 0; background: none; color: var(--accent); font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 0; }
 .link.danger { color: var(--red); }
-.attr-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
-.attr-row input { flex: 1; min-width: 0; }
-.drop {
-  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px; border: 0;
-  background: var(--surface); color: var(--sub); cursor: pointer; font-size: 13px;
-}
-.gallery { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
-.shot { position: relative; width: 68px; height: 68px; border-radius: 12px; overflow: hidden; }
-.shot img { width: 100%; height: 100%; object-fit: cover; }
-.shot .drop { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; background: rgba(0,0,0,0.55); color: #fff; }
-.shot.add {
-  border: 1.5px dashed var(--accent); background: var(--accent-soft);
-  color: var(--accent); font-size: 22px; font-weight: 700; cursor: pointer;
-}
+/* Ряд вариаций — тот же ритм, что у выбора типа выше: вертикальный отступ
+   обязан совпадать с .types button, иначе кнопки схлопываются до высоты
+   строки и ряд перестаёт читаться как продолжение типа товара */
 .vrow { flex-wrap: wrap; }
-.vrow button { flex: 0 1 auto; min-width: 84px; padding: 0 13px; }
-.vrow .plus { border-style: dashed; border-color: var(--accent); color: var(--accent); }
+.vrow button { flex: 0 1 auto; padding: 11px 15px; }
+.vrow .plus {
+  border-style: dashed; border-color: var(--accent); color: var(--accent);
+  padding: 11px 18px;
+}
 .legacy-add {
   width: 100%; margin-top: 10px; padding: 13px; border-radius: 14px;
   border: 1.5px dashed var(--accent); background: var(--accent-soft);
