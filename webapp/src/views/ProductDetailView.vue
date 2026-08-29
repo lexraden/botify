@@ -48,6 +48,15 @@ const gallery = computed(() => {
 })
 
 const soldOut = computed(() => shown.value?.stock === 0)
+// Точный склад покупателю ни к чему: это шум, да и оборот магазина наружу.
+// Малый остаток показываем числом — это правда и повод поторопиться.
+const LOW_STOCK = 10
+const stockLine = computed(() => {
+  const left = shown.value?.stock
+  return left != null && left <= LOW_STOCK
+    ? t('product.left', { n: left })
+    : t('product.inStock')
+})
 const qty = computed(() =>
   product.value ? cart.qtyOf(product.value.id, chosen.value?.id ?? null) : 0,
 )
@@ -107,7 +116,7 @@ onMounted(async () => {
           ★ {{ Number(product.avg_rating).toFixed(1) }} · {{ product.reviews_count }}
         </span>
         <span v-if="soldOut" class="state soldout">{{ t('product.soldOut') }}</span>
-        <span v-else-if="shown.stock != null" class="state">{{ t('product.left', { n: shown.stock }) }}</span>
+        <span v-else-if="shown.stock != null" class="state">{{ stockLine }}</span>
       </div>
 
       <!-- Выбор вариации. Без него покупатель не смог бы купить то, что
