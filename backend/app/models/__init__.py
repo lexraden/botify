@@ -1,6 +1,6 @@
 from app.models.base import Base
 from app.models.bots import SellerBot
-from app.models.catalog import Category, Product, ProductImage, ShopLogo
+from app.models.catalog import Category, Product, ProductImage, ProductVariant, ShopLogo
 from app.models.channels import Channel
 from app.models.chat import ChatImage, ChatMessage, OrderChat
 from app.models.customers import Customer
@@ -23,6 +23,7 @@ __all__ = [
     "Category",
     "Product",
     "ProductImage",
+    "ProductVariant",
     "ShopLogo",
     "Order",
     "OrderItem",

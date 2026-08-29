@@ -53,6 +53,65 @@ class Product(Base, CreatedAtMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     seller = relationship("Seller", back_populates="products")
+    variants = relationship(
+        "ProductVariant",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductVariant.position",
+    )
+
+
+class ProductVariant(Base, CreatedAtMixin):
+    """Вариация товара: цвет, размер, комплектация.
+
+    Товар либо не имеет вариаций вовсе (тогда цена и остаток живут на нём
+    самом — так работали все товары до этой таблицы), либо имеет их одну и
+    больше, и тогда источник правды по цене, остатку и фотографиям — вариация.
+
+    `products.price` и `products.stock` при этом не выключаются, а
+    пересчитываются при сохранении: цена — минимальная из вариаций («от 500»),
+    остаток — сумма. Благодаря этому витрина, карточки товара, статистика и
+    сверка платежей читают товар ровно как раньше и ничего про вариации не
+    знают — знать о них обязаны только корзина, оформление заказа и списание
+    остатка.
+    """
+
+    __tablename__ = "product_variants"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    # Дублируем магазин, как и в остальном каталоге: изоляция по bot_id — это
+    # то, что проверяется в каждом запросе, и джойн ради неё был бы лишним
+    bot_id: Mapped[int] = mapped_column(
+        ForeignKey("seller_bots.id", ondelete="CASCADE"), index=True
+    )
+
+    # Артикул продавца. Не уникален на уровне базы намеренно: у продавцов
+    # своя нумерация, и падать при сохранении из-за совпадения — не наше дело
+    sku: Mapped[str | None] = mapped_column(String(64))
+
+    # Свойства вариации: {"Цвет": "Красный", "Размер": "M"}. Словарём, а не
+    # колонками, потому что набор свойств у каждого товара свой
+    attributes: Mapped[dict | None] = mapped_column(JsonB)
+
+    price: Mapped[float] = mapped_column(Numeric(18, 6))
+    # Зачёркнутая «старая» цена. None — скидки нет
+    compare_at_price: Mapped[float | None] = mapped_column(Numeric(18, 6))
+
+    # Остаток этой вариации; None — не ограничен (как и у товара)
+    stock: Mapped[int | None] = mapped_column(Integer)
+
+    # Адреса картинок вариации — тот же формат, что и products.image_url
+    # («/api/images/{token}»), только списком. Отдельной таблицы не заводим:
+    # хранилище байтов уже есть (ProductImage), и оно одно на весь каталог
+    images: Mapped[list | None] = mapped_column(JsonB)
+
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    product = relationship("Product", back_populates="variants")
 
 
 def new_image_token() -> str:

@@ -11,7 +11,16 @@ from app.bots.runner import make_seller_bot
 from app.config import get_settings
 from app.db import get_session
 from app.money import fmt
-from app.models import Customer, Order, OrderItem, Payout, Product, Seller, SellerBot
+from app.models import (
+    Customer,
+    Order,
+    OrderItem,
+    Payout,
+    Product,
+    ProductVariant,
+    Seller,
+    SellerBot,
+)
 from app.payments.client import get_crypto_pay
 from app.security import decrypt_bot_token
 from app.services import seller_texts
@@ -170,34 +179,46 @@ async def handle_invoice_paid(
         # вебхука сюда не доходит, поэтому дважды списать невозможно. Условный
         # UPDATE атомарен — два заказа на последнюю штуку не уведут сток в минус.
         # Товары со стоком NULL учёту штук не подлежат.
-        qty_by_product: dict[int, int] = {}
-        titles: dict[int, str] = {}
+        # Ключ — (модель, id): у товара с вариациями остаток живёт на вариации,
+        # и списывать его с товара значило бы не тронуть тот размер, который
+        # реально купили. products.stock у таких товаров — витринная сумма,
+        # её пересчитывает сохранение товара (services/variants.py)
+        qty_by_row: dict[tuple[str, int], int] = {}
+        titles: dict[tuple[str, int], str] = {}
         for item, product in items:
-            titles[item.product_id] = product.title
-            if product.stock is None:
-                continue
-            qty_by_product[item.product_id] = qty_by_product.get(item.product_id, 0) + item.qty
+            if item.variant_id is not None:
+                key = ("variant", item.variant_id)
+                label = item.variant_label or ""
+                titles[key] = f"{product.title} ({label})" if label else product.title
+            else:
+                if product.stock is None:
+                    continue
+                key = ("product", item.product_id)
+                titles[key] = product.title
+            qty_by_row[key] = qty_by_row.get(key, 0) + item.qty
         # Товары, которых не хватило: деньги уже приняты, отправить их нечем.
         # Молча это оставлять нельзя — возврата в MVP нет, разбираться сторонам
         # придётся вручную, и узнать о проблеме они должны сразу.
         sold_out: list[str] = []
-        for product_id, qty in qty_by_product.items():
+        for (kind, row_id), qty in qty_by_row.items():
+            model = ProductVariant if kind == "variant" else Product
             spent = await session.execute(
-                update(Product)
+                update(model)
                 .where(
-                    Product.id == product_id,
-                    or_(Product.stock.is_(None), Product.stock >= qty),
+                    model.id == row_id,
+                    or_(model.stock.is_(None), model.stock >= qty),
                 )
-                .values(stock=Product.stock - qty)
+                .values(stock=model.stock - qty)
                 .execution_options(synchronize_session=False)
             )
             if spent.rowcount == 0:
                 # гонка «чекнулись, пока сток кончился»: деньги уже приняты,
                 # заказ не разворачиваем, но и отрицательный сток не пишем
-                sold_out.append(titles.get(product_id, str(product_id)))
+                sold_out.append(titles.get((kind, row_id), str(row_id)))
                 logger.error(
-                    "Недостаточно стока товара id=%s для заказа %s (нужно %s) — сток не списан",
-                    product_id,
+                    "Недостаточно стока %s id=%s для заказа %s (нужно %s) — сток не списан",
+                    kind,
+                    row_id,
                     order.id,
                     qty,
                 )

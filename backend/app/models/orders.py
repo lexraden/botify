@@ -68,6 +68,15 @@ class OrderItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"))
+    # Какая именно вариация куплена. NULL — товар без вариаций (так выглядят
+    # все заказы до появления таблицы product_variants)
+    variant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("product_variants.id", ondelete="RESTRICT")
+    )
+    # Снимок свойств вариации на момент покупки — «Красный · M». Цену мы уже
+    # снимаем по той же причине: продавец переименует вариацию или заменит
+    # набор размеров, а в старом заказе должно остаться то, что купили
+    variant_label: Mapped[str | None] = mapped_column(String(128))
     qty: Mapped[int] = mapped_column(Integer, default=1)
     price: Mapped[float] = mapped_column(Numeric(18, 6))  # цена на момент покупки
 

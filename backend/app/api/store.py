@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import BuyerContext, get_buyer, get_buyer_any_shop
 from app.config import get_settings
@@ -25,10 +26,25 @@ from app.models import (
 from app.models.orders import PAID_STATUSES
 from app.services import seller_texts
 from app.services.reviews import notify_new_review, random_author_name
+from app.services.variants import variant_label
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/store/{bot_id}")
+
+
+class VariantOut(BaseModel):
+    """Вариация на витрине. Цена, остаток и фото у каждой свои."""
+
+    id: int
+    sku: str | None
+    attributes: dict | None
+    price: Decimal
+    compare_at_price: Decimal | None
+    stock: int | None
+    images: list | None
+
+    model_config = {"from_attributes": True}
 
 
 class ProductOut(BaseModel):
@@ -44,6 +60,10 @@ class ProductOut(BaseModel):
     # рейтинг: среднее по отзывам покупателей; нет отзывов — None и ноль
     avg_rating: float | None = None
     reviews_count: int = 0
+    # Пусто — у товара нет вариаций, покупается он сам. Иначе покупатель
+    # обязан выбрать вариацию: цена и остаток товара тут лишь витринные
+    # («от 500», сумма остатков), а платят за конкретную
+    variants: list[VariantOut] = []
 
     model_config = {"from_attributes": True}
 
@@ -64,6 +84,9 @@ class ShopOut(BaseModel):
 
 class CartItemIn(BaseModel):
     product_id: int
+    # None — товар без вариаций. У товара с вариациями обязателен: без него
+    # непонятно, за какой размер человек заплатил
+    variant_id: int | None = None
     qty: int = Field(ge=1, le=99)
 
 
@@ -119,6 +142,8 @@ class OrderOut(BaseModel):
 async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
     result = await ctx.session.execute(
         select(Product)
+        # без selectinload вариации подгружались бы лениво уже вне сессии
+        .options(selectinload(Product.variants))
         .where(Product.bot_id == ctx.bot.id, Product.is_active.is_(True))
         .order_by(Product.id)
     )
@@ -217,7 +242,9 @@ async def track_event(payload: EventIn, ctx: BuyerContext = Depends(get_buyer)) 
 async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer)) -> OrderOut:
     product_ids = [i.product_id for i in payload.items]
     result = await ctx.session.execute(
-        select(Product).where(
+        select(Product)
+        .options(selectinload(Product.variants))
+        .where(
             Product.id.in_(product_ids),
             Product.bot_id == ctx.bot.id,  # товары чужого магазина в заказ не попадут
             Product.is_active.is_(True),
@@ -228,6 +255,29 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     if missing:
         raise HTTPException(status_code=400, detail=f"products not available: {sorted(missing)}")
 
+    # Вариацию сверяем с товаром, а не берём на слово: иначе покупатель мог бы
+    # прислать id дешёвой вариации к дорогому товару и заплатить не за то.
+    chosen: dict[int, object] = {}
+    for item in payload.items:
+        product = products[item.product_id]
+        active = [v for v in product.variants if v.is_active]
+        if not active:
+            if item.variant_id is not None:
+                raise HTTPException(
+                    status_code=400, detail=f"product {item.product_id} has no variants"
+                )
+            continue
+        if item.variant_id is None:
+            raise HTTPException(
+                status_code=400, detail=f"variant_required for product {item.product_id}"
+            )
+        variant = next((v for v in active if v.id == item.variant_id), None)
+        if variant is None:
+            raise HTTPException(
+                status_code=400, detail=f"variant not available: {item.variant_id}"
+            )
+        chosen[item.variant_id] = variant
+
     # Физический товар без адреса отправить некуда — это единственные данные
     # покупателя, которые видит продавец. У цифровых заказов адрес не спрашиваем.
     needs_delivery = any(products[i.product_id].type == "physical" for i in payload.items)
@@ -236,19 +286,28 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
 
     # Сток проверяем по суммарному qty (товар может прийти двумя строками).
     # Финальная проверка — в вебхуке оплаты; здесь отсекаем очевидный оверселл
-    qty_by_product: dict[int, int] = {}
+    # Ключ — (товар, вариация): одна и та же футболка в двух размерах имеет
+    # два независимых остатка, и складывать их в одну проверку нельзя
+    qty_by_key: dict[tuple[int, int | None], int] = {}
     for item in payload.items:
-        qty_by_product[item.product_id] = qty_by_product.get(item.product_id, 0) + item.qty
-    for product_id, qty in qty_by_product.items():
-        stock = products[product_id].stock
+        key = (item.product_id, item.variant_id)
+        qty_by_key[key] = qty_by_key.get(key, 0) + item.qty
+    for (product_id, variant_id), qty in qty_by_key.items():
+        source = chosen[variant_id] if variant_id is not None else products[product_id]
+        stock = source.stock
         if stock is not None and qty > stock:
             raise HTTPException(
                 status_code=400,
                 detail=f"insufficient stock for «{products[product_id].title}»: {stock} left",
             )
 
-    # Сумма считается только на сервере, по текущим ценам из БД
-    total = sum(products[i.product_id].price * i.qty for i in payload.items)
+    # Сумма считается только на сервере, по текущим ценам из БД: у товара с
+    # вариациями платят за вариацию, у остальных — за сам товар
+    total = sum(
+        (chosen[i.variant_id].price if i.variant_id is not None else products[i.product_id].price)
+        * i.qty
+        for i in payload.items
+    )
 
     # Жизнь заказа = жизнь счёта в Crypto Pay: неоплаченная корзина не должна
     # висеть в «Моих покупках» вечно. По кнопке «Оплатить» счётчик пойдёт заново.
@@ -273,12 +332,17 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     ctx.session.add(order)
     await ctx.session.flush()
     for item in payload.items:
+        variant = chosen.get(item.variant_id) if item.variant_id is not None else None
         ctx.session.add(
             OrderItem(
                 order_id=order.id,
                 product_id=item.product_id,
+                variant_id=item.variant_id,
+                # снимок свойств рядом со снимком цены: продавец переименует
+                # размеры, а в старом заказе должно остаться купленное
+                variant_label=variant_label(variant.attributes) if variant else None,
                 qty=item.qty,
-                price=products[item.product_id].price,
+                price=variant.price if variant else products[item.product_id].price,
             )
         )
     await ctx.session.commit()

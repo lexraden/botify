@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_seller
 from app.config import get_settings
@@ -40,6 +41,7 @@ from app.payments.payouts import paid_total, pending_total
 from app.plans import SERVICE_TYPES, is_pro, limits_for, over_limit
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 from app.services.seller_texts import seller_text
+from app.services.variants import apply_variants
 
 router = APIRouter(prefix="/seller")
 
@@ -688,6 +690,26 @@ async def upload_product_image(
     return {"id": image.id, "url": f"/api/images/{image.token}"}
 
 
+class VariantIn(BaseModel):
+    """Вариация в запросе сохранения товара. `id` есть у уже существующих."""
+
+    id: int | None = None
+    sku: str | None = Field(default=None, max_length=64)
+    attributes: dict[str, str] | None = None
+    price: Decimal = Field(gt=0)
+    # зачёркнутая «старая» цена; должна быть выше текущей, иначе это не скидка
+    compare_at_price: Decimal | None = Field(default=None, gt=0)
+    stock: int | None = Field(default=None, ge=0, le=1_000_000)
+    images: list[str] | None = None
+    is_active: bool = True
+
+
+class VariantOut(VariantIn):
+    id: int
+
+    model_config = {"from_attributes": True}
+
+
 class ProductIn(BaseModel):
     type: str
     title: str = Field(min_length=1, max_length=256)
@@ -698,11 +720,15 @@ class ProductIn(BaseModel):
     stock: int | None = Field(default=None, ge=0, le=1_000_000)
     digital_content: dict | None = None
     is_active: bool = True
+    # None — вариации в запросе не участвуют (старый клиент их не сотрёт);
+    # пустой список — у товара их больше нет
+    variants: list[VariantIn] | None = None
 
 
 class ProductOut(ProductIn):
     id: int
     currency: str
+    variants: list[VariantOut] = []
 
     model_config = {"from_attributes": True}
 
@@ -712,10 +738,31 @@ async def list_products(
     shop: SellerBot = Depends(get_shop),
     session: AsyncSession = Depends(get_api_session),
 ) -> list[ProductOut]:
+    # selectinload обязателен: без него model_validate дёрнет ленивую загрузку
+    # вариаций уже вне сессии и упадёт на MissingGreenlet
     result = await session.execute(
-        select(Product).where(Product.bot_id == shop.id).order_by(Product.id.desc())
+        select(Product)
+        .options(selectinload(Product.variants))
+        .where(Product.bot_id == shop.id)
+        .order_by(Product.id.desc())
     )
     return [ProductOut.model_validate(p) for p in result.scalars().all()]
+
+
+def _check_variants(payload: "ProductIn") -> None:
+    """Вариации есть только у физических товаров: у услуги или файла нет ни
+    размера, ни цвета, а цена и остаток живут на самом товаре."""
+    variants = payload.variants or []
+    if variants and payload.type != "physical":
+        raise HTTPException(
+            status_code=400, detail="variants are only available for physical products"
+        )
+    for item in variants:
+        if item.compare_at_price is not None and item.compare_at_price <= item.price:
+            raise HTTPException(
+                status_code=422,
+                detail="compare_at_price must be higher than price",
+            )
 
 
 @router.post("/bots/{bot_id}/products", response_model=ProductOut)
@@ -745,9 +792,14 @@ async def create_product(
                 ),
             )
 
-    product = Product(seller_id=shop.seller_id, bot_id=shop.id, **payload.model_dump())
+    _check_variants(payload)
+    fields = payload.model_dump(exclude={"variants"})
+    product = Product(seller_id=shop.seller_id, bot_id=shop.id, **fields)
     session.add(product)
+    await session.flush()  # нужен product.id, чтобы привязать вариации
+    await apply_variants(session, product, payload.variants)
     await session.commit()
+    await session.refresh(product, ["variants"])
     return ProductOut.model_validate(product)
 
 
@@ -767,10 +819,14 @@ async def update_product(
 ) -> ProductOut:
     if payload.type not in PRODUCT_TYPES:
         raise HTTPException(status_code=400, detail=f"type must be one of {sorted(PRODUCT_TYPES)}")
+    _check_variants(payload)
     product = await _shop_product(session, shop, product_id)
-    for key, value in payload.model_dump().items():
+    await session.refresh(product, ["variants"])
+    for key, value in payload.model_dump(exclude={"variants"}).items():
         setattr(product, key, value)
+    await apply_variants(session, product, payload.variants)
     await session.commit()
+    await session.refresh(product, ["variants"])
     return ProductOut.model_validate(product)
 
 
