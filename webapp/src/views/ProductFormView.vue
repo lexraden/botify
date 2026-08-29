@@ -82,7 +82,10 @@ onMounted(async () => {
       title: p.title,
       description: p.description || '',
       image_url: p.image_url || '',
-      price: String(p.price),
+      // В базе цена Numeric(18, 6), и наружу приходит «5.000000». В поле
+      // редактирования это выглядит сбоем; Number() убирает хвост нулей —
+      // ровно так цена и показывается везде на витрине.
+      price: p.price == null ? '' : String(Number(p.price)),
       digital_url: p.digital_content?.url || '',
       stock: p.stock == null ? '' : String(p.stock),
       is_active: p.is_active,
