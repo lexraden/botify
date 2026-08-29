@@ -21,6 +21,17 @@ const needsDelivery = computed(() =>
 const address = ref('')
 const deliveryReady = computed(() => !needsDelivery.value || address.value.trim())
 
+function linePrice(entry) {
+  return (entry.variant ?? entry.product).price
+}
+
+function variantLabel(variant) {
+  return Object.values(variant.attributes || {})
+    .map((x) => String(x).trim())
+    .filter(Boolean)
+    .join(' · ')
+}
+
 onMounted(() => trackEvent('checkout_start'))
 
 async function pay() {
@@ -67,12 +78,16 @@ async function pay() {
       <a class="edit" @click="router.push('/')">{{ t('checkout.edit') }}</a>
     </header>
 
-    <div v-for="entry in Object.values(cart.items)" :key="entry.product.id" class="row">
+    <!-- ключ — пара «товар + вариация»: два размера одной футболки это две
+         строки, и по product.id они бы столкнулись -->
+    <div v-for="(entry, key) in cart.items" :key="key" class="row">
       <div class="info">
         <b>{{ entry.product.title }}</b>
+        <span v-if="entry.variant" class="variant">{{ variantLabel(entry.variant) }}</span>
         <span class="qty">{{ entry.qty }}x</span>
       </div>
-      <div class="price">{{ (Number(entry.product.price) * entry.qty).toFixed(2) }} USDT</div>
+      <!-- цена строки — из вариации, если она есть: у товара price витринная -->
+      <div class="price">{{ (Number(linePrice(entry)) * entry.qty).toFixed(2) }} USDT</div>
     </div>
 
     <p v-if="!cart.count" class="empty">{{ t('checkout.empty') }} <a @click="router.push('/')">{{ t('common.toCatalog') }}</a></p>
@@ -113,6 +128,7 @@ header {
   padding: 10px 0;
   border-bottom: 1px solid var(--surface2);
   .qty { color: #f5a623; font-weight: 700; margin-left: 8px; }
+  .variant { color: var(--sub); font-size: 12px; margin-left: 8px; }
 }
 .delivery {
   margin-top: 18px;

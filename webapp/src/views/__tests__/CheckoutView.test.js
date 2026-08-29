@@ -53,7 +53,7 @@ describe('CheckoutView — доставка', () => {
     await flushPromises()
 
     expect(createOrder).toHaveBeenCalledWith(
-      [{ product_id: 1, qty: 1 }],
+      [{ product_id: 1, variant_id: null, qty: 1 }],
       null,
       { address: 'Тверская 1' },
     )
@@ -66,7 +66,7 @@ describe('CheckoutView — доставка', () => {
 
     await w.find('button.pay').trigger('click')
     await flushPromises()
-    expect(createOrder).toHaveBeenCalledWith([{ product_id: 1, qty: 1 }], null, null)
+    expect(createOrder).toHaveBeenCalledWith([{ product_id: 1, variant_id: null, qty: 1 }], null, null)
   })
 
   it('после Pay открывается окно оплаты и покупатель возвращается в магазин', async () => {

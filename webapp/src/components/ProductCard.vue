@@ -30,7 +30,21 @@ onMounted(() => {
 
 onUnmounted(() => observer?.disconnect())
 const cart = useCartStore()
-const qty = computed(() => cart.qtyOf(props.product.id))
+// У товара с вариациями нельзя купить «товар вообще»: платят за конкретный
+// размер. Карточка в сетке места для выбора не имеет, поэтому она ведёт на
+// страницу товара — там вариации и выбираются.
+const hasVariants = computed(() => (props.product.variants || []).length > 0)
+// значок на карточке — сколько всего этого товара в корзине, всеми вариациями
+const qty = computed(() =>
+  hasVariants.value
+    ? Object.values(cart.items)
+        .filter((i) => i.product.id === props.product.id)
+        .reduce((n, i) => n + i.qty, 0)
+    : cart.qtyOf(props.product.id),
+)
+function openProduct() {
+  router.push(`/product/${props.product.id}`)
+}
 const emoji = computed(
   () => ({ physical: '📦', digital: '📕', service: '🛎' })[props.product.type] ?? '📦',
 )
@@ -49,16 +63,24 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
     <div class="meta">
       <div class="title">{{ product.title }}</div>
       <div class="price-row">
-        <div class="price">{{ Number(product.price) }} USDT</div>
+        <div class="price">
+          <span v-if="hasVariants" class="from">{{ t('card.from') }}</span>
+          {{ Number(product.price) }} USDT
+        </div>
         <div v-if="product.reviews_count" class="rating">
           ★ {{ Number(product.avg_rating).toFixed(1) }} · {{ product.reviews_count }}
         </div>
       </div>
     </div>
-    <div v-if="qty" class="stepper">
+    <div v-if="qty && !hasVariants" class="stepper">
       <button class="minus" @click.stop="cart.remove(product)">−</button>
       <button class="plus" :disabled="maxed" @click.stop="cart.add(product)">+</button>
     </div>
+    <button
+      v-if="hasVariants"
+      class="add"
+      @click.stop="openProduct"
+    >{{ t('card.choose') }}</button>
     <button v-else-if="!soldOut" class="add" @click.stop="cart.add(product)">{{ t('card.addToCart') }}</button>
     <button v-else class="add soldout" disabled>{{ t('card.soldOut') }}</button>
   </div>
@@ -92,4 +114,5 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
 .stepper .plus { background: var(--accent); color: #fff; }
 .plus:disabled { opacity: 0.35; }
 .add.soldout { background: var(--surface2); color: var(--sub); }
+.from { color: var(--sub); font-weight: 600; font-size: 11px; }
 </style>

@@ -19,11 +19,53 @@ const fmtDate = (iso) =>
 const emoji = computed(
   () => ({ physical: '📦', digital: '📕', service: '🛎' })[product.value?.type] ?? '📦',
 )
-const soldOut = computed(() => product.value?.stock === 0)
-const qty = computed(() => (product.value ? cart.qtyOf(product.value.id) : 0))
-const maxed = computed(
-  () => product.value?.stock != null && qty.value >= product.value.stock,
+// --- вариации ---
+// Пусто — товар покупается сам. Иначе покупать можно только выбранную
+// вариацию: цена, остаток и фото у неё свои, а price/stock самого товара —
+// витринные («от 500» и сумма остатков).
+const variants = computed(() => product.value?.variants || [])
+const chosen = ref(null)
+const hasVariants = computed(() => variants.value.length > 0)
+
+// первая, у которой что-то осталось — покупателю не нужно тыкать в
+// распроданные, чтобы найти доступную
+function pickDefault() {
+  const list = variants.value
+  chosen.value = list.find((v) => v.stock == null || v.stock > 0) || list[0] || null
+}
+
+// цена и остаток берутся у вариации, если она есть
+const shown = computed(() => chosen.value ?? product.value)
+const price = computed(() => Number(shown.value?.price ?? 0))
+const comparePrice = computed(() => {
+  const value = chosen.value?.compare_at_price
+  return value == null ? null : Number(value)
+})
+const gallery = computed(() => {
+  const own = chosen.value?.images
+  if (own?.length) return own
+  return product.value?.image_url ? [product.value.image_url] : []
+})
+
+const soldOut = computed(() => shown.value?.stock === 0)
+const qty = computed(() =>
+  product.value ? cart.qtyOf(product.value.id, chosen.value?.id ?? null) : 0,
 )
+const maxed = computed(() => shown.value?.stock != null && qty.value >= shown.value.stock)
+
+function addToCart() {
+  if (product.value) cart.add(product.value, chosen.value)
+}
+function removeFromCart() {
+  if (product.value) cart.remove(product.value, chosen.value)
+}
+
+function variantLabel(v) {
+  const filled = Object.values(v.attributes || {})
+    .map((x) => String(x).trim())
+    .filter(Boolean)
+  return filled.length ? filled.join(' · ') : t('product.variantFallback')
+}
 
 onMounted(async () => {
   try {
@@ -33,6 +75,7 @@ onMounted(async () => {
       error.value = t('product.notFound')
       return
     }
+    pickDefault()
     trackEvent('product_view', product.value.id)
     // отзывы — украшение: не загрузились, товар всё равно работает
     fetchProductReviews(product.value.id).then((r) => (reviews.value = r)).catch(() => {})
@@ -47,19 +90,41 @@ onMounted(async () => {
     <a class="back" @click="router.push('/')">← {{ t('common.toCatalog') }}</a>
 
     <template v-if="product">
+      <!-- галерея: фото выбранной вариации, иначе одно фото товара -->
       <div class="photo">
-        <img v-if="product.image_url" :src="product.image_url" :alt="product.title" />
+        <img v-if="gallery.length" :src="gallery[0]" :alt="product.title" />
         <span v-else>{{ emoji }}</span>
+      </div>
+      <div v-if="gallery.length > 1" class="strip">
+        <img v-for="(url, i) in gallery.slice(1)" :key="url + i" :src="url" alt="" />
       </div>
 
       <h2>{{ product.title }}</h2>
       <div class="price-line">
-        <b class="price">{{ Number(product.price) }} USDT</b>
+        <b class="price">{{ price }} USDT</b>
+        <s v-if="comparePrice" class="was">{{ comparePrice }}</s>
         <span v-if="product.reviews_count" class="state rating">
           ★ {{ Number(product.avg_rating).toFixed(1) }} · {{ product.reviews_count }}
         </span>
         <span v-if="soldOut" class="state soldout">{{ t('product.soldOut') }}</span>
-        <span v-else-if="product.stock != null" class="state">{{ t('product.left', { n: product.stock }) }}</span>
+        <span v-else-if="shown.stock != null" class="state">{{ t('product.left', { n: shown.stock }) }}</span>
+      </div>
+
+      <!-- Выбор вариации. Без него покупатель не смог бы купить то, что
+           продавец завёл: платят всегда за конкретную вариацию. -->
+      <div v-if="hasVariants" class="variants">
+        <button
+          v-for="v in variants"
+          :key="v.id"
+          type="button"
+          class="chip"
+          :class="{ active: chosen?.id === v.id, out: v.stock === 0 }"
+          :disabled="v.stock === 0"
+          @click="chosen = v"
+        >
+          {{ variantLabel(v) }}
+          <span v-if="v.stock === 0" class="chip-note">{{ t('product.soldOut') }}</span>
+        </button>
       </div>
 
       <p v-if="product.description" class="desc">{{ product.description }}</p>
@@ -87,11 +152,11 @@ onMounted(async () => {
            пока корзина непуста (хоть с этого товара, хоть с другого) -->
       <div class="buy-bar">
         <div v-if="!soldOut && qty" class="stepper">
-          <button @click="cart.remove(product)">−</button>
+          <button @click="removeFromCart">−</button>
           <b>{{ qty }}</b>
-          <button :disabled="maxed" @click="cart.add(product)">+</button>
+          <button :disabled="maxed" @click="addToCart">+</button>
         </div>
-        <button v-else-if="!soldOut" class="btn btn-primary" @click="cart.add(product)">
+        <button v-else-if="!soldOut" class="btn btn-primary" @click="addToCart">
           {{ t('product.addToCart') }}
         </button>
         <button v-else class="btn btn-soft" disabled>{{ t('product.soldOut') }}</button>
@@ -162,4 +227,17 @@ h2 { font-size: 19px; margin: 14px 0 6px; }
   display: flex; flex-direction: column; gap: 10px;
 }
 .error { text-align: center; color: var(--red); margin-top: 40px; }
+
+.strip { display: flex; gap: 6px; overflow-x: auto; margin-top: 6px; }
+.strip img { width: 62px; height: 62px; border-radius: 11px; object-fit: cover; flex: 0 0 auto; }
+.was { color: var(--sub); text-decoration: line-through; font-size: 14px; }
+.variants { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.chip {
+  border: 1.5px solid var(--line, var(--border)); background: var(--surface2);
+  color: var(--text); border-radius: 12px; padding: 8px 12px; font-size: 13px;
+  font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;
+}
+.chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.chip.out { opacity: 0.45; cursor: not-allowed; text-decoration: line-through; }
+.chip-note { font-size: 10px; font-weight: 600; text-decoration: none; }
 </style>

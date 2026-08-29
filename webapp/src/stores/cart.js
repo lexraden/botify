@@ -9,6 +9,13 @@ function telegramUserId() {
   return tg?.initDataUnsafe?.user?.id ?? 'anon'
 }
 
+// Строка корзины — это пара «товар + вариация»: одна и та же футболка в двух
+// размерах покупается двумя строками, с независимыми ценой и остатком.
+// Товар без вариаций даёт пустую половину ключа.
+export function lineKey(productId, variantId) {
+  return `${productId}:${variantId ?? ''}`
+}
+
 function storageKey() {
   return `botify-cart:${getBotId() ?? 'default'}:${telegramUserId()}`
 }
@@ -20,17 +27,29 @@ function legacyKey() {
 // Разделение по покупателю добавило telegram_id в ключ (был
 // botify-cart:<bot_id>). Старую корзину один раз переносим в новый ключ: на
 // устройстве её всё равно создал кто-то один, и забрать её должен именно он.
+// До вариаций строка корзины ключевалась одним product_id. Такие корзины уже
+// лежат у покупателей в браузерах: без приведения qtyOf их не нашёл бы, а
+// add завёл бы рядом вторую строку того же товара.
+function normalizeKeys(items) {
+  const out = {}
+  for (const [key, entry] of Object.entries(items)) {
+    if (!entry || typeof entry !== 'object' || !entry.product) continue
+    out[key.includes(':') ? key : lineKey(entry.product.id, entry.variant?.id)] = entry
+  }
+  return out
+}
+
 function loadSavedItems() {
   try {
     const fresh = localStorage.getItem(storageKey())
     if (fresh != null) {
       const parsed = JSON.parse(fresh)
-      return parsed && typeof parsed === 'object' ? parsed : {}
+      return parsed && typeof parsed === 'object' ? normalizeKeys(parsed) : {}
     }
     const legacyRaw = localStorage.getItem(legacyKey())
     if (legacyRaw == null) return {}
     const parsed = JSON.parse(legacyRaw)
-    const items = parsed && typeof parsed === 'object' ? parsed : {}
+    const items = parsed && typeof parsed === 'object' ? normalizeKeys(parsed) : {}
     localStorage.removeItem(legacyKey())
     if (Object.keys(items).length) {
       localStorage.setItem(storageKey(), JSON.stringify(items))
@@ -41,16 +60,25 @@ function loadSavedItems() {
   }
 }
 
+// Откуда брать цену и остаток строки: у товара с вариацией — из вариации
+function source(entry) {
+  return entry.variant ?? entry.product
+}
+
 export const useCartStore = defineStore('cart', {
   state: () => ({
-    items: loadSavedItems(), // product_id -> { product, qty }
+    items: loadSavedItems(), // "productId:variantId" -> { product, variant, qty }
   }),
   getters: {
     count: (s) => Object.values(s.items).reduce((n, i) => n + i.qty, 0),
     total: (s) =>
-      Object.values(s.items).reduce((sum, i) => sum + Number(i.product.price) * i.qty, 0),
+      Object.values(s.items).reduce((sum, i) => sum + Number(source(i).price) * i.qty, 0),
     asOrderItems: (s) =>
-      Object.values(s.items).map((i) => ({ product_id: i.product.id, qty: i.qty })),
+      Object.values(s.items).map((i) => ({
+        product_id: i.product.id,
+        variant_id: i.variant?.id ?? null,
+        qty: i.qty,
+      })),
   },
   actions: {
     persist() {
@@ -60,19 +88,22 @@ export const useCartStore = defineStore('cart', {
         // приватный режим/переполнение — работаем просто без сохранения
       }
     },
-    add(product) {
-      const entry = this.items[product.id]
+    add(product, variant = null) {
+      const key = lineKey(product.id, variant?.id)
+      const entry = this.items[key]
+      const stock = (variant ?? product).stock
       // stock: null — без ограничения; иначе в корзину не положить больше остатка
-      if (product.stock != null && (entry?.qty ?? 0) >= product.stock) return
+      if (stock != null && (entry?.qty ?? 0) >= stock) return
       if (entry) entry.qty += 1
-      else this.items[product.id] = { product, qty: 1 }
+      else this.items[key] = { product, variant, qty: 1 }
       this.persist()
     },
-    remove(product) {
-      const entry = this.items[product.id]
+    remove(product, variant = null) {
+      const key = lineKey(product.id, variant?.id)
+      const entry = this.items[key]
       if (!entry) return
       entry.qty -= 1
-      if (entry.qty <= 0) delete this.items[product.id]
+      if (entry.qty <= 0) delete this.items[key]
       this.persist()
     },
     // Сверка сохранённой корзины со свежим каталогом (вызывает StoreView после
@@ -80,21 +111,31 @@ export const useCartStore = defineStore('cart', {
     // витрина и чекаут не показывали устаревшие данные.
     syncWithShop(products) {
       const fresh = new Map(products.map((p) => [String(p.id), p]))
-      for (const id of Object.keys(this.items)) {
-        const actual = fresh.get(id)
+      for (const key of Object.keys(this.items)) {
+        const entry = this.items[key]
+        const actual = fresh.get(String(entry.product.id))
         if (!actual) {
-          delete this.items[id]
+          delete this.items[key]
           continue
         }
-        const entry = this.items[id]
         entry.product = actual
-        if (actual.stock != null && entry.qty > actual.stock) entry.qty = actual.stock
-        if (entry.qty <= 0) delete this.items[id]
+        if (entry.variant) {
+          // вариацию могли снять с продажи или удалить — тогда покупать нечего
+          const variant = (actual.variants || []).find((v) => v.id === entry.variant.id)
+          if (!variant) {
+            delete this.items[key]
+            continue
+          }
+          entry.variant = variant
+        }
+        const stock = (entry.variant ?? actual).stock
+        if (stock != null && entry.qty > stock) entry.qty = stock
+        if (entry.qty <= 0) delete this.items[key]
       }
       this.persist()
     },
-    qtyOf(productId) {
-      return this.items[productId]?.qty ?? 0
+    qtyOf(productId, variantId = null) {
+      return this.items[lineKey(productId, variantId)]?.qty ?? 0
     },
     clear() {
       this.items = {}

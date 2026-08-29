@@ -31,7 +31,7 @@ describe('ключ корзины с покупателем', () => {
     state.tg = { initDataUnsafe: { user: { id: 111 } } }
     const cart = useCartStore()
     cart.add(PRODUCT)
-    expect(JSON.parse(localStorage.getItem('botify-cart:default:111'))['1'].qty).toBe(1)
+    expect(JSON.parse(localStorage.getItem('botify-cart:default:111'))['1:'].qty).toBe(1)
     expect(localStorage.getItem(KEY)).toBe(null)
 
     state.tg = { initDataUnsafe: { user: { id: 222 } } }
@@ -50,7 +50,8 @@ describe('перенос старой корзины (ключ без telegram_i
     expect(cart.qtyOf(7)).toBe(2)
     expect(localStorage.getItem('botify-cart:default')).toBe(null)
     // перенос записан в новый ключ: следующее открытие читает уже его
-    expect(JSON.parse(localStorage.getItem(KEY))['7'].qty).toBe(2)
+    // старый ключ строки (один product_id) приводится к паре «товар:вариация»
+    expect(JSON.parse(localStorage.getItem(KEY))['7:'].qty).toBe(2)
   })
 
   it('пустая старая корзина просто удаляется', () => {
@@ -61,7 +62,7 @@ describe('перенос старой корзины (ключ без telegram_i
   })
 
   it('своя корзина важнее старой: перенос не затирает существующие позиции', () => {
-    localStorage.setItem(KEY, JSON.stringify({ '1': { product: PRODUCT, qty: 1 } }))
+    localStorage.setItem(KEY, JSON.stringify({ '1': { product: PRODUCT, variant: null, qty: 1 } }))
     localStorage.setItem(
       'botify-cart:default',
       JSON.stringify({ '7': { product: { id: 7, title: 'Чай', price: '1', stock: null }, qty: 2 } }),
@@ -78,7 +79,7 @@ describe('cart — сохранение между открытиями прил
     const cart = useCartStore()
     cart.add(PRODUCT)
     const saved = JSON.parse(localStorage.getItem(KEY))
-    expect(saved['1']).toEqual({ product: PRODUCT, qty: 1 })
+    expect(saved['1:']).toEqual({ product: PRODUCT, variant: null, qty: 1 })
   })
 
   it('новый store подхватывает сохранённую корзину', () => {
@@ -123,13 +124,13 @@ describe('syncWithShop — сверка сохранённой корзины с
     const renamed = { id: 1, title: 'Новое имя', price: '4', stock: null }
     cart.syncWithShop([renamed])
     expect(cart.count).toBe(1)
-    expect(cart.items['1'].product.title).toBe('Новое имя')
+    expect(cart.items['1:'].product.title).toBe('Новое имя')
     expect(cart.total).toBe(4)
   })
 
   it('обрезает количество по новому стоку, нулевой сток удаляет позицию', () => {
     const cart = useCartStore()
-    cart.items['1'] = { product: { ...PRODUCT }, qty: 5 }
+    cart.items['1:'] = { product: { ...PRODUCT }, qty: 5 }
     cart.syncWithShop([{ ...PRODUCT, stock: 2 }])
     expect(cart.qtyOf(1)).toBe(2)
     cart.syncWithShop([{ ...PRODUCT, stock: 0 }])
