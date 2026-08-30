@@ -84,6 +84,38 @@ describe('CheckoutView — доставка', () => {
   })
 })
 
+describe('CheckoutView — строка с вариацией', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  function withVariant(variant) {
+    const cart = useCartStore()
+    cart.items = {
+      '1:9': {
+        product: { id: 1, title: 'Футболка красная', price: '5', type: 'physical' },
+        variant: { id: 9, price: '7', attributes: { Цвет: 'Синий' }, ...variant },
+        qty: 1,
+      },
+    }
+    return mount(CheckoutView)
+  }
+
+  it('имя строки — от вариации: товарное принадлежит первой', async () => {
+    const w = withVariant({ title: 'Футболка синяя' })
+    await flushPromises()
+    expect(w.find('.row .info b').text()).toBe('Футболка синяя')
+    expect(w.find('.row .variant').text()).toBe('Синий')
+  })
+
+  it('у вариации без своего имени остаётся товарное', async () => {
+    const w = withVariant({ title: null })
+    await flushPromises()
+    expect(w.find('.row .info b').text()).toBe('Футболка красная')
+  })
+})
+
 describe('CheckoutView — счёт не создался', () => {
   beforeEach(() => {
     vi.clearAllMocks()

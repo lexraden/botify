@@ -51,6 +51,8 @@ const SAVED = {
       id: 11,
       sku: null,
       attributes: { Цвет: 'Синий' },
+      title: 'Футболка синяя',
+      description: 'Тот же крой, другой цвет',
       price: '11.000000',
       compare_at_price: null,
       stock: 2,
@@ -139,6 +141,62 @@ describe('ProductFormView — вариации', () => {
     expect(tabs(w).map((b) => b.attributes('title'))).toEqual(['Красный', 'Синий'])
     // имя редактируется в той же форме, отдельным полем
     expect(nameField(w).element.value).toBe('Красный')
+  })
+
+  it('название и описание у каждой вариации свои', async () => {
+    const w = await mountExisting()
+    const titleField = () => w.findAll('input')[0]
+    const descField = () => w.find('textarea')
+
+    // у первой своего названия нет — показываем товарное, а не пустое поле
+    expect(titleField().element.value).toBe('Футболка')
+
+    await tabs(w)[1].trigger('click')
+    expect(titleField().element.value).toBe('Футболка синяя')
+    expect(descField().element.value).toBe('Тот же крой, другой цвет')
+  })
+
+  it('правка названия на V2 не задевает V1', async () => {
+    const w = await mountExisting()
+    const titleField = () => w.findAll('input')[0]
+
+    await tabs(w)[1].trigger('click')
+    await titleField().setValue('Футболка синяя XL')
+    await tabs(w)[0].trigger('click')
+    expect(titleField().element.value).toBe('Футболка')
+
+    saveProduct.mockResolvedValue({})
+    await w.find('.actions .btn-primary').trigger('click')
+    await flushPromises()
+    const [, body] = saveProduct.mock.calls[0]
+    expect(body.variants.map((v) => v.title)).toEqual(['Футболка', 'Футболка синяя XL'])
+    // товарное название — от первой вариации: его читают карточка и заказы
+    expect(body.title).toBe('Футболка')
+  })
+
+  it('вариация без названия не сохраняется — форма открывает виноватую', async () => {
+    const w = await mountExisting()
+    await tabs(w)[1].trigger('click')
+    await w.findAll('input')[0].setValue('')
+    await tabs(w)[0].trigger('click')
+
+    await w.find('.actions .btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(saveProduct).not.toHaveBeenCalled()
+    expect(w.find('.error').text()).toBeTruthy()
+    expect(tabs(w)[1].classes()).toContain('active')
+  })
+
+  it('«+» переносит название и описание в новую вариацию', async () => {
+    const w = await mountNew()
+    await w.findAll('input')[0].setValue('Кружка')
+    await w.find('textarea').setValue('Керамика, 300 мл')
+    await addBtn(w).trigger('click')
+
+    // расходится обычно цена и фото, а не название — его переносим
+    expect(w.findAll('input')[0].element.value).toBe('Кружка')
+    expect(w.find('textarea').element.value).toBe('Керамика, 300 мл')
   })
 
   it('сохранение шлёт все вариации, цену товара — минимальную', async () => {

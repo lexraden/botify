@@ -51,6 +51,10 @@ function newVariant(from) {
   return {
     id: null,
     label: '',
+    // название и описание чаще общие, чем разные, — переносим их в новую
+    // вариацию, а расходится обычно то, что ниже: цена, фото, остаток
+    title: from?.title || '',
+    description: from?.description || '',
     image_url: from?.image_url || '',
     price: from?.price || '',
     compare_at_price: from?.compare_at_price || '',
@@ -63,7 +67,7 @@ function newVariant(from) {
 // только что ввёл, и заставлять его вводить то же самое заново незачем.
 function addVariant() {
   if (!variants.value.length) variants.value.push(newVariant(form.value))
-  variants.value.push(newVariant())
+  variants.value.push(newVariant({ title: form.value.title, description: form.value.description }))
   active.value = variants.value.length - 1
 }
 
@@ -72,6 +76,8 @@ function removeVariant(i) {
   // осталась одна — это снова обычный товар: её поля возвращаем в форму
   if (variants.value.length === 1) {
     const only = variants.value[0]
+    if (only.title) form.value.title = only.title
+    form.value.description = only.description
     form.value.price = only.price
     form.value.compare_at_price = only.compare_at_price
     form.value.stock = only.stock
@@ -169,6 +175,8 @@ onMounted(async () => {
     const saved = p.variants || []
     if (saved.length === 1) {
       const only = saved[0]
+      if (only.title) form.value.title = only.title
+      if (only.description) form.value.description = only.description
       form.value.price = only.price == null ? '' : String(Number(only.price))
       form.value.compare_at_price =
         only.compare_at_price == null ? '' : String(Number(only.compare_at_price))
@@ -178,6 +186,10 @@ onMounted(async () => {
       variants.value = saved.map((v) => ({
         id: v.id,
         label: attributesToLabel(v.attributes),
+        // NULL в базе — у вариации своего названия нет: показываем товарное,
+        // иначе поле открылось бы пустым и сохранение стёрло бы название
+        title: v.title || p.title,
+        description: v.description || '',
         image_url: v.images?.[0] || '',
         price: v.price == null ? '' : String(Number(v.price)),
         compare_at_price:
@@ -222,6 +234,8 @@ async function submit() {
   let payloadVariants = null
   let price = basePrice
   let image = form.value.image_url
+  let title = form.value.title
+  let description = form.value.description || null
   if (hasVariants.value) {
     const rows = variants.value.map((v) => ({
       ...v,
@@ -232,6 +246,15 @@ async function submit() {
     if (bad !== -1) {
       active.value = bad
       error.value = t('form.priceInvalid')
+      return
+    }
+    // Название есть у каждой вариации: пустое ушло бы на витрину пустой
+    // строкой, а у товара оно взялось бы от первой — и покупатель увидел
+    // безымянный вариант рядом с названным
+    const unnamed = rows.findIndex((v) => !String(v.title).trim())
+    if (unnamed !== -1) {
+      active.value = unnamed
+      error.value = t('form.titleRequired')
       return
     }
     const noDiscount = rows.findIndex(
@@ -246,6 +269,8 @@ async function submit() {
       id: v.id,
       sku: null,
       attributes: labelToAttributes(v.label),
+      title: String(v.title).trim(),
+      description: v.description?.trim() || null,
       price: v.price,
       compare_at_price: v.compare,
       stock: v.stock === '' ? null : Number(v.stock),
@@ -262,6 +287,11 @@ async function submit() {
     // Берём фото первой вариации: продавец правит его там же, где цену, и
     // ждёт, что карточка покажет именно его, а не снимок с момента «+».
     image = rows.find((v) => v.image_url)?.image_url || image
+    // Название и описание товара — от первой вариации: в форме она и есть сам
+    // товар. Их читают карточка в сетке, заказы и уведомления, и про вариации
+    // они не знают (см. app/services/variants.py)
+    title = String(rows[0].title).trim()
+    description = rows[0].description?.trim() || null
   }
 
   saving.value = true
@@ -271,8 +301,8 @@ async function submit() {
     await saveProduct(botId.value, {
       id: f.id,
       type: f.type,
-      title: f.title,
-      description: f.description || null,
+      title,
+      description,
       image_url: image || null,
       price,
       // у товара с вариациями скидка своя у каждой — бэкенд обнулит это поле
@@ -320,7 +350,7 @@ async function submit() {
          Фото поднято сразу под название и сделано широким: продавец начинает
          с того, что у него уже есть в галерее, а не с выбора типа товара. -->
     <label>{{ t('form.titleLabel') }}</label>
-    <input v-model="form.title" maxlength="256" :placeholder="t('form.titlePh')" />
+    <input v-model="slot.title" maxlength="256" :placeholder="t('form.titlePh')" />
 
     <label>{{ t('form.photoLabel') }}</label>
     <p class="hint">{{ t('form.photoHint') }}</p>
@@ -378,7 +408,7 @@ async function submit() {
     </div>
 
     <label>{{ t('form.descLabel') }}</label>
-    <textarea v-model="form.description" rows="3" :placeholder="t('form.descPh')" />
+    <textarea v-model="slot.description" rows="3" :placeholder="t('form.descPh')" />
 
     <!-- Дальше — поля, которые у товара с вариациями свои у каждой. Разметка
          одна на оба случая: пишет она в товар или в вариацию, решает slot. -->
@@ -390,6 +420,7 @@ async function submit() {
           {{ t('form.removeVariant') }}
         </button>
       </div>
+      <p class="hint">{{ t('form.variantLabelHint') }}</p>
     </template>
 
     <label>{{ t('form.priceLabel') }}</label>
@@ -420,7 +451,7 @@ async function submit() {
       <button class="btn btn-soft" @click="router.push(`/shop/${botId}`)">{{ t('common.cancel') }}</button>
       <button
         class="btn btn-primary"
-        :disabled="!form.title || !slot.price || stockInvalid || saving"
+        :disabled="!slot.title || !slot.price || stockInvalid || saving"
         @click="submit"
       >
         {{ saving ? '…' : t('form.save') }}

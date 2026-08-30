@@ -119,6 +119,44 @@ async def test_compare_at_price_must_be_a_discount(db):
 
 
 @pytest.mark.asyncio
+async def test_variant_keeps_its_own_title_and_description(db):
+    """Вариациями продают не только цвета, но и комплектации: у них расходится
+    и название, и текст. Покупателю они обязаны доехать до страницы товара."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        body = await make_product(
+            c,
+            bot_id,
+            [
+                variant(5, 3, "Красный", title="Футболка красная", description="Хлопок"),
+                variant(7, 2, "Синий", title="Футболка синяя"),
+            ],
+        )
+        assert [v["title"] for v in body["variants"]] == [
+            "Футболка красная",
+            "Футболка синяя",
+        ]
+        assert [v["description"] for v in body["variants"]] == ["Хлопок", None]
+
+        shop = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
+        shown = shop.json()["products"][0]["variants"]
+    assert [v["title"] for v in shown] == ["Футболка красная", "Футболка синяя"]
+    assert shown[0]["description"] == "Хлопок"
+
+
+@pytest.mark.asyncio
+async def test_variants_without_titles_stay_empty_not_broken(db):
+    """Вариации, созданные до появления этих колонок, названия не имеют —
+    витрина обязана продолжать работать и показывать товарное."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        body = await make_product(c, bot_id, [variant(5, 1), variant(7, 1, "Синий")])
+        shop = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
+    assert [v["title"] for v in body["variants"]] == [None, None]
+    assert shop.json()["products"][0]["title"] == "Футболка"
+
+
+@pytest.mark.asyncio
 async def test_product_without_variants_keeps_its_own_compare_price(db):
     """Скидка у обычного товара: заводить ради зачёркнутой цены вариацию —
     бессмысленно, поэтому compare_at_price есть и у самого товара."""

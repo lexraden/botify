@@ -288,10 +288,12 @@ export const DICT = {
     'form.variantShort': 'V{n}',
     'form.addVariant': 'Добавить вариацию',
     'form.removeVariant': 'Убрать',
-    'form.variantLabelField': 'Название вариации',
+    'form.variantLabelField': 'Короткая подпись',
+    'form.variantLabelHint': 'Так вариация подписана в корзине и в заказе — «Красный» или «M».',
     'form.variantLabelPh': 'Красный, M',
     'form.variantAttr': 'Вариант',
     'form.priceInvalid': 'Цена — число больше нуля, например 9.99 (можно и через запятую).',
+    'form.titleRequired': 'У каждой вариации должно быть название.',
 
     // онбординг: приветствие
     'welcome.title': 'Твой магазин внутри Telegram',
@@ -635,10 +637,12 @@ export const DICT = {
     'form.variantShort': 'V{n}',
     'form.addVariant': 'Add a variant',
     'form.removeVariant': 'Remove',
-    'form.variantLabelField': 'Variant name',
+    'form.variantLabelField': 'Short label',
+    'form.variantLabelHint': 'How the variant is labelled in the cart and the order — “Red” or “M”.',
     'form.variantLabelPh': 'Red, M',
     'form.variantAttr': 'Variant',
     'form.priceInvalid': 'Price must be a number above zero, like 9.99.',
+    'form.titleRequired': 'Every variant needs a name.',
 
     // onboarding: welcome
     'welcome.title': 'Your shop inside Telegram',

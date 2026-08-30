@@ -696,6 +696,9 @@ class VariantIn(BaseModel):
     id: int | None = None
     sku: str | None = Field(default=None, max_length=64)
     attributes: dict[str, str] | None = None
+    # Своё название и описание; None — берётся товарное
+    title: str | None = Field(default=None, max_length=256)
+    description: str | None = Field(default=None, max_length=4000)
     price: Decimal = Field(gt=0)
     # зачёркнутая «старая» цена; должна быть выше текущей, иначе это не скидка
     compare_at_price: Decimal | None = Field(default=None, gt=0)

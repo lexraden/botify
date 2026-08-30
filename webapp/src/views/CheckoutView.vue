@@ -82,7 +82,9 @@ async function pay() {
          строки, и по product.id они бы столкнулись -->
     <div v-for="(entry, key) in cart.items" :key="key" class="row">
       <div class="info">
-        <b>{{ entry.product.title }}</b>
+        <!-- у вариации может быть своё название: показать товарное значило бы
+             назвать чужой вариант — товарное это имя первой вариации -->
+        <b>{{ entry.variant?.title || entry.product.title }}</b>
         <span v-if="entry.variant" class="variant">{{ variantLabel(entry.variant) }}</span>
         <span class="qty">{{ entry.qty }}x</span>
       </div>

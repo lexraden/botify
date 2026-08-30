@@ -103,6 +103,8 @@ async def apply_variants(session, product: Product, incoming: list | None) -> No
         data = {
             "sku": (item.sku or None),
             "attributes": clean_attributes(item.attributes),
+            "title": (item.title or None),
+            "description": (item.description or None),
             "price": item.price,
             "compare_at_price": item.compare_at_price,
             "stock": item.stock,

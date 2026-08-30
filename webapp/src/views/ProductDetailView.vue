@@ -36,6 +36,12 @@ function pickDefault() {
 
 // цена и остаток берутся у вариации, если она есть
 const shown = computed(() => chosen.value ?? product.value)
+// Название и описание выбранной вариации, если она их задала. Пусто —
+// товарные: у вариаций, созданных до появления этих полей, их нет вовсе
+const title = computed(() => chosen.value?.title || product.value?.title || '')
+const description = computed(
+  () => chosen.value?.description || product.value?.description || '',
+)
 const price = computed(() => Number(shown.value?.price ?? 0))
 // Скидка живёт там же, где цена: у вариации — своя, у товара без вариаций —
 // его собственная. shown уже указывает на нужную из двух.
@@ -103,14 +109,14 @@ onMounted(async () => {
     <template v-if="product">
       <!-- галерея: фото выбранной вариации, иначе одно фото товара -->
       <div class="photo">
-        <img v-if="gallery.length" :src="gallery[0]" :alt="product.title" />
+        <img v-if="gallery.length" :src="gallery[0]" :alt="title" />
         <span v-else>{{ emoji }}</span>
       </div>
       <div v-if="gallery.length > 1" class="strip">
         <img v-for="(url, i) in gallery.slice(1)" :key="url + i" :src="url" alt="" />
       </div>
 
-      <h2>{{ product.title }}</h2>
+      <h2>{{ title }}</h2>
       <div class="price-line">
         <b class="price">{{ price }} USDT</b>
         <s v-if="comparePrice" class="was">{{ comparePrice }}</s>
@@ -138,7 +144,7 @@ onMounted(async () => {
         </button>
       </div>
 
-      <p v-if="product.description" class="desc">{{ product.description }}</p>
+      <p v-if="description" class="desc">{{ description }}</p>
 
       <section v-if="reviews.length" class="reviews">
         <h3>{{ t('product.reviews') }}</h3>

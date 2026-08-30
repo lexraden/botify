@@ -39,6 +39,9 @@ class VariantOut(BaseModel):
     id: int
     sku: str | None
     attributes: dict | None
+    # None — у вариации своего названия/описания нет, показываем товарное
+    title: str | None = None
+    description: str | None = None
     price: Decimal
     compare_at_price: Decimal | None
     stock: int | None

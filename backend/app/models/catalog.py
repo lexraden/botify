@@ -101,6 +101,14 @@ class ProductVariant(Base, CreatedAtMixin):
     # колонками, потому что набор свойств у каждого товара свой
     attributes: Mapped[dict | None] = mapped_column(JsonB)
 
+    # Своё название и описание. Вариации одного товара — не всегда «то же
+    # самое, но красное»: у комплектаций и тарифов расходятся и название, и
+    # текст. NULL — берётся товарное (так выглядят вариации до этих колонок).
+    # На витрине карточка в сетке показывает товарное, а страница товара —
+    # название выбранной вариации.
+    title: Mapped[str | None] = mapped_column(String(256))
+    description: Mapped[str | None] = mapped_column(Text)
+
     price: Mapped[float] = mapped_column(Numeric(18, 6))
     # Зачёркнутая «старая» цена. None — скидки нет
     compare_at_price: Mapped[float | None] = mapped_column(Numeric(18, 6))
