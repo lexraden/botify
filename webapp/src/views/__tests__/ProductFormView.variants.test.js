@@ -85,14 +85,17 @@ describe('ProductFormView — вариации', () => {
   }
 
   const addBtn = (w) => w.find('.vrow .plus')
-  const pills = (w) => w.findAll('.vrow button').filter((b) => !b.classes('plus'))
+  const tabs = (w) => w.findAll('.vrow button').filter((b) => !b.classes('plus'))
+  // поля с inputmode=decimal — цена и старая цена текущего слота
+  const nameField = (w) => w.find('.vname input')
 
-  it('по умолчанию вариаций нет — обычная форма и одна кнопка «+»', async () => {
+  it('по умолчанию вариаций нет — сверху один квадратик V1 и «+»', async () => {
     const w = await mountNew()
-    expect(w.find('.variant-card').exists()).toBe(false)
-    expect(pills(w)).toHaveLength(0)
+    expect(tabs(w).map((b) => b.text())).toEqual(['V1'])
     expect(addBtn(w).exists()).toBe(true)
-    expect(priceInputs(w)).toHaveLength(1)
+    // поля названия вариации нет: заполняется обычный товар
+    expect(nameField(w).exists()).toBe(false)
+    expect(priceInputs(w)).toHaveLength(2) // цена и старая цена
   })
 
   it('товар без вариаций сохраняется без них — в базе не заводится ни строки', async () => {
@@ -108,26 +111,34 @@ describe('ProductFormView — вариации', () => {
     expect(body.price).toBe('7')
   })
 
-  it('первое «+» превращает заполненные поля в вариацию 1 и добавляет вторую', async () => {
+  it('«+» добавляет одну вариацию и не теряет уже заполненные поля', async () => {
     const w = await mountNew()
     await priceInputs(w)[0].setValue('12')
     await addBtn(w).trigger('click')
 
-    // две пилюли сверху, поля — у второй
-    expect(pills(w)).toHaveLength(2)
-    expect(w.find('.variant-card').exists()).toBe(true)
+    // добавилась ровно одна — сверху V1 и V2, открыта вторая и она пустая
+    expect(tabs(w).map((b) => b.text())).toEqual(['V1', 'V2'])
+    expect(tabs(w)[1].classes()).toContain('active')
+    expect(priceInputs(w)[0].element.value).toBe('')
+
+    // а введённая до нажатия цена осталась у первой
+    await tabs(w)[0].trigger('click')
+    expect(priceInputs(w)[0].element.value).toBe('12')
   })
 
-  it('пилюли переключают поля между вариациями', async () => {
+  it('квадратики переключают поля между вариациями', async () => {
     const w = await mountExisting()
     expect(priceInputs(w)[0].element.value).toBe('5') // первая
-    await pills(w)[1].trigger('click')
+    await tabs(w)[1].trigger('click')
     expect(priceInputs(w)[0].element.value).toBe('11') // вторая
   })
 
-  it('подписи пилюль — из названий вариаций', async () => {
+  it('квадратики подписаны V1, V2 — название вариации в подсказке', async () => {
     const w = await mountExisting()
-    expect(pills(w).map((b) => b.text())).toEqual(['Красный', 'Синий'])
+    expect(tabs(w).map((b) => b.text())).toEqual(['V1', 'V2'])
+    expect(tabs(w).map((b) => b.attributes('title'))).toEqual(['Красный', 'Синий'])
+    // имя редактируется в той же форме, отдельным полем
+    expect(nameField(w).element.value).toBe('Красный')
   })
 
   it('сохранение шлёт все вариации, цену товара — минимальную', async () => {
@@ -141,6 +152,10 @@ describe('ProductFormView — вариации', () => {
     expect(body.price).toBe('5')
     // зачёркнутая цена вернулась в форму и уходит на сервер
     expect(body.variants[0].compare_at_price).toBe('9')
+    // у самого товара скидки нет: она своя у каждой вариации
+    expect(body.compare_at_price).toBe(null)
+    // витринное фото — снимок первой вариации, иначе карточка покажет чужое
+    expect(body.image_url).toBe('/api/images/a')
   })
 
   it('старая цена ниже текущей не сохраняется', async () => {
@@ -156,14 +171,57 @@ describe('ProductFormView — вариации', () => {
 
   it('когда остаётся одна вариация, товар снова становится обычным', async () => {
     const w = await mountExisting()
-    await w.find('.variant-head .danger').trigger('click')
+    await w.find('.vname .danger').trigger('click')
 
-    expect(pills(w)).toHaveLength(0)
-    expect(w.find('.variant-card').exists()).toBe(false)
+    expect(tabs(w).map((b) => b.text())).toEqual(['V1'])
+    expect(nameField(w).exists()).toBe(false)
 
     saveProduct.mockResolvedValue({})
     await w.find('.actions .btn-primary').trigger('click')
     await flushPromises()
     expect(saveProduct.mock.calls[0][1].variants).toEqual([])
+  })
+})
+
+describe('ProductFormView — старая цена у товара без вариаций', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    routeParams = { botId: '1' }
+  })
+
+  async function fill(w, price, compare) {
+    const inputs = w.findAll('input').filter((i) => i.attributes('inputmode') === 'decimal')
+    await w.findAll('input')[0].setValue('Кружка')
+    await inputs[0].setValue(price)
+    await inputs[1].setValue(compare)
+    await w.find('.actions .btn-primary').trigger('click')
+    await flushPromises()
+  }
+
+  it('уходит на сервер вместе с товаром', async () => {
+    const w = mount(ProductFormView)
+    await flushPromises()
+    saveProduct.mockResolvedValue({})
+    await fill(w, '7', '10')
+
+    expect(saveProduct.mock.calls[0][1].compare_at_price).toBe('10')
+  })
+
+  it('ниже текущей — не сохраняется', async () => {
+    const w = mount(ProductFormView)
+    await flushPromises()
+    await fill(w, '7', '5')
+
+    expect(saveProduct).not.toHaveBeenCalled()
+    expect(w.find('.error').text()).toBeTruthy()
+  })
+
+  it('пустая — уходит null, а не пустая строка', async () => {
+    const w = mount(ProductFormView)
+    await flushPromises()
+    saveProduct.mockResolvedValue({})
+    await fill(w, '7', '')
+
+    expect(saveProduct.mock.calls[0][1].compare_at_price).toBe(null)
   })
 })

@@ -54,6 +54,9 @@ class ProductOut(BaseModel):
     description: str | None
     image_url: str | None
     price: Decimal
+    # зачёркнутая «старая» цена; None — скидки нет. У товара с вариациями
+    # всегда None: там скидка своя у каждой вариации
+    compare_at_price: Decimal | None = None
     currency: str
     # остаток; None — не ограничен, 0 — «нет в наличии»
     stock: int | None

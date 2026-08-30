@@ -19,19 +19,33 @@ const form = ref({
   description: '',
   image_url: '',
   price: '',
+  compare_at_price: '',
   digital_url: '',
   stock: '', // пусто — без ограничения
   is_active: true,
 })
 
 // --- вариации ---
-// Заполнять заранее ничего не нужно: без нажатия «+» вариаций нет вовсе и в
-// базе у товара не появляется ни одной строки. Нажал — сверху встаёт ряд
-// пилюль, как у выбора типа товара, и поля ниже переключаются между ними.
+// Вариация 1 — это сам товар: поля формы и есть её поля. Пока «+» не нажали,
+// вариаций в базе нет вовсе, и товар сохраняется ровно как раньше.
 const variants = ref([])
 const active = ref(0)
 const hasVariants = computed(() => form.value.type === 'physical' && variants.value.length > 0)
-const current = computed(() => variants.value[active.value] || null)
+
+// Куда пишут поля цены, старой цены, остатка и фото: в сам товар, пока
+// вариаций нет, и в выбранную вариацию, когда они есть. Один прокси вместо
+// двух копий этих полей в разметке — копии разъехались бы на первой правке.
+// Имена полей у товара и у вариации совпадают намеренно, ради этой строки.
+const slot = computed(() =>
+  hasVariants.value ? variants.value[active.value] || form.value : form.value,
+)
+
+// Квадратики сверху: V1, V2… Полное название вариации — в подсказке, чтобы
+// сам переключатель оставался мелким и не разъезжался на три строки.
+function slotTitle(i) {
+  const v = variants.value[i]
+  return String(v?.label || '').trim() || t('form.variantN', { n: i + 1 })
+}
 
 function newVariant(from) {
   return {
@@ -39,42 +53,32 @@ function newVariant(from) {
     label: '',
     image_url: from?.image_url || '',
     price: from?.price || '',
-    compare_at_price: '',
+    compare_at_price: from?.compare_at_price || '',
     stock: from?.stock ?? '',
   }
 }
 
-// Первое нажатие превращает уже заполненные поля товара в вариацию 1 и сразу
-// добавляет вторую: иначе продавцу пришлось бы вводить то же самое заново.
+// «+» добавляет ровно одну вариацию — ту, на которую и переключает. Первое
+// нажатие вдобавок забирает уже заполненные поля товара под V1: продавец их
+// только что ввёл, и заставлять его вводить то же самое заново незачем.
 function addVariant() {
-  if (!variants.value.length) {
-    variants.value.push(
-      newVariant({
-        image_url: form.value.image_url,
-        price: form.value.price,
-        stock: form.value.stock,
-      }),
-    )
-  }
-  variants.value.push(newVariant({ price: form.value.price }))
+  if (!variants.value.length) variants.value.push(newVariant(form.value))
+  variants.value.push(newVariant())
   active.value = variants.value.length - 1
 }
 
 function removeVariant(i) {
   variants.value.splice(i, 1)
-  // одна вариация — это обычный товар: возвращаем её поля в форму
+  // осталась одна — это снова обычный товар: её поля возвращаем в форму
   if (variants.value.length === 1) {
     const only = variants.value[0]
     form.value.price = only.price
+    form.value.compare_at_price = only.compare_at_price
     form.value.stock = only.stock
     if (only.image_url) form.value.image_url = only.image_url
     variants.value = []
   }
   if (active.value >= variants.value.length) active.value = Math.max(0, variants.value.length - 1)
-}
-
-function variantTitle(v, i) {
-  return String(v.label || '').trim() || t('form.variantN', { n: i + 1 })
 }
 
 // Подпись вариации — одно свободное поле («Красный, M»); в базе это словарь
@@ -91,36 +95,12 @@ function attributesToLabel(attributes) {
     .join(', ')
 }
 
-// Фото вариации: тот же загрузчик и то же сжатие, что у главного фото товара
-const variantFileInput = ref(null)
-const uploadingVariant = ref(false)
-
-async function onPickVariantImage(e) {
-  const file = e.target.files?.[0]
-  e.target.value = ''
-  const v = current.value
-  if (!file || !v) return
-  imageError.value = ''
-  if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
-    imageError.value = t('form.fileTooBig', { n: MAX_IMAGE_MB })
-    return
-  }
-  uploadingVariant.value = true
-  try {
-    v.image_url = (await uploadProductImage(botId.value, file)).url
-  } catch (err) {
-    imageError.value = apiError(err, 'form.uploadError')
-  } finally {
-    uploadingVariant.value = false
-  }
-}
-
-// кол-во на складе// кол-во на складе// кол-во на складе — целое от 0; пустое поле значит «не учитывать» (только у товаров)
+// кол-во на складе — целое от 0; пустое поле значит «не учитывать» (только у товаров)
 const stockInvalid = computed(
   () =>
     form.value.type === 'physical' &&
-    form.value.stock !== '' &&
-    !/^\d+$/.test(form.value.stock),
+    slot.value.stock !== '' &&
+    !/^\d+$/.test(slot.value.stock),
 )
 
 // --- фото товара: выбор с устройства, превью, замена и удаление ---
@@ -132,7 +112,7 @@ const imgLoading = ref(false)
 const MAX_IMAGE_MB = MAX_PICK_MB
 
 watch(
-  () => form.value.image_url,
+  () => slot.value.image_url,
   (v) => {
     imgLoading.value = !!v && !uploadingImage.value
   },
@@ -151,7 +131,7 @@ async function onPickImage(e) {
   imgLoading.value = false // старую картинку убираем — место занимает спиннер
   try {
     const res = await uploadProductImage(botId.value, file)
-    form.value.image_url = res.url
+    slot.value.image_url = res.url
   } catch (err) {
     imageError.value = apiError(err, 'form.uploadError')
   } finally {
@@ -160,7 +140,7 @@ async function onPickImage(e) {
 }
 
 function dropImage() {
-  form.value.image_url = ''
+  slot.value.image_url = ''
 }
 
 onMounted(async () => {
@@ -178,6 +158,8 @@ onMounted(async () => {
       // редактирования это выглядит сбоем; Number() убирает хвост нулей —
       // ровно так цена и показывается везде на витрине.
       price: p.price == null ? '' : String(Number(p.price)),
+      compare_at_price:
+        p.compare_at_price == null ? '' : String(Number(p.compare_at_price)),
       digital_url: p.digital_content?.url || '',
       stock: p.stock == null ? '' : String(p.stock),
       is_active: p.is_active,
@@ -188,6 +170,8 @@ onMounted(async () => {
     if (saved.length === 1) {
       const only = saved[0]
       form.value.price = only.price == null ? '' : String(Number(only.price))
+      form.value.compare_at_price =
+        only.compare_at_price == null ? '' : String(Number(only.compare_at_price))
       form.value.stock = only.stock == null ? '' : String(only.stock)
       if (only.images?.length) form.value.image_url = only.images[0]
     } else if (saved.length > 1) {
@@ -216,9 +200,20 @@ async function submit() {
   if (saving.value) return
 
   const basePrice = normalPrice(form.value.price)
-  if (basePrice === null && !variants.value.length) {
+  if (basePrice === null && !hasVariants.value) {
     error.value = t('form.priceInvalid')
     return
+  }
+
+  // Старая цена товара без вариаций — то же правило, что и у вариации:
+  // зачёркнутое число обязано быть выше текущего, иначе это не скидка
+  let baseCompare = null
+  if (!hasVariants.value && form.value.compare_at_price !== '') {
+    baseCompare = normalPrice(form.value.compare_at_price)
+    if (baseCompare === null || Number(baseCompare) <= Number(basePrice)) {
+      error.value = t('form.compareInvalid')
+      return
+    }
   }
 
   // Вариации отправляем только когда их правда больше одной. Одна вариация
@@ -226,6 +221,7 @@ async function submit() {
   // незачем.
   let payloadVariants = null
   let price = basePrice
+  let image = form.value.image_url
   if (hasVariants.value) {
     const rows = variants.value.map((v) => ({
       ...v,
@@ -262,6 +258,10 @@ async function submit() {
       (min, v) => (min === null || Number(v.price) < Number(min) ? v.price : min),
       null,
     )
+    // Витрина и карточка читают products.image_url и про вариации не знают.
+    // Берём фото первой вариации: продавец правит его там же, где цену, и
+    // ждёт, что карточка покажет именно его, а не снимок с момента «+».
+    image = rows.find((v) => v.image_url)?.image_url || image
   }
 
   saving.value = true
@@ -273,8 +273,10 @@ async function submit() {
       type: f.type,
       title: f.title,
       description: f.description || null,
-      image_url: f.image_url || null,
+      image_url: image || null,
       price,
+      // у товара с вариациями скидка своя у каждой — бэкенд обнулит это поле
+      compare_at_price: baseCompare,
       digital_content: f.type !== 'physical' && f.digital_url ? { url: f.digital_url } : null,
       // сток считаем только у товаров; у digital/услуг его нет
       stock: f.type === 'physical' && f.stock !== '' ? Number(f.stock) : null,
@@ -295,7 +297,26 @@ async function submit() {
   <div class="form">
     <h2>{{ form.id ? t('form.edit') : t('form.new') }}</h2>
 
-    <!-- Порядок: название -> фото -> тип -> вариации -> поля вариации.
+    <!-- Переключатель вариаций — самое первое, что видно, и дальше форма
+         заполняется как обычная: V1 и есть сам товар. «+» добавляет V2 и
+         сразу на неё переключает; поля ниже остаются те же самые, меняется
+         только то, что у вариаций своё — фото, цена и остаток. -->
+    <template v-if="form.type === 'physical'">
+      <div class="vrow">
+        <button
+          v-for="i in Math.max(variants.length, 1)"
+          :key="i"
+          type="button"
+          class="vtab"
+          :class="{ active: i - 1 === active }"
+          :title="slotTitle(i - 1)"
+          @click="active = i - 1"
+        >{{ t('form.variantShort', { n: i }) }}</button>
+        <button type="button" class="vtab plus" :title="t('form.addVariant')" @click="addVariant">+</button>
+      </div>
+    </template>
+
+    <!-- Порядок: название -> фото -> тип -> описание -> поля вариации.
          Фото поднято сразу под название и сделано широким: продавец начинает
          с того, что у него уже есть в галерее, а не с выбора типа товара. -->
     <label>{{ t('form.titleLabel') }}</label>
@@ -312,7 +333,7 @@ async function submit() {
     />
 
     <button
-      v-if="!form.image_url"
+      v-if="!slot.image_url"
       class="drop-zone"
       type="button"
       :disabled="uploadingImage"
@@ -327,7 +348,7 @@ async function submit() {
         <span v-if="uploadingImage || imgLoading" class="spinner" />
         <img
           v-show="!uploadingImage && !imgLoading"
-          :src="form.image_url"
+          :src="slot.image_url"
           :alt="t('form.photoAlt')"
           @load="imgLoading = false"
           @error="imgLoading = false"
@@ -359,89 +380,30 @@ async function submit() {
     <label>{{ t('form.descLabel') }}</label>
     <textarea v-model="form.description" rows="3" :placeholder="t('form.descPh')" />
 
-    <!-- Ряд вариаций — такими же пилюлями, как выбор типа выше. Пока «+» не
-         нажали, здесь одна кнопка и форма выглядит как обычная. -->
-    <template v-if="form.type === 'physical'">
-      <label>{{ t('form.variantsLabel') }}</label>
-      <div class="types vrow">
-        <button
-          v-for="(v, i) in variants"
-          :key="i"
-          type="button"
-          :class="{ active: i === active }"
-          @click="active = i"
-        >{{ variantTitle(v, i) }}</button>
-        <button type="button" class="plus" @click="addVariant">
-          + <template v-if="!variants.length">{{ t('form.addVariant') }}</template>
-        </button>
-      </div>
-      <p v-if="!variants.length" class="hint">{{ t('form.variantsHint') }}</p>
-    </template>
-
-    <!-- Без вариаций — обычные поля товара -->
-    <template v-if="!hasVariants">
-      <label>{{ t('form.priceLabel') }}</label>
-      <input v-model="form.price" inputmode="decimal" placeholder="9.99" />
-
-      <template v-if="form.type === 'physical'">
-        <label>{{ t('form.stockLabel') }}</label>
-        <input v-model="form.stock" inputmode="numeric" :placeholder="t('form.stockPh')" />
-        <p v-if="stockInvalid" class="error">{{ t('form.stockInvalid') }}</p>
-      </template>
-    </template>
-
-    <!-- Поля выбранной вариации -->
-    <div v-else-if="current" class="variant-card">
-      <div class="variant-head">
-        <b>{{ variantTitle(current, active) }}</b>
+    <!-- Дальше — поля, которые у товара с вариациями свои у каждой. Разметка
+         одна на оба случая: пишет она в товар или в вариацию, решает slot. -->
+    <template v-if="hasVariants">
+      <label>{{ t('form.variantLabelField') }}</label>
+      <div class="vname">
+        <input v-model="slot.label" maxlength="64" :placeholder="t('form.variantLabelPh')" />
         <button type="button" class="link danger" @click="removeVariant(active)">
           {{ t('form.removeVariant') }}
         </button>
       </div>
+    </template>
 
-      <label>{{ t('form.variantLabelField') }}</label>
-      <input v-model="current.label" maxlength="64" :placeholder="t('form.variantLabelPh')" />
+    <label>{{ t('form.priceLabel') }}</label>
+    <input v-model="slot.price" inputmode="decimal" placeholder="9.99" />
 
-      <label>{{ t('form.photoLabel') }}</label>
-      <input
-        ref="variantFileInput"
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
-        hidden
-        @change="onPickVariantImage"
-      />
-      <button
-        v-if="!current.image_url"
-        class="drop-zone small"
-        type="button"
-        :disabled="uploadingVariant"
-        @click="variantFileInput.click()"
-      >
-        <span class="drop-icon">+</span>
-        <span>{{ uploadingVariant ? t('form.uploading') : t('form.pickPhoto') }}</span>
-      </button>
-      <div v-else class="image-box wide">
-        <div class="thumb big"><img :src="current.image_url" :alt="current.label" /></div>
-        <div class="image-actions">
-          <button class="btn btn-soft act" type="button" @click="variantFileInput.click()">
-            {{ uploadingVariant ? '…' : t('form.replace') }}
-          </button>
-          <button class="btn btn-soft act" type="button" @click="current.image_url = ''">
-            {{ t('form.remove') }}
-          </button>
-        </div>
-      </div>
+    <label>{{ t('form.compareLabel') }}</label>
+    <input v-model="slot.compare_at_price" inputmode="decimal" placeholder="19.99" />
+    <p class="hint">{{ t('form.compareHint') }}</p>
 
-      <label>{{ t('form.priceLabel') }}</label>
-      <input v-model="current.price" inputmode="decimal" placeholder="9.99" />
-
-      <label>{{ t('form.compareLabel') }}</label>
-      <input v-model="current.compare_at_price" inputmode="decimal" placeholder="19.99" />
-      <p class="hint">{{ t('form.compareHint') }}</p>
-
+    <template v-if="form.type === 'physical'">
       <label>{{ t('form.stockLabel') }}</label>
-      <input v-model="current.stock" inputmode="numeric" :placeholder="t('form.stockPh')" />
-    </div>
+      <input v-model="slot.stock" inputmode="numeric" :placeholder="t('form.stockPh')" />
+      <p v-if="stockInvalid" class="error">{{ t('form.stockInvalid') }}</p>
+    </template>
 
     <template v-if="form.type !== 'physical'">
       <label>{{ t('form.digitalUrlLabel') }}</label>
@@ -458,7 +420,7 @@ async function submit() {
       <button class="btn btn-soft" @click="router.push(`/shop/${botId}`)">{{ t('common.cancel') }}</button>
       <button
         class="btn btn-primary"
-        :disabled="!form.title || !form.price || stockInvalid || saving"
+        :disabled="!form.title || !slot.price || stockInvalid || saving"
         @click="submit"
       >
         {{ saving ? '…' : t('form.save') }}
@@ -514,28 +476,21 @@ textarea { resize: none; }
 .thumb.big { width: 100%; height: 168px; border-radius: 15px; overflow: hidden; }
 .thumb.big img { width: 100%; height: 100%; object-fit: cover; }
 
-.variant-card {
-  border: 1.5px solid var(--line, var(--border)); border-radius: 15px;
-  padding: 12px 13px 14px; margin-top: 4px; background: var(--surface2);
+/* Переключатель вариаций: мелкие квадратики над всей формой. Он не должен
+   выглядеть как ещё один ряд выбора (тип товара, ниже) — там кнопки во всю
+   ширину, здесь ровно наоборот: чем меньше, тем понятнее, что это вкладки. */
+.vrow { display: flex; flex-wrap: wrap; gap: 7px; margin: 2px 0 4px; }
+.vtab {
+  width: 42px; height: 38px; flex: 0 0 auto;
+  border: 1px solid var(--border); background: var(--surface); color: var(--sub);
+  border-radius: 12px; cursor: pointer; font-weight: 800; font-size: 13px;
 }
-.variant-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.link { border: 0; background: none; color: var(--accent); font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 0; }
+.vtab.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.vtab.plus { border-style: dashed; border-color: var(--accent); color: var(--accent); font-size: 18px; }
+/* название вариации и «Убрать» — одной строкой: удаление относится именно к
+   той вариации, что сейчас открыта, и стоять оно должно рядом с её именем */
+.vname { display: flex; align-items: center; gap: 8px; }
+.vname input { flex: 1; }
+.link { border: 0; background: none; color: var(--accent); font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 0; white-space: nowrap; }
 .link.danger { color: var(--red); }
-/* Ряд вариаций — тот же ритм, что у выбора типа выше: вертикальный отступ
-   обязан совпадать с .types button, иначе кнопки схлопываются до высоты
-   строки и ряд перестаёт читаться как продолжение типа товара */
-.vrow { flex-wrap: wrap; }
-.vrow button { flex: 0 1 auto; padding: 11px 15px; }
-.vrow .plus {
-  border-style: dashed; border-color: var(--accent); color: var(--accent);
-  padding: 11px 18px;
-}
-.legacy-add {
-  width: 100%; margin-top: 10px; padding: 13px; border-radius: 14px;
-  border: 1.5px dashed var(--accent); background: var(--accent-soft);
-  color: var(--accent); font-size: 14px; font-weight: 700; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-}
-.add-variant .drop-icon { font-size: 20px; }
-.drop-zone.small { min-height: 96px; }
 </style>

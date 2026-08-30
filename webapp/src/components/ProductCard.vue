@@ -48,6 +48,14 @@ function openProduct() {
 const emoji = computed(
   () => ({ physical: '📦', digital: '📕', service: '🛎' })[props.product.type] ?? '📦',
 )
+// Зачёркнутая цена — только у товара без вариаций: у товара с вариациями
+// показанная цена это «от N», собранное из разных вариаций, и зачёркивать
+// рядом с ней одно число значило бы соврать про размер скидки
+const discount = computed(() =>
+  !hasVariants.value && props.product.compare_at_price != null
+    ? Number(props.product.compare_at_price)
+    : null,
+)
 // stock: null — не ограничен, 0 — распродано
 const soldOut = computed(() => props.product.stock === 0)
 const maxed = computed(() => props.product.stock != null && qty.value >= props.product.stock)
@@ -66,6 +74,7 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
         <div class="price">
           <span v-if="hasVariants" class="from">{{ t('card.from') }}</span>
           {{ Number(product.price) }} USDT
+          <s v-if="discount" class="was">{{ discount }}</s>
         </div>
         <div v-if="product.reviews_count" class="rating">
           ★ {{ Number(product.avg_rating).toFixed(1) }} · {{ product.reviews_count }}
@@ -105,6 +114,7 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
 .title { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .price-row { display: flex; align-items: baseline; gap: 8px; }
 .price { font-size: 14px; font-weight: 800; }
+.was { color: var(--sub); font-weight: 600; font-size: 12px; margin-left: 4px; }
 .rating { font-size: 11.5px; font-weight: 700; color: #f59e1b; white-space: nowrap; }
 .add, .stepper button {
   border: 0; border-radius: 11px; height: 36px; font-size: 13px; font-weight: 800; cursor: pointer;

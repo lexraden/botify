@@ -69,6 +69,9 @@ def recompute_product_totals(product: Product) -> None:
     if not active:
         return
     product.price = min(Decimal(str(v.price)) for v in active)
+    # Скидка у товара с вариациями — на вариации. Оставить своё старое число
+    # значило бы зачеркнуть его рядом с «от 500», собранным из других цен.
+    product.compare_at_price = None
     # Хоть одна вариация без ограничения — значит и товар без ограничения
     product.stock = (
         None

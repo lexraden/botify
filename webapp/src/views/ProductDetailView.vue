@@ -37,8 +37,10 @@ function pickDefault() {
 // цена и остаток берутся у вариации, если она есть
 const shown = computed(() => chosen.value ?? product.value)
 const price = computed(() => Number(shown.value?.price ?? 0))
+// Скидка живёт там же, где цена: у вариации — своя, у товара без вариаций —
+// его собственная. shown уже указывает на нужную из двух.
 const comparePrice = computed(() => {
-  const value = chosen.value?.compare_at_price
+  const value = shown.value?.compare_at_price
   return value == null ? null : Number(value)
 })
 const gallery = computed(() => {

@@ -119,6 +119,90 @@ async def test_compare_at_price_must_be_a_discount(db):
 
 
 @pytest.mark.asyncio
+async def test_product_without_variants_keeps_its_own_compare_price(db):
+    """Скидка у обычного товара: заводить ради зачёркнутой цены вариацию —
+    бессмысленно, поэтому compare_at_price есть и у самого товара."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={
+                "type": "physical",
+                "title": "Кружка",
+                "price": "7",
+                "compare_at_price": "10",
+                "variants": [],
+            },
+        )
+        assert r.status_code == 200, r.text
+        assert Decimal(r.json()["compare_at_price"]) == Decimal("10")
+
+        # покупатель обязан её видеть — иначе зачёркивать нечего
+        shop = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
+        assert Decimal(shop.json()["products"][0]["compare_at_price"]) == Decimal("10")
+
+
+@pytest.mark.asyncio
+async def test_product_compare_price_must_be_a_discount(db):
+    """То же правило, что и у вариации: зачёркнутое число выше текущего."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={
+                "type": "physical",
+                "title": "Кружка",
+                "price": "10",
+                "compare_at_price": "10",
+            },
+        )
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_variants_clear_the_products_own_compare_price(db):
+    """Витринная цена товара с вариациями — минимум по ним («от 500»).
+    Зачеркнуть рядом с ней своё старое число значило бы соврать про скидку."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        body = await make_product(
+            c,
+            bot_id,
+            [variant(5, 3, "Красный"), variant(7, 2, "Синий")],
+            price="10",
+        )
+        assert body["compare_at_price"] is None
+
+        # и при добавлении вариаций к товару, у которого скидка уже была
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={
+                "type": "physical",
+                "title": "Кружка",
+                "price": "7",
+                "compare_at_price": "10",
+            },
+        )
+        product_id = r.json()["id"]
+        r = await c.put(
+            f"/api/seller/bots/{bot_id}/products/{product_id}",
+            headers=seller_headers(),
+            json={
+                "type": "physical",
+                "title": "Кружка",
+                "price": "7",
+                "compare_at_price": "10",
+                "variants": [variant(5, 1, "Малая"), variant(9, 1, "Большая")],
+            },
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["compare_at_price"] is None
+
+
+@pytest.mark.asyncio
 async def test_editing_updates_adds_and_removes(db):
     bot_id = await setup_shop(db)
     async with client() as c:

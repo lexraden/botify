@@ -716,6 +716,9 @@ class ProductIn(BaseModel):
     description: str | None = Field(default=None, max_length=4000)
     image_url: str | None = Field(default=None, max_length=512)
     price: Decimal = Field(gt=0)
+    # зачёркнутая «старая» цена самого товара; у товара с вариациями скидка
+    # живёт на вариации, и это поле обнуляется пересчётом
+    compare_at_price: Decimal | None = Field(default=None, gt=0)
     # остаток на складе; None — не ограничен (услуги/digital без учёта штук)
     stock: int | None = Field(default=None, ge=0, le=1_000_000)
     digital_content: dict | None = None
@@ -749,15 +752,20 @@ async def list_products(
     return [ProductOut.model_validate(p) for p in result.scalars().all()]
 
 
-def _check_variants(payload: "ProductIn") -> None:
+def _check_pricing(payload: "ProductIn") -> None:
     """Вариации есть только у физических товаров: у услуги или файла нет ни
-    размера, ни цвета, а цена и остаток живут на самом товаре."""
+    размера, ни цвета, а цена и остаток живут на самом товаре.
+
+    Здесь же — единственная проверка «старой» цены: зачёркнутое число обязано
+    быть выше текущего, иначе это не скидка, а обман покупателя. Проверяем и
+    товар, и каждую вариацию: правило одно, а мест ввода два.
+    """
     variants = payload.variants or []
     if variants and payload.type != "physical":
         raise HTTPException(
             status_code=400, detail="variants are only available for physical products"
         )
-    for item in variants:
+    for item in [payload, *variants]:
         if item.compare_at_price is not None and item.compare_at_price <= item.price:
             raise HTTPException(
                 status_code=422,
@@ -792,7 +800,7 @@ async def create_product(
                 ),
             )
 
-    _check_variants(payload)
+    _check_pricing(payload)
     fields = payload.model_dump(exclude={"variants"})
     product = Product(seller_id=shop.seller_id, bot_id=shop.id, **fields)
     session.add(product)
@@ -819,7 +827,7 @@ async def update_product(
 ) -> ProductOut:
     if payload.type not in PRODUCT_TYPES:
         raise HTTPException(status_code=400, detail=f"type must be one of {sorted(PRODUCT_TYPES)}")
-    _check_variants(payload)
+    _check_pricing(payload)
     product = await _shop_product(session, shop, product_id)
     await session.refresh(product, ["variants"])
     for key, value in payload.model_dump(exclude={"variants"}).items():

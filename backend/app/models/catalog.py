@@ -43,6 +43,11 @@ class Product(Base, CreatedAtMixin):
 
     # MVP: единая валюта каталога — USDT (решение владельца от 2026-08-18)
     price: Mapped[float] = mapped_column(Numeric(18, 6))
+    # Зачёркнутая «старая» цена товара без вариаций. У товара с вариациями
+    # скидка живёт на вариации (ProductVariant.compare_at_price), а здесь
+    # обнуляется при пересчёте: витринная цена там — минимум по вариациям,
+    # и зачёркивать рядом с ней чужое число было бы враньём.
+    compare_at_price: Mapped[float | None] = mapped_column(Numeric(18, 6))
     currency: Mapped[str] = mapped_column(String(8), default="USDT")
 
     # Остаток на складе; None — не ограничен (услуги/digital без учёта штук).
