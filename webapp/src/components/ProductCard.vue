@@ -72,12 +72,14 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
         </div>
       </div>
     </div>
+    <!-- одна цепочка v-if/v-else-if намеренно: товар в корзине показывает
+         только «− +», кнопка «Добавить» под ним не нужна и сбивает счёт -->
     <div v-if="qty && !hasVariants" class="stepper">
       <button class="minus" @click.stop="cart.remove(product)">−</button>
       <button class="plus" :disabled="maxed" @click.stop="cart.add(product)">+</button>
     </div>
     <button
-      v-if="hasVariants"
+      v-else-if="hasVariants"
       class="add"
       @click.stop="openProduct"
     >{{ t('card.choose') }}</button>
