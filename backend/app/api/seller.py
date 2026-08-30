@@ -41,7 +41,7 @@ from app.payments.payouts import paid_total, pending_total
 from app.plans import SERVICE_TYPES, is_pro, limits_for, over_limit
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 from app.services.seller_texts import seller_text
-from app.services.variants import apply_variants
+from app.services.variants import apply_variants, line_title
 
 router = APIRouter(prefix="/seller")
 
@@ -874,6 +874,8 @@ class SellerOrderItemOut(BaseModel):
 
     product_id: int
     title: str
+    # чем строка отличается от соседней с тем же товаром — «Красный · M»
+    variant_label: str | None = None
     qty: int
     price: Decimal
 
@@ -926,7 +928,11 @@ async def list_orders(
         for item, title in items_result.all():
             items_by_order.setdefault(item.order_id, []).append(
                 SellerOrderItemOut(
-                    product_id=item.product_id, title=title, qty=item.qty, price=item.price
+                    product_id=item.product_id,
+                    title=line_title(title, item.variant_title),
+                    variant_label=item.variant_label,
+                    qty=item.qty,
+                    price=item.price,
                 )
             )
     return [

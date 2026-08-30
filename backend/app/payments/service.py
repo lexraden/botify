@@ -24,6 +24,7 @@ from app.models import (
 from app.payments.client import get_crypto_pay
 from app.security import decrypt_bot_token
 from app.services import seller_texts
+from app.services.variants import line_title
 from app.services.notify_texts import buyer_text
 
 logger = logging.getLogger(__name__)
@@ -188,8 +189,9 @@ async def handle_invoice_paid(
         for item, product in items:
             if item.variant_id is not None:
                 key = ("variant", item.variant_id)
+                name = line_title(product.title, item.variant_title)
                 label = item.variant_label or ""
-                titles[key] = f"{product.title} ({label})" if label else product.title
+                titles[key] = f"{name} ({label})" if label else name
             else:
                 if product.stock is None:
                     continue
@@ -240,8 +242,12 @@ async def handle_invoice_paid(
             # метка доставки: с неё считается окно чата заказа (72 часа)
             order.delivered_at = func.now()
 
+        # Строка чека называется тем, что человек купил: у вариации своё имя,
+        # а товарное принадлежит первой из них
         order_summary = "\n".join(
-            f"• {html.escape(product.title)} × {item.qty}" for item, product in items
+            f"• {html.escape(line_title(product.title, item.variant_title))}"
+            f"{f' ({item.variant_label})' if item.variant_label else ''} × {item.qty}"
+            for item, product in items
         )
         await session.commit()
 

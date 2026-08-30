@@ -37,6 +37,16 @@ def variant_label(attributes: dict | None) -> str:
     return " · ".join(str(v) for v in attributes.values() if str(v).strip())[:128]
 
 
+def line_title(product_title: str, variant_title: str | None) -> str:
+    """Как называется купленная строка заказа.
+
+    Своё название вариации главнее товарного: товарное — это имя первой
+    вариации (его проставляет форма продавца), и для второй оно называло бы
+    чужой вариант. Пусто — вариаций не было или своего имени у неё нет.
+    """
+    return variant_title or product_title
+
+
 def clean_attributes(attributes: dict | None) -> dict | None:
     if not attributes:
         return None

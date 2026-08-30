@@ -381,3 +381,42 @@ describe('BuyerOrders — живые статусы', () => {
     w.unmount()
   })
 })
+
+describe('BuyerOrders — две вариации одного товара', () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', component: { template: '<div />' } }],
+  })
+
+  beforeEach(() => {
+    fetchMyOrders.mockReset()
+    setLocale('ru')
+    router.push('/')
+  })
+
+  it('каждая строка подписана своей вариацией', async () => {
+    fetchMyOrders.mockResolvedValue([
+      {
+        id: 1,
+        status: 'paid',
+        total: '12',
+        currency: 'USDT',
+        items: [
+          // один product_id на обе строки — различает их только подпись
+          { product_id: 1, title: 'Футболка красная', variant_label: 'Красный', qty: 1, price: '5' },
+          { product_id: 1, title: 'Футболка синяя', variant_label: 'Синий', qty: 1, price: '7' },
+        ],
+      },
+    ])
+    const w = mount(BuyerOrders, { global: { plugins: [router] } })
+    await router.isReady()
+    await flushPromises()
+
+    const lines = w.findAll('.item')
+    expect(lines).toHaveLength(2)
+    expect(lines[0].text()).toContain('Футболка красная')
+    expect(lines[0].text()).toContain('Красный')
+    expect(lines[1].text()).toContain('Футболка синяя')
+    expect(lines[1].text()).toContain('Синий')
+  })
+})

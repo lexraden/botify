@@ -26,7 +26,7 @@ from app.models import (
 from app.models.orders import PAID_STATUSES
 from app.services import seller_texts
 from app.services.reviews import notify_new_review, random_author_name
-from app.services.variants import variant_label
+from app.services.variants import line_title, variant_label
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,11 @@ class BuyerOwnReviewOut(BaseModel):
 
 class OrderItemOut(BaseModel):
     product_id: int
+    # название купленного: своё у вариации, иначе товарное (services/variants.py)
     title: str
+    # «Красный · M» — чем строка отличается от соседней с тем же товаром.
+    # Без неё две вариации одного товара выглядят двумя одинаковыми строками
+    variant_label: str | None = None
     qty: int
     price: Decimal
     # оценён ли товар покупателем (для кнопки «Оценить покупки»)
@@ -347,6 +351,7 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
                 # снимок свойств рядом со снимком цены: продавец переименует
                 # размеры, а в старом заказе должно остаться купленное
                 variant_label=variant_label(variant.attributes) if variant else None,
+                variant_title=variant.title if variant else None,
                 qty=item.qty,
                 price=variant.price if variant else products[item.product_id].price,
             )
@@ -373,7 +378,15 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         items=[
             OrderItemOut(
                 product_id=i.product_id,
-                title=products[i.product_id].title,
+                title=line_title(
+                    products[i.product_id].title,
+                    chosen[i.variant_id].title if i.variant_id is not None else None,
+                ),
+                variant_label=(
+                    variant_label(chosen[i.variant_id].attributes)
+                    if i.variant_id is not None
+                    else None
+                ),
                 qty=i.qty,
                 price=products[i.product_id].price,
             )
@@ -524,7 +537,8 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> list[Ord
                 items=[
                     OrderItemOut(
                         product_id=i.product_id,
-                        title=title,
+                        title=line_title(title, i.variant_title),
+                        variant_label=i.variant_label,
                         qty=i.qty,
                         price=i.price,
                         reviewed=(order.id, i.product_id) in my_reviews,

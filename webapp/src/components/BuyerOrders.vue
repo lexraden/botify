@@ -212,8 +212,12 @@ onBeforeUnmount(() => {
           {{ STATUS_KEY[o.status] ? t(STATUS_KEY[o.status]) : o.status }}
         </span>
       </div>
-      <div v-for="i in o.items" :key="i.product_id" class="item">
-        {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
+      <!-- ключ по индексу: у двух вариаций одного товара product_id общий,
+           а список перезапрашивается каждые 10 секунд — на дублирующемся
+           ключе Vue переиспользует узлы наугад -->
+      <div v-for="(i, n) in o.items" :key="n" class="item">
+        {{ i.title }}<span v-if="i.variant_label" class="variant"> · {{ i.variant_label }}</span>
+        × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
         <span v-if="i.reviewed" class="reviewed-mark">{{
           i.my_review?.status === 'pending' ? t('reviews.statusPending') : t('orders.reviewedMark')
         }}</span>
@@ -382,6 +386,7 @@ onBeforeUnmount(() => {
   font-weight: 700;
   cursor: pointer;
 }
+.variant { color: var(--sub); }
 .stars { display: flex; gap: 4px; }
 .stars button {
   border: 0;

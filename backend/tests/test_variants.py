@@ -306,6 +306,114 @@ async def test_buyer_must_choose_a_variant(db):
 
 
 @pytest.mark.asyncio
+async def test_order_line_is_named_by_the_bought_variant(db):
+    """Товарное название принадлежит первой вариации: без снимка своего имени
+    строка заказа для второй называла бы чужой вариант."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        body = await make_product(
+            c,
+            bot_id,
+            [
+                variant(5, 3, "Красный", title="Футболка красная"),
+                variant(7, 3, "Синий", title="Футболка синяя"),
+            ],
+        )
+        blue = body["variants"][1]["id"]
+        created = await c.post(
+            f"/api/store/{bot_id}/orders",
+            headers=buyer_headers(),
+            json={
+                "items": [{"product_id": body["id"], "variant_id": blue, "qty": 1}],
+                "delivery": {"address": "Тверская 1"},
+            },
+        )
+        assert created.status_code == 200, created.text
+        line = created.json()["items"][0]
+        assert line["title"] == "Футболка синяя"
+        assert line["variant_label"] == "Синий"
+
+        mine = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
+        shown = mine.json()[0]["items"][0]
+        assert shown["title"] == "Футболка синяя"
+        assert shown["variant_label"] == "Синий"
+
+    # рабочий список продавца начинается с оплаты — доводим заказ до неё
+    async with db() as session:
+        order = await session.get(Order, created.json()["id"])
+        order.status = "paid"
+        await session.commit()
+
+    async with client() as c:
+        seller = await c.get(f"/api/seller/bots/{bot_id}/orders", headers=seller_headers())
+        for_seller = seller.json()[0]["items"][0]
+    assert for_seller["title"] == "Футболка синяя"
+    assert for_seller["variant_label"] == "Синий"
+
+
+@pytest.mark.asyncio
+async def test_order_line_survives_renaming_the_variant(db):
+    """Снимок, а не ссылка: продавец переименует вариацию, а в старом заказе
+    должно остаться то, за что человек заплатил."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        body = await make_product(
+            c, bot_id, [variant(5, 3, "Красный", title="Футболка красная")]
+        )
+        first = body["variants"][0]["id"]
+        await c.post(
+            f"/api/store/{bot_id}/orders",
+            headers=buyer_headers(),
+            json={
+                "items": [{"product_id": body["id"], "variant_id": first, "qty": 1}],
+                "delivery": {"address": "Тверская 1"},
+            },
+        )
+        await c.put(
+            f"/api/seller/bots/{bot_id}/products/{body['id']}",
+            headers=seller_headers(),
+            json={
+                "type": "physical",
+                "title": "Футболка",
+                "price": "5",
+                "variants": [
+                    {
+                        "id": first,
+                        "attributes": {"Цвет": "Бордовый"},
+                        "title": "Футболка бордовая",
+                        "price": "5",
+                        "stock": 3,
+                    }
+                ],
+            },
+        )
+        mine = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
+        shown = mine.json()[0]["items"][0]
+    assert shown["title"] == "Футболка красная"
+    assert shown["variant_label"] == "Красный"
+
+
+@pytest.mark.asyncio
+async def test_order_line_without_variant_title_falls_back_to_product(db):
+    """Заказы, созданные до появления колонки, называются товарным."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        body = await make_product(c, bot_id, [variant(5, 3, "Красный")])
+        await c.post(
+            f"/api/store/{bot_id}/orders",
+            headers=buyer_headers(),
+            json={
+                "items": [
+                    {"product_id": body["id"], "variant_id": body["variants"][0]["id"], "qty": 1}
+                ],
+                "delivery": {"address": "Тверская 1"},
+            },
+        )
+        mine = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
+    assert mine.json()[0]["items"][0]["title"] == "Футболка"
+
+
+@pytest.mark.asyncio
 async def test_variant_of_another_product_is_refused(db):
     """Иначе можно было бы прислать id дешёвой вариации к дорогому товару."""
     bot_id = await setup_shop(db)

@@ -554,8 +554,13 @@ async function removeLogo() {
           </span>
           <!-- состав заказа: что именно куплено, сколько штук и на какую сумму -->
           <div class="items">
-            <div v-for="i in o.items" :key="i.product_id" class="item">
-              <span>{{ i.title }} × {{ i.qty }}</span>
+            <!-- ключ по индексу: у двух вариаций одного товара product_id
+                 общий, и дублировать его в ключе нельзя -->
+            <div v-for="(i, n) in o.items" :key="n" class="item">
+              <span>
+                {{ i.title }}<span v-if="i.variant_label" class="variant"> · {{ i.variant_label }}</span>
+                × {{ i.qty }}
+              </span>
               <span>{{ (Number(i.price) * i.qty).toFixed(2) }} USDT</span>
             </div>
           </div>
@@ -904,6 +909,7 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .metric.green b, .metric.green span { color: var(--green-text); }
 .reviews-block { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .seller-review { border-top: 1px solid var(--surface2); padding-top: 8px; }
+.items .variant { color: var(--sub); }
 .sr-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; flex-shrink: 0; }
 .sr-right { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
