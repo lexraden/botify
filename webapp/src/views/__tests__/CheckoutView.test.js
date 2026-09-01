@@ -69,7 +69,7 @@ describe('CheckoutView — доставка', () => {
     expect(createOrder).toHaveBeenCalledWith([{ product_id: 1, variant_id: null, qty: 1 }], null, null)
   })
 
-  it('после Pay открывается окно оплаты и покупатель возвращается в магазин', async () => {
+  it('после Pay открывается окно оплаты, а покупатель — в «Моих покупках»', async () => {
     createOrder.mockResolvedValueOnce({ id: 1, payment_url: 'https://t.me/CryptoBot' })
     window.Telegram = { WebApp: { openTelegramLink: vi.fn() } }
     const w = mountWith('digital')
@@ -79,8 +79,12 @@ describe('CheckoutView — доставка', () => {
 
     expect(window.Telegram.WebApp.openTelegramLink).toHaveBeenCalledWith('https://t.me/CryptoBot')
     expect(window.open).not.toHaveBeenCalled()
-    // промежуточной страницы «Мои покупки» больше нет — сразу назад в магазин
-    expect(router.push).toHaveBeenCalledWith('/')
+    // вернувшись из @CryptoBot, человек должен увидеть свою покупку и её
+    // статус, а не каталог, из которого он ушёл
+    expect(router.push).toHaveBeenCalledWith({
+      path: '/my-orders',
+      query: { created: 1, pay: '1' },
+    })
   })
 })
 
@@ -141,7 +145,7 @@ describe('CheckoutView — счёт не создался', () => {
     })
   })
 
-  it('со ссылкой на оплату по-прежнему открывает её и возвращает в каталог', async () => {
+  it('со ссылкой на оплату открывает её и ведёт в «Мои покупки»', async () => {
     createOrder.mockResolvedValueOnce({ id: 43, payment_url: 'https://t.me/CryptoBot?start=x' })
     const w = mountWith('digital')
     await flushPromises()
@@ -149,6 +153,9 @@ describe('CheckoutView — счёт не создался', () => {
     await flushPromises()
 
     expect(window.open).toHaveBeenCalledWith('https://t.me/CryptoBot?start=x', '_blank')
-    expect(router.push).toHaveBeenCalledWith('/')
+    expect(router.push).toHaveBeenCalledWith({
+      path: '/my-orders',
+      query: { created: 43, pay: '1' },
+    })
   })
 })

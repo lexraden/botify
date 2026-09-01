@@ -34,7 +34,7 @@ export const DICT = {
     'orders.statusCancelled': '✖️ Отменён',
     'orders.created': 'Заказ #{n} создан.',
     'orders.payWindow':
-      'Заверши оплату в открывшемся окне @CryptoBot — после оплаты придёт подтверждение в чат с ботом.',
+      'Заверши оплату в открывшемся окне @CryptoBot. Статус здесь обновится сам, а подтверждение придёт в чат с ботом.',
     'orders.payUnavailable': 'Оплата временно недоступна — попробуй позже.',
     'orders.payNow': 'Оплатить',
     'orders.cancelOrder': 'Отменить',
@@ -380,7 +380,7 @@ export const DICT = {
     'orders.statusCancelled': '✖️ Cancelled',
     'orders.created': 'Order #{n} placed.',
     'orders.payWindow':
-      'Finish the payment in the @CryptoBot window that opened — a confirmation will arrive in the bot chat.',
+      'Finish the payment in the @CryptoBot window that opened. The status here updates on its own, and a confirmation will arrive in the bot chat.',
     'orders.payUnavailable': 'Payment is temporarily unavailable — try again later.',
     'orders.payNow': 'Pay',
     'orders.cancelOrder': 'Cancel',

@@ -60,9 +60,12 @@ async function pay() {
     const tg = window.Telegram?.WebApp
     if (tg?.openTelegramLink) tg.openTelegramLink(order.payment_url)
     else window.open(order.payment_url, '_blank')
-    // промежуточная страница «Мои покупки» мешала: нажали Pay — окно оплаты
-    // уже открыто, возвращаем покупателя в магазин, где он и был
-    router.push('/')
+    // Ведём в «Мои покупки», а не в каталог: окно @CryptoBot уже открыто
+    // поверх приложения, и вернувшись из него, человек должен увидеть свою
+    // покупку и её статус. Заказ в этот момент ещё pending_payment — в paid
+    // его переводит вебхук, а список сам обновится (BuyerOrders опрашивает
+    // сервер, пока вкладка видима).
+    router.push({ path: '/my-orders', query: { created: order.id, pay: '1' } })
   } catch (e) {
     error.value = apiError(e, 'checkout.error')
   } finally {
