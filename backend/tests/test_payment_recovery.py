@@ -96,13 +96,10 @@ async def test_repeated_pay_discards_previous_invoice(db):
     fake = SimpleNamespace(delete_invoice=AsyncMock(side_effect=lambda i: deleted.append(i)))
 
     async def fake_invoice(order_id, total, shop=None):
-        from app.db import get_session
-
-        async with get_session() as session:
-            order = await session.get(Order, order_id)
-            order.invoice_id = 900200  # новый счёт вместо снятого
-            await session.commit()
-        return "https://t.me/CryptoBot?start=inv2"
+        # invoice_id заказу пишет сам эндпоинт, в своей транзакции: своей
+        # сессией сюда лезть нельзя — заказ уже под FOR UPDATE, и вложенный
+        # UPDATE встал бы в очередь за блокировкой вызывающего
+        return 900200, "https://t.me/CryptoBot?start=inv2"
 
     async with client() as c:
         order_id = await _pending_order(c, bot_id)

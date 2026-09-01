@@ -68,6 +68,7 @@ async def maintenance_loop() -> None:
     более редкий, интервал.
     """
     from app.payments.reconcile import reconcile_paid_invoices
+    from app.payments.service import resend_undelivered
     from app.services.bot_health import check_revoked_tokens
     from app.services.images import purge_orphan_images
     from app.services.mailing import revive_stuck_mailings
@@ -87,6 +88,7 @@ async def maintenance_loop() -> None:
         await asyncio.sleep(tick)
         for name, job in (
             ("сверка оплат", reconcile_paid_invoices),
+            ("досылка недоставленного", resend_undelivered),
             ("оживление рассылок", revive_stuck_mailings),
             ("напоминания по заказам", remind_stuck_orders),
             ("авто-подтверждение получения", auto_confirm_delivery),

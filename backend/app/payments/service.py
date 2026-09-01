@@ -5,7 +5,7 @@ import html
 import logging
 from decimal import Decimal
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 
 from app.bots.runner import make_seller_bot
 from app.config import get_settings
@@ -80,8 +80,15 @@ def invoice_description(order_id: int, shop: SellerBot | None) -> str:
 
 async def create_invoice_for_order(
     order_id: int, total: Decimal, shop: SellerBot | None = None
-) -> str | None:
-    """Создаёт инвойс Crypto Pay. Возвращает ссылку на оплату (или None без токена)."""
+) -> tuple[int, str] | None:
+    """Счёт Crypto Pay на заказ: (invoice_id, ссылка). None — токена нет.
+
+    Записать invoice_id заказу — дело вызывающего, и это не стиль, а
+    необходимость: раньше функция открывала собственную сессию и обновляла ту
+    же строку заказа. Стоило вызывающему взять заказ под FOR UPDATE, как
+    вложенный UPDATE вставал в очередь за блокировкой, которую держит он сам, —
+    и «Оплатить» зависало навсегда. Теперь запись идёт в транзакции вызывающего.
+    """
     crypto = get_crypto_pay()
     if crypto is None:
         return None
@@ -94,12 +101,7 @@ async def create_invoice_for_order(
         allow_anonymous=False,
         expires_in=3600,
     )
-    async with get_session() as session:
-        order = await session.get(Order, order_id)
-        if order is not None:
-            order.invoice_id = invoice.invoice_id
-            await session.commit()
-    return invoice.bot_invoice_url
+    return invoice.invoice_id, invoice.bot_invoice_url
 
 
 def _provider_fee(total: Decimal, fee_amount: Decimal | None) -> Decimal:
@@ -120,8 +122,6 @@ async def handle_invoice_paid(
 ) -> bool:
     """Обработка вебхука invoice_paid. Идемпотентна: повторный вызов — no-op.
     Возвращает True, если заказ был переведён в оплаченные этим вызовом."""
-    from sqlalchemy.sql import func
-
     async with get_session() as session:
         # FOR UPDATE: Crypto Pay ретраит вебхук, и две доставки подряд могут
         # войти сюда одновременно. Без блокировки обе увидят pending_payment
@@ -225,12 +225,9 @@ async def handle_invoice_paid(
                     qty,
                 )
 
-        # Digital/услуги с настроенной выдачей доставляются сразу.
-        # Название и ссылка — от продавца, а сообщение уходит с parse_mode=HTML:
-        # один «<» в названии оставил бы покупателя без подтверждения оплаты
-        # и без самого контента (см. tests/test_html_safety.py)
+        # Digital/услуги с настроенной выдачей доставляются сразу
         digital_lines = [
-            f"• {html.escape(product.title)}: {html.escape(product.digital_content['url'])}"
+            product
             for _, product in items
             if product.type in ("digital", "service")
             and product.digital_content
@@ -242,13 +239,7 @@ async def handle_invoice_paid(
             # метка доставки: с неё считается окно чата заказа (72 часа)
             order.delivered_at = func.now()
 
-        # Строка чека называется тем, что человек купил: у вариации своё имя,
-        # а товарное принадлежит первой из них
-        order_summary = "\n".join(
-            f"• {html.escape(line_title(product.title, item.variant_title))}"
-            f"{f' ({item.variant_label})' if item.variant_label else ''} × {item.qty}"
-            for item, product in items
-        )
+        buyer_message = buyer_paid_message(customer, order.id, items, sold_out)
         await session.commit()
 
         order_id, order_total = order.id, order.total
@@ -261,30 +252,12 @@ async def handle_invoice_paid(
         await session.refresh(customer, ["bot"])
         seller_bot_token = decrypt_bot_token(customer.bot.bot_token_encrypted)
 
-    await _notify(
-        seller_bot_token,
-        customer_tg,
-        # язык уведомления — как в Mini App покупателя (notify_texts)
-        buyer_text(customer, "paid.header", id=order_id)
-        + f"\n\n{order_summary}\n"
-        + (
-            "\n" + buyer_text(customer, "paid.materials") + "\n" + "\n".join(digital_lines)
-            if digital_lines
-            else "\n" + buyer_text(customer, "paid.preparing")
-        )
-        # доставленные цифровые заказы можно оценивать — подводим к форме отзыва
-        + ("\n" + buyer_text(customer, "paid.review") if all_digital else "")
-        # закончился между заказом и оплатой: честнее сказать сразу, чем дать
-        # человеку ждать посылку, которой не будет
-        + (
-            "\n\n"
-            + buyer_text(
-                customer, "paid.sold_out", items=", ".join(html.escape(t) for t in sold_out)
-            )
-            if sold_out
-            else ""
-        ),
-    )
+    # Отметку ставим по факту отправки, а не заодно с коммитом выше: упади
+    # процесс между ними — заказ числился бы доставленным, а материалы не
+    # ушли бы никогда (ретрай вебхука упирается в гард статуса). Пустая
+    # отметка — сигнал добивке (resend_undelivered) доделать работу.
+    if await _notify(seller_bot_token, customer_tg, buyer_message):
+        await _mark_content_sent(order_id)
 
     from app.bots.hub import hub_bot
 
@@ -320,11 +293,140 @@ async def handle_invoice_paid(
     return True
 
 
-async def _notify(bot_token: str, chat_id: int, text: str) -> None:
+def buyer_paid_message(customer, order_id: int, items, sold_out=()) -> str:
+    """Подтверждение оплаты покупателю — вместе с цифровым контентом, если он есть.
+
+    Отдельной функцией, потому что собирают её двое: обработчик вебхука и
+    добивка недоставленного (`resend_undelivered`). Две копии этого текста
+    разъехались бы на первой правке, а расходиться им нельзя — в одной из них
+    лежат материалы, за которые человек заплатил.
+
+    Название и ссылка — от продавца, а сообщение уходит с parse_mode=HTML:
+    один «<» в названии оставил бы покупателя и без подтверждения, и без
+    самого контента (tests/test_html_safety.py).
+    """
+    digital_lines = [
+        f"• {html.escape(product.title)}: {html.escape(product.digital_content['url'])}"
+        for _, product in items
+        if product.type in ("digital", "service")
+        and product.digital_content
+        and product.digital_content.get("url")
+    ]
+    all_digital = all(product.type in ("digital", "service") for _, product in items)
+    summary = "\n".join(
+        f"• {html.escape(line_title(product.title, item.variant_title))}"
+        f"{f' ({item.variant_label})' if item.variant_label else ''} × {item.qty}"
+        for item, product in items
+    )
+    return (
+        buyer_text(customer, "paid.header", id=order_id)
+        + f"\n\n{summary}\n"
+        + (
+            "\n" + buyer_text(customer, "paid.materials") + "\n" + "\n".join(digital_lines)
+            if digital_lines
+            else "\n" + buyer_text(customer, "paid.preparing")
+        )
+        # доставленные цифровые заказы можно оценивать — подводим к форме отзыва
+        + ("\n" + buyer_text(customer, "paid.review") if all_digital else "")
+        # закончился между заказом и оплатой: честнее сказать сразу, чем дать
+        # человеку ждать посылку, которой не будет
+        + (
+            "\n\n"
+            + buyer_text(
+                customer, "paid.sold_out", items=", ".join(html.escape(t) for t in sold_out)
+            )
+            if sold_out
+            else ""
+        )
+    )
+
+
+async def _notify(bot_token: str, chat_id: int, text: str) -> bool:
+    """True — сообщение ушло. Исход важен: по нему ставится отметка о выдаче,
+    и без неё заказ считался бы доставленным, ничего не отправив."""
     bot = make_seller_bot(bot_token)
     try:
         await bot.send_message(chat_id, text)
+        return True
     except Exception:
         logger.exception("Не удалось отправить уведомление chat_id=%s", chat_id)
+        return False
     finally:
         await bot.session.close()
+
+
+async def _mark_content_sent(order_id: int) -> None:
+    """Подтверждение оплаты (и материалы вместе с ним) доехало до покупателя."""
+    async with get_session() as session:
+        await session.execute(
+            update(Order).where(Order.id == order_id).values(content_sent_at=func.now())
+        )
+        await session.commit()
+
+
+async def resend_undelivered(older_than_minutes: int = 5) -> int:
+    """Досылает подтверждение оплаты тем, кому оно так и не ушло.
+
+    Дыра, которую это закрывает: заказ помечается оплаченным одним коммитом, а
+    сообщение с материалами уходит после него. Умри процесс между этими двумя
+    шагами — ретрай вебхука упрётся в гард статуса и вернёт «уже обработан», а
+    покупатель не получит купленное никогда.
+
+    Гарантия здесь at-least-once, а не exactly-once: если процесс умер уже
+    после отправки, но до отметки, человек получит второе такое же сообщение.
+    Для оплаченного цифрового товара это несравнимо лучше, чем не получить его
+    вовсе.
+
+    `older_than_minutes` — фора обычному пути: только что оплаченный заказ ещё
+    отправляется, и лезть в него джобу незачем.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.orders import PAID_STATUSES
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=older_than_minutes)
+    async with get_session() as session:
+        stale = (
+            await session.execute(
+                select(Order).where(
+                    Order.status.in_(PAID_STATUSES),
+                    Order.content_sent_at.is_(None),
+                    Order.paid_at.is_not(None),
+                    Order.paid_at < cutoff,
+                )
+            )
+        ).scalars().all()
+        if not stale:
+            return 0
+
+        jobs = []
+        for order in stale:
+            customer = await session.get(Customer, order.customer_id)
+            items = (
+                await session.execute(
+                    select(OrderItem, Product)
+                    .join(Product, Product.id == OrderItem.product_id)
+                    .where(OrderItem.order_id == order.id)
+                )
+            ).all()
+            if customer is None or not items:
+                continue
+            await session.refresh(customer, ["bot"])
+            jobs.append(
+                (
+                    order.id,
+                    decrypt_bot_token(customer.bot.bot_token_encrypted),
+                    customer.telegram_id,
+                    # sold_out не восстанавливаем: это редкая гонка на момент
+                    # оплаты, а материалы важнее упоминания о ней
+                    buyer_paid_message(customer, order.id, items),
+                )
+            )
+
+    sent = 0
+    for order_id, token, chat_id, text in jobs:
+        if await _notify(token, chat_id, text):
+            await _mark_content_sent(order_id)
+            sent += 1
+            logger.warning("Досылка подтверждения по заказу %s", order_id)
+    return sent

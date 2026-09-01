@@ -361,7 +361,12 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
     from app.payments.service import create_invoice_for_order
 
     try:
-        payment_url = await create_invoice_for_order(order.id, Decimal(total), ctx.bot)
+        issued = await create_invoice_for_order(order.id, Decimal(total), ctx.bot)
+        if issued is not None:
+            order.invoice_id, payment_url = issued
+            await ctx.session.commit()
+        else:
+            payment_url = None
     except Exception:
         # Заказ уже создан, оплату можно повторить — checkout не роняем,
         # но причину пишем в лог: иначе «кнопка не работает» не диагностируется
@@ -418,17 +423,33 @@ async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> Pa
     """
     from app.payments.service import create_invoice_for_order, discard_invoice
 
-    order = await _own_order(ctx, order_id)
+    # FOR UPDATE, как в cancel_order ниже: без блокировки два быстрых нажатия
+    # «Оплатить» выписывали заказу два живых счёта сразу. Оплата обоих — это
+    # принятые дважды деньги, из которых второй платёж упирается в гард
+    # статуса и не превращается ни в заказ, ни в запись.
+    order = (
+        await ctx.session.execute(
+            select(Order).where(Order.id == order_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if order is None or order.bot_id != ctx.bot.id or order.customer_id != ctx.customer.id:
+        raise HTTPException(status_code=403, detail="foreign order")
     if order.status != "pending_payment":
         raise HTTPException(
             status_code=409, detail=f"order is {order.status}, not awaiting payment"
         )
     await discard_invoice(order.invoice_id)
     try:
-        payment_url = await create_invoice_for_order(order.id, Decimal(order.total), ctx.bot)
+        issued = await create_invoice_for_order(order.id, Decimal(order.total), ctx.bot)
     except Exception:
         logger.exception("Повторный инвойс для заказа %s создать не удалось", order.id)
         raise HTTPException(status_code=502, detail="invoice_failed") from None
+    # Новый счёт записываем здесь же, под той же блокировкой: пока эта
+    # транзакция открыта, второй «Оплатить» ждёт и увидит уже наш invoice_id,
+    # а не устаревший — иначе он снял бы чужой счёт и оставил наш живым
+    payment_url = None
+    if issued is not None:
+        order.invoice_id, payment_url = issued
     # Выписали новый часовой счёт — дали заказу столько же. Иначе покупатель,
     # нажавший «Оплатить» на 59-й минуте, получил бы счёт на минуту.
     order.expires_at = datetime.now(timezone.utc) + timedelta(

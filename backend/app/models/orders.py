@@ -44,6 +44,12 @@ class Order(Base, CreatedAtMixin):
     # пошёл заново. NULL у старых заказов и после оплаты — они не истекают.
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Когда покупателю ушло подтверждение оплаты — вместе с материалами, если
+    # заказ цифровой. Отдельно от paid_at намеренно: заказ помечается
+    # оплаченным одним коммитом, а сообщение уходит после него, и между этими
+    # шагами процесс может умереть. NULL у оплаченного заказа значит «купленное
+    # не доехало» — по нему добивает app/payments/service.py:resend_undelivered
+    content_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Момент доставки (delivered). От него считается окно чата заказа —
     # 72 часа на обсуждение (app/services/chat.py)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

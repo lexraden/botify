@@ -251,3 +251,105 @@ async def test_invoice_description_survives_missing_shop(db):
     from app.payments.service import invoice_description
 
     assert invoice_description(999999, None) == "Заказ #999999"
+
+
+# --------------------------------------------------------------------------
+# Идемпотентность выдачи: ни дважды, ни ни разу
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_repeat_webhook_does_not_resend_digital(db):
+    """Ретрай вебхука не должен выдавать купленное второй раз."""
+    await make_order(db)
+    p1, p2 = patched_notifications()
+    with p1 as notify_mock, p2:
+        assert await handle_invoice_paid(555001, None) is True
+        assert await handle_invoice_paid(555001, None) is False
+
+    assert notify_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_successful_delivery_is_marked(db):
+    order_id = await make_order(db)
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        await handle_invoice_paid(555001, None)
+
+    async with db() as session:
+        assert (await session.get(Order, order_id)).content_sent_at is not None
+
+
+@pytest.mark.asyncio
+async def test_undelivered_content_is_resent(db):
+    """Процесс умер между коммитом оплаты и отправкой: заказ оплачен, а
+    материалы не ушли. Ретрай вебхука сюда уже не дойдёт — упрётся в гард
+    статуса, — поэтому доделывает джоб."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.payments.service import resend_undelivered
+
+    order_id = await make_order(db)
+    # отправка провалилась: отметки нет, хотя заказ оплачен
+    with (
+        patch("app.payments.service._notify", new=AsyncMock(return_value=False)),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        assert await handle_invoice_paid(555001, None) is True
+
+    async with db() as session:
+        order = await session.get(Order, order_id)
+        assert order.status == "delivered"  # заказ числится доставленным
+        assert order.content_sent_at is None  # а купленное не ушло
+        order.paid_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+        await session.commit()
+
+    with patch("app.payments.service._notify", new=AsyncMock(return_value=True)) as notify:
+        assert await resend_undelivered() == 1
+
+    # ушло то же самое письмо: со ссылкой на купленное
+    assert "https://guide.example/x" in notify.await_args.args[2]
+    async with db() as session:
+        assert (await session.get(Order, order_id)).content_sent_at is not None
+
+
+@pytest.mark.asyncio
+async def test_resend_skips_already_delivered(db):
+    """Джоб крутится каждые десять минут — он не должен слать повторно тем,
+    кому уже дошло."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.payments.service import resend_undelivered
+
+    order_id = await make_order(db)
+    p1, p2 = patched_notifications()
+    with p1, p2:
+        await handle_invoice_paid(555001, None)
+
+    async with db() as session:
+        order = await session.get(Order, order_id)
+        order.paid_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+        await session.commit()
+
+    with patch("app.payments.service._notify", new=AsyncMock(return_value=True)) as notify:
+        assert await resend_undelivered() == 0
+    assert notify.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_resend_leaves_fresh_orders_to_the_normal_path(db):
+    """Только что оплаченный заказ ещё отправляется обычным путём — лезть
+    в него джобу незачем."""
+    from app.payments.service import resend_undelivered
+
+    await make_order(db)
+    with (
+        patch("app.payments.service._notify", new=AsyncMock(return_value=False)),
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()),
+    ):
+        await handle_invoice_paid(555001, None)
+
+    with patch("app.payments.service._notify", new=AsyncMock(return_value=True)) as notify:
+        assert await resend_undelivered() == 0
+    assert notify.await_count == 0

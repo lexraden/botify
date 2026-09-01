@@ -39,7 +39,7 @@ async def create_order(c, bot_id) -> int:
 @pytest.mark.asyncio
 async def test_pay_returns_fresh_invoice_link(db, monkeypatch):
     async def fake_invoice(order_id, total, shop=None):
-        return f"https://t.me/CryptoBot?start=inv{order_id}"
+        return 700000 + order_id, f"https://t.me/CryptoBot?start=inv{order_id}"
 
     monkeypatch.setattr("app.payments.service.create_invoice_for_order", fake_invoice)
     bot_id = await setup_shop(db)
@@ -176,7 +176,7 @@ async def test_pay_resets_expiry_clock(db, monkeypatch):
     """Новый счёт по кнопке «Оплатить» продлевает жизнь заказа: нажал на 59-й
     минуте — получил новый час, а не минуту. Провалившийся инвойс не продлевает."""
     async def fake_invoice(order_id, total, shop=None):
-        return f"https://t.me/CryptoBot?start=inv{order_id}"
+        return 700000 + order_id, f"https://t.me/CryptoBot?start=inv{order_id}"
 
     async def boom(order_id, total, shop=None):
         raise RuntimeError("crypto down")
@@ -216,7 +216,7 @@ async def test_job_cancels_expired_orders(db, monkeypatch):
     from app.services.order_health import expire_unpaid_orders
 
     async def fake_invoice(order_id, total, shop=None):
-        return f"https://t.me/CryptoBot?start=inv{order_id}"
+        return 700000 + order_id, f"https://t.me/CryptoBot?start=inv{order_id}"
 
     monkeypatch.setattr("app.payments.service.create_invoice_for_order", fake_invoice)
     discarded = []
@@ -260,3 +260,50 @@ async def test_job_cancels_expired_orders(db, monkeypatch):
         r = await c.get(f"/api/store/{bot_id}/orders/my", headers=buyer_headers())
         by_id = {o["id"]: o["status"] for o in r.json()}
         assert by_id == {fresh: "pending_payment", paid: "paid"}
+
+
+@pytest.mark.asyncio
+async def test_two_taps_leave_one_live_invoice(db, monkeypatch):
+    """Два одновременных нажатия «Оплатить» не должны оставить заказу два
+    живых счёта: оплата обеих ссылок — это принятые дважды деньги, из которых
+    вторая упирается в гард статуса и не превращается ни во что.
+
+    Проверяем инвариант напрямую: каждый выписанный счёт, кроме последнего,
+    обязан быть снят.
+    """
+    import asyncio
+
+    created: list[int] = []
+    discarded: list[int] = []
+    counter = iter(range(9001, 9100))
+
+    async def fake_invoice(order_id, total, shop=None):
+        invoice_id = next(counter)
+        created.append(invoice_id)
+        return invoice_id, f"https://t.me/CryptoBot?start=inv{invoice_id}"
+
+    async def fake_discard(invoice_id):
+        if invoice_id is not None:
+            discarded.append(invoice_id)
+        return True
+
+    monkeypatch.setattr("app.payments.service.create_invoice_for_order", fake_invoice)
+    monkeypatch.setattr("app.payments.service.discard_invoice", fake_discard)
+
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        oid = await create_order(c, bot_id)
+        results = await asyncio.gather(
+            c.post(f"/api/store/{bot_id}/orders/{oid}/pay", headers=buyer_headers()),
+            c.post(f"/api/store/{bot_id}/orders/{oid}/pay", headers=buyer_headers()),
+        )
+    assert [r.status_code for r in results] == [200, 200]
+
+    async with db() as session:
+        live = (await session.get(Order, oid)).invoice_id
+
+    # ровно один счёт остался живым, все прочие сняты
+    assert live in created
+    assert set(created) - {live} <= set(discarded), (
+        f"счёт остался живым мимо заказа: создано {created}, снято {discarded}, у заказа {live}"
+    )
