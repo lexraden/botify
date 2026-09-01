@@ -72,7 +72,6 @@ export const DICT = {
 
     // карточка товара и товарная страница
     'card.addToCart': 'В корзину',
-    'card.choose': 'Выбрать',
     'card.from': 'от',
     'product.variantFallback': 'Вариант',
     'card.soldOut': 'Нет в наличии',
@@ -421,7 +420,6 @@ export const DICT = {
 
     // product card and product page
     'card.addToCart': 'Add',
-    'card.choose': 'Choose',
     'card.from': 'from',
     'product.variantFallback': 'Option',
     'card.soldOut': 'Out of stock',

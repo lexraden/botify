@@ -216,6 +216,19 @@ describe('ProductFormView — вариации', () => {
     expect(body.image_url).toBe('/api/images/a')
   })
 
+  it('предупреждение уходит, как только поле поправили', async () => {
+    const w = await mountExisting()
+    await priceInputs(w)[1].setValue('1') // старая цена ниже текущей
+    await w.find('.actions .btn-primary').trigger('click')
+    await flushPromises()
+    expect(w.find('.error').exists()).toBe(true)
+
+    // раньше сообщение висело над уже верным полем до следующего «Сохранить»
+    await priceInputs(w)[1].setValue('20')
+    await flushPromises()
+    expect(w.find('.error').exists()).toBe(false)
+  })
+
   it('старая цена ниже текущей не сохраняется', async () => {
     const w = await mountExisting()
     // поля вариации: цена, старая цена

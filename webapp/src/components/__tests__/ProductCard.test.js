@@ -46,16 +46,51 @@ describe('ProductCard — кнопка добавления и счётчик', 
     expect(wrapper.find('.add').exists()).toBe(false)
   })
 
-  it('у товара с вариациями остаётся «Выбрать», даже когда он уже в корзине', async () => {
+  it('товар с вариациями набирается тем же «− +», без «Выбрать»', async () => {
     const cart = useCartStore()
-    cart.add(withVariants, withVariants.variants[0])
     const wrapper = makeCard(withVariants)
+
+    await wrapper.find('.add').trigger('click')
     await wrapper.vm.$nextTick()
 
-    // выбор размера живёт на странице товара, а не в сетке — «− +» тут врали бы
-    expect(wrapper.find('.stepper').exists()).toBe(false)
-    expect(wrapper.find('.add').text()).toBe('Выбрать')
+    // в корзину легла конкретная вариация: за неё платят и с неё списывают
+    const line = Object.values(cart.items)[0]
+    expect(line.variant.id).toBe(10)
+    expect(wrapper.find('.stepper').exists()).toBe(true)
     expect(wrapper.find('.badge').text()).toBe('1')
+    expect(wrapper.text()).not.toContain('Выбрать')
+  })
+
+  it('«+» переходит к следующей вариации, когда в первой кончилось', async () => {
+    const cart = useCartStore()
+    const two = {
+      ...withVariants,
+      stock: 3,
+      variants: [
+        { id: 10, price: '1.000000', stock: 1, attributes: { '1': 'S' } },
+        { id: 11, price: '1.000000', stock: 2, attributes: { '1': 'M' } },
+      ],
+    }
+    const wrapper = makeCard(two)
+    await wrapper.find('.add').trigger('click')
+    await wrapper.find('.stepper .plus').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    // иначе «+» упирался бы в кончившийся размер при живом остатке товара
+    expect(Object.values(cart.items).map((i) => i.variant.id).sort()).toEqual([10, 11])
+    expect(wrapper.find('.badge').text()).toBe('2')
+  })
+
+  it('«−» снимает штуку, когда набраны разные вариации', async () => {
+    const cart = useCartStore()
+    const wrapper = makeCard(withVariants)
+    await wrapper.find('.add').trigger('click')
+    await wrapper.vm.$nextTick()
+    await wrapper.find('.stepper .minus').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(Object.keys(cart.items)).toHaveLength(0)
+    expect(wrapper.find('.stepper').exists()).toBe(false)
   })
 
   it('без отзывов место справа свободно — показываем зачёркнутую цену', () => {

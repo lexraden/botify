@@ -30,9 +30,10 @@ onMounted(() => {
 
 onUnmounted(() => observer?.disconnect())
 const cart = useCartStore()
-// У товара с вариациями нельзя купить «товар вообще»: платят за конкретный
-// размер. Карточка в сетке места для выбора не имеет, поэтому она ведёт на
-// страницу товара — там вариации и выбираются.
+// В сетке товар с вариациями ведёт себя как обычный: «+» и «−», без выбора.
+// Конкретную вариацию всё равно надо положить в корзину — за неё платят и с
+// неё списывается остаток, — поэтому «+» берёт первую, где ещё есть место.
+// Выбрать другую можно на странице товара: карточка на неё и ведёт по нажатию.
 const hasVariants = computed(() => (props.product.variants || []).length > 0)
 // значок на карточке — сколько всего этого товара в корзине, всеми вариациями
 const qty = computed(() =>
@@ -42,8 +43,27 @@ const qty = computed(() =>
         .reduce((n, i) => n + i.qty, 0)
     : cart.qtyOf(props.product.id),
 )
-function openProduct() {
-  router.push(`/product/${props.product.id}`)
+// Первая вариация, в которую ещё влезает штука: когда одна кончилась, «+»
+// переходит к следующей, а не упирается в мёртвую кнопку
+function roomyVariant() {
+  return (props.product.variants || []).find(
+    (v) => v.stock == null || cart.qtyOf(props.product.id, v.id) < v.stock,
+  )
+}
+
+function addOne() {
+  if (!hasVariants.value) return cart.add(props.product)
+  const variant = roomyVariant()
+  if (variant) cart.add(props.product, variant)
+}
+
+// «−» снимает штуку с последней набранной строки этого товара: у товара без
+// вариаций она одна, у товара с вариациями их может быть несколько
+function removeOne() {
+  const line = Object.values(cart.items)
+    .filter((i) => i.product.id === props.product.id && i.qty > 0)
+    .pop()
+  if (line) cart.remove(props.product, line.variant ?? null)
 }
 const emoji = computed(
   () => ({ physical: '📦', digital: '📕', service: '🛎' })[props.product.type] ?? '📦',
@@ -60,7 +80,13 @@ const discount = computed(() =>
 )
 // stock: null — не ограничен, 0 — распродано
 const soldOut = computed(() => props.product.stock === 0)
-const maxed = computed(() => props.product.stock != null && qty.value >= props.product.stock)
+// «+» гаснет, когда класть больше некуда: у товара с вариациями — когда во
+// всех кончилось место, а не когда исчерпана витринная сумма остатков
+const maxed = computed(() =>
+  hasVariants.value
+    ? roomyVariant() === undefined
+    : props.product.stock != null && qty.value >= props.product.stock,
+)
 </script>
 
 <template>
@@ -85,16 +111,11 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
     </div>
     <!-- одна цепочка v-if/v-else-if намеренно: товар в корзине показывает
          только «− +», кнопка «Добавить» под ним не нужна и сбивает счёт -->
-    <div v-if="qty && !hasVariants" class="stepper">
-      <button class="minus" @click.stop="cart.remove(product)">−</button>
-      <button class="plus" :disabled="maxed" @click.stop="cart.add(product)">+</button>
+    <div v-if="qty" class="stepper">
+      <button class="minus" @click.stop="removeOne">−</button>
+      <button class="plus" :disabled="maxed" @click.stop="addOne">+</button>
     </div>
-    <button
-      v-else-if="hasVariants"
-      class="add"
-      @click.stop="openProduct"
-    >{{ t('card.choose') }}</button>
-    <button v-else-if="!soldOut" class="add" @click.stop="cart.add(product)">{{ t('card.addToCart') }}</button>
+    <button v-else-if="!soldOut" class="add" @click.stop="addOne">{{ t('card.addToCart') }}</button>
     <button v-else class="add soldout" disabled>{{ t('card.soldOut') }}</button>
   </div>
 </template>
