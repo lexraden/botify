@@ -115,12 +115,16 @@ const uploadingImage = ref(false)
 const imageError = ref('')
 // спиннер в маленьком окне: и пока файл грузится, и пока картинка не отрисовалась
 const imgLoading = ref(false)
+// раскрыты ли действия поверх фото; закрываются сами при любой смене картинки
+// и при переключении вариации — иначе висят над чужим фото
+const photoMenu = ref(false)
 const MAX_IMAGE_MB = MAX_PICK_MB
 
 watch(
   () => slot.value.image_url,
   (v) => {
     imgLoading.value = !!v && !uploadingImage.value
+    photoMenu.value = false
   },
 )
 
@@ -373,8 +377,18 @@ async function submit() {
       <span>{{ uploadingImage ? t('form.uploading') : t('form.pickPhoto') }}</span>
     </button>
 
+    <!-- «Заменить» и «Удалить» лежат поверх самого фото: рядом с ним они не
+         помещались по ширине экрана и молча уезжали за правый край -->
     <div v-else class="image-box wide">
-      <div class="thumb big">
+      <div
+        class="thumb big"
+        role="button"
+        tabindex="0"
+        :aria-label="t('form.photoEdit')"
+        @click="photoMenu = !photoMenu"
+        @keydown.enter.prevent="photoMenu = !photoMenu"
+        @keydown.space.prevent="photoMenu = !photoMenu"
+      >
         <span v-if="uploadingImage || imgLoading" class="spinner" />
         <img
           v-show="!uploadingImage && !imgLoading"
@@ -383,12 +397,17 @@ async function submit() {
           @load="imgLoading = false"
           @error="imgLoading = false"
         />
-      </div>
-      <div class="image-actions">
-        <button class="btn btn-soft act" type="button" :disabled="uploadingImage" @click="fileInput.click()">
-          {{ uploadingImage ? '…' : t('form.replace') }}
-        </button>
-        <button class="btn btn-soft act" type="button" @click="dropImage">{{ t('form.remove') }}</button>
+        <!-- значок остаётся видимым всегда: иначе о том, что фото нажимается,
+             узнать неоткуда -->
+        <span v-if="!photoMenu" class="edit-hint" aria-hidden="true">✏️</span>
+        <div v-else class="photo-actions" @click.stop>
+          <button class="btn act" type="button" :disabled="uploadingImage" @click="fileInput.click()">
+            {{ uploadingImage ? '…' : t('form.replace') }}
+          </button>
+          <button class="btn act danger" type="button" @click="dropImage">
+            {{ t('form.remove') }}
+          </button>
+        </div>
       </div>
     </div>
     <p v-if="imageError" class="error">{{ imageError }}</p>
@@ -475,6 +494,9 @@ textarea { resize: none; }
 .types button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .hint { font-size: 12px; color: var(--sub); margin: -2px 0 10px; }
 .image-box { display: flex; align-items: center; gap: 10px; }
+/* .wide — колонка, а не строка: при строке широкий thumb забирал всю ширину,
+   а всё, что стояло рядом, выдавливалось за экран */
+.image-box.wide { display: block; position: relative; }
 .thumb {
   position: relative; width: 64px; height: 64px; border-radius: 13px;
   background: var(--surface2); overflow: hidden; flex-shrink: 0;
@@ -487,10 +509,27 @@ textarea { resize: none; }
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-/* замена и удаление — рядом друг с другом справа от превью,
-   чуть ниже самой картинки */
-.image-actions { display: flex; flex: 1; gap: 8px; }
-.image-actions .act { width: auto; height: 52px; padding: 0 18px; font-size: 15px; }
+/* действия поверх фото: по нажатию на картинку */
+.photo-actions {
+  position: absolute; inset: 0; border-radius: inherit;
+  background: rgba(10, 10, 16, 0.62);
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.photo-actions .act {
+  /* глобальный .btn тянет кнопку на всю ширину — здесь она по содержимому */
+  flex: 0 0 auto; width: auto;
+  height: 44px; padding: 0 22px; font-size: 15px; font-weight: 700;
+  border: 0; border-radius: 12px; cursor: pointer;
+  background: #fff; color: #16151c;
+}
+.photo-actions .act.danger { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.photo-actions .act:disabled { opacity: 0.5; }
+.edit-hint {
+  position: absolute; right: 9px; bottom: 9px;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(10, 10, 16, 0.55);
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+}
 .error { color: var(--red); }
 .actions { display: flex; gap: 8px; margin-top: 22px; }
 
@@ -504,7 +543,8 @@ textarea { resize: none; }
 }
 .drop-icon { font-size: 30px; font-weight: 700; line-height: 1; }
 .image-box.wide { width: 100%; }
-.thumb.big { width: 100%; height: 168px; border-radius: 15px; overflow: hidden; }
+.thumb.big { width: 100%; height: 168px; border-radius: 15px; overflow: hidden; cursor: pointer; }
+.thumb.big:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .thumb.big img { width: 100%; height: 100%; object-fit: cover; }
 
 /* Переключатель вариаций: мелкие квадратики над всей формой. Он не должен

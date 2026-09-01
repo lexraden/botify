@@ -283,3 +283,64 @@ describe('ProductFormView — старая цена у товара без ва�
     expect(saveProduct.mock.calls[0][1].compare_at_price).toBe(null)
   })
 })
+
+describe('ProductFormView — действия над фото', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    routeParams = { botId: '1', id: '7' }
+  })
+
+  const WITH_PHOTO = {
+    id: 7,
+    type: 'physical',
+    title: 'Футболка',
+    description: null,
+    image_url: '/api/images/a',
+    price: '12.000000',
+    stock: 5,
+    is_active: true,
+    digital_content: null,
+    variants: [],
+  }
+
+  async function mountWithPhoto() {
+    fetchProducts.mockResolvedValue([WITH_PHOTO])
+    const w = mount(ProductFormView)
+    await flushPromises()
+    return w
+  }
+
+  it('свёрнуто — только значок, кнопок в разметке нет', async () => {
+    const w = await mountWithPhoto()
+    expect(w.find('.edit-hint').exists()).toBe(true)
+    expect(w.find('.photo-actions').exists()).toBe(false)
+  })
+
+  it('по нажатию на фото поверх него появляются «Заменить» и «Удалить»', async () => {
+    const w = await mountWithPhoto()
+    await w.find('.thumb.big').trigger('click')
+
+    const actions = w.find('.photo-actions')
+    expect(actions.exists()).toBe(true)
+    expect(actions.findAll('button').map((b) => b.text())).toEqual(['Replace', 'Remove'])
+    // значок уступает место кнопкам, а не наслаивается на них
+    expect(w.find('.edit-hint').exists()).toBe(false)
+  })
+
+  it('кнопки лежат внутри самого фото, а не рядом с ним', async () => {
+    // ради этого тест и написан: .image-box была flex-строкой, thumb забирал
+    // всю ширину, и кнопки уезжали за правый край экрана
+    const w = await mountWithPhoto()
+    await w.find('.thumb.big').trigger('click')
+    expect(w.find('.thumb.big .photo-actions').exists()).toBe(true)
+  })
+
+  it('«Удалить» возвращает зону загрузки', async () => {
+    const w = await mountWithPhoto()
+    await w.find('.thumb.big').trigger('click')
+    await w.find('.photo-actions .danger').trigger('click')
+
+    expect(w.find('.thumb.big').exists()).toBe(false)
+    expect(w.find('.drop-zone').exists()).toBe(true)
+  })
+})
