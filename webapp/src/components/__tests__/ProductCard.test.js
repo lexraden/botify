@@ -58,12 +58,28 @@ describe('ProductCard — кнопка добавления и счётчик', 
     expect(wrapper.find('.badge').text()).toBe('1')
   })
 
-  it('в сетке одна цена: зачёркнутая живёт на странице товара', () => {
+  it('без отзывов место справа свободно — показываем зачёркнутую цену', () => {
     const wrapper = makeCard({ ...plain, price: '1.000000', compare_at_price: '2.000000' })
+    expect(wrapper.find('.was').text()).toBe('2 USDT')
+    expect(wrapper.find('.rating').exists()).toBe(false)
+  })
+
+  it('с отзывами место занимает рейтинг — зачёркнутой цены нет', () => {
+    const wrapper = makeCard({
+      ...plain,
+      price: '1.000000',
+      compare_at_price: '2.000000',
+      reviews_count: 4,
+      avg_rating: '4.500000',
+    })
+    expect(wrapper.find('.rating').exists()).toBe(true)
     expect(wrapper.find('.was').exists()).toBe(false)
-    expect(wrapper.find('.price').text()).toContain('1 USDT')
-    // и старое число не просочилось в карточку никаким другим способом
-    expect(wrapper.find('.price').text()).not.toContain('2')
+  })
+
+  it('у товара с вариациями зачёркнутой цены нет и без отзывов', () => {
+    // показанная цена там «от N», собранная из разных вариаций
+    const wrapper = makeCard({ ...withVariants, compare_at_price: '9.000000' })
+    expect(wrapper.find('.was').exists()).toBe(false)
   })
 
   it('распроданный товар — неактивная кнопка, без счётчика', () => {
