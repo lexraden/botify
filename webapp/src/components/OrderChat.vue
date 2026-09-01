@@ -1,13 +1,32 @@
 <script setup>
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { fetchOrderChat, sendOrderChatMessage, sendOrderChatPhoto } from '../api'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import {
+  fetchMyOrderChat,
+  fetchOrderChat,
+  sendMyOrderChatMessage,
+  sendOrderChatMessage,
+  sendOrderChatPhoto,
+} from '../api'
 import { t, intlLocale } from '../i18n'
 import { apiError } from '../services/apiError'
 
 const props = defineProps({
-  botId: { type: [String, Number], required: true },
+  // Чей это экран. Тред один и тот же, различаются три вещи: чьи эндпоинты
+  // дёргать, с какой стороны рисовать свои пузыри и можно ли слать фото.
+  mode: { type: String, default: 'seller' },
+  // нужен только продавцу: у покупателя магазин уже задан bot_id приложения
+  botId: { type: [String, Number], default: null },
   orderId: { type: [String, Number], required: true },
 })
+
+const isBuyer = computed(() => props.mode === 'buyer')
+// Роль отправителя в сообщении — 'seller' | 'customer', а режим экрана —
+// 'seller' | 'buyer'. Совпадают они только у продавца, поэтому «своё»
+// сравниваем с этим, а не с mode напрямую.
+const mySender = computed(() => (isBuyer.value ? 'customer' : 'seller'))
+// Фото покупатель пока не шлёт: эндпоинта /store/.../chat/photo нет, и
+// показывать скрепку, которая гарантированно упадёт, нельзя
+const canAttach = computed(() => !isBuyer.value)
 
 const chat = ref(null)
 const error = ref('')
@@ -18,7 +37,9 @@ const fileInput = ref(null)
 
 async function reload(silent = false) {
   try {
-    chat.value = await fetchOrderChat(props.botId, props.orderId, silent)
+    chat.value = isBuyer.value
+      ? await fetchMyOrderChat(props.orderId, silent)
+      : await fetchOrderChat(props.botId, props.orderId, silent)
     error.value = ''
   } catch (e) {
     error.value = apiError(e, 'chat.loadError')
@@ -60,7 +81,8 @@ async function send() {
   if (!body || sending.value) return
   sending.value = true
   try {
-    await sendOrderChatMessage(props.botId, props.orderId, body)
+    if (isBuyer.value) await sendMyOrderChatMessage(props.orderId, body)
+    else await sendOrderChatMessage(props.botId, props.orderId, body)
     draft.value = ''
     error.value = ''
     await reload()
@@ -101,7 +123,15 @@ const fmtTime = (iso) =>
   <div class="chat">
     <!-- покупатель не подписан: обе стороны видят только роль отправителя -->
     <div ref="scroller" class="messages">
-      <div v-for="m in chat?.messages ?? []" :key="m.id" class="msg" :class="m.sender">
+      <!-- «свои» пузыри у каждой стороны свои: продавцу справа его, покупателю
+           его. Роль отправителя в классе остаётся — на неё смотрят стили
+           хвостика пузыря и тесты -->
+      <div
+        v-for="m in chat?.messages ?? []"
+        :key="m.id"
+        class="msg"
+        :class="[m.sender, m.sender === mySender ? 'mine' : 'theirs']"
+      >
         <div class="bubble" :class="{ 'with-photo': m.image_url }">
           <a v-if="m.image_url" :href="m.image_url" target="_blank" rel="noopener">
             <img class="photo" :src="m.image_url" :alt="t('chat.photoAlt')" />
@@ -121,8 +151,15 @@ const fmtTime = (iso) =>
         {{ t('chat.lockedBanner') }}
       </div>
       <div v-else class="composer">
-        <button class="plus" :disabled="sending" :title="t('chat.attachPhoto')" @click="pickPhoto">+</button>
+        <button
+          v-if="canAttach"
+          class="plus"
+          :disabled="sending"
+          :title="t('chat.attachPhoto')"
+          @click="pickPhoto"
+        >+</button>
         <input
+          v-if="canAttach"
           ref="fileInput"
           type="file"
           accept="image/*"
@@ -152,13 +189,13 @@ const fmtTime = (iso) =>
   flex: 1; min-height: 0; overflow-y: auto; padding: 4px 2px;
 }
 .msg { display: flex; flex-direction: column; align-items: flex-start; max-width: 82%; }
-.msg.seller { align-self: flex-end; align-items: flex-end; }
+.msg.mine { align-self: flex-end; align-items: flex-end; }
 .bubble {
   background: var(--surface2); border-radius: 15px; padding: 9px 12px;
   font-size: 14px; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
 }
-.msg.seller .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
-.msg.customer .bubble { border-bottom-left-radius: 5px; }
+.msg.mine .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
+.msg.theirs .bubble { border-bottom-left-radius: 5px; }
 .bubble.with-photo { padding: 4px 4px 9px; }
 .photo {
   display: block; max-width: min(220px, 100%); max-height: 280px;

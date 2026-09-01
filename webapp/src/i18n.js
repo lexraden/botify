@@ -36,6 +36,8 @@ export const DICT = {
     'orders.payWindow':
       'Заверши оплату в открывшемся окне @CryptoBot. Статус здесь обновится сам, а подтверждение придёт в чат с ботом.',
     'orders.payUnavailable': 'Оплата временно недоступна — попробуй позже.',
+    'orders.chatOpen': 'Написать продавцу',
+    'orders.chatHide': 'Свернуть переписку',
     'orders.payNow': 'Оплатить',
     'orders.cancelOrder': 'Отменить',
     'orders.cancelConfirm': 'Отменить заказ #{n} без оплаты?',
@@ -382,6 +384,8 @@ export const DICT = {
     'orders.payWindow':
       'Finish the payment in the @CryptoBot window that opened. The status here updates on its own, and a confirmation will arrive in the bot chat.',
     'orders.payUnavailable': 'Payment is temporarily unavailable — try again later.',
+    'orders.chatOpen': 'Message the seller',
+    'orders.chatHide': 'Hide the conversation',
     'orders.payNow': 'Pay',
     'orders.cancelOrder': 'Cancel',
     'orders.cancelConfirm': 'Cancel order #{n} without paying?',

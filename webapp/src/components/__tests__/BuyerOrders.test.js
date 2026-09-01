@@ -4,6 +4,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 // Мок API: первый вызов отдаёт «Ожидает оплаты», второй — «Оплачен».
 const fetchMyOrders = vi.fn()
+const fetchMyOrderChat = vi.fn()
+const sendMyOrderChatMessage = vi.fn()
 const submitOrderReviews = vi.fn()
 const deleteOrderReview = vi.fn()
 const payOrder = vi.fn()
@@ -16,6 +18,8 @@ vi.mock('../../api', () => ({
   payOrder: (...args) => payOrder(...args),
   cancelOrder: (...args) => cancelOrder(...args),
   confirmReceived: (...args) => confirmReceived(...args),
+  fetchMyOrderChat: (...args) => fetchMyOrderChat(...args),
+  sendMyOrderChatMessage: (...args) => sendMyOrderChatMessage(...args),
 }))
 const openTelegramLink = vi.fn()
 vi.mock('../../services/telegram', () => ({
@@ -418,5 +422,86 @@ describe('BuyerOrders — две вариации одного товара', ()
     expect(lines[0].text()).toContain('Красный')
     expect(lines[1].text()).toContain('Футболка синяя')
     expect(lines[1].text()).toContain('Синий')
+  })
+})
+
+describe('BuyerOrders — переписка по покупке', () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', component: { template: '<div />' } }],
+  })
+
+  beforeEach(() => {
+    fetchMyOrders.mockReset()
+    fetchMyOrderChat.mockReset()
+    sendMyOrderChatMessage.mockReset()
+    setLocale('ru')
+    router.push('/')
+  })
+
+  const one = (status) => [
+    { id: 5, status, total: '10', currency: 'USDT', items: [{ product_id: 1, title: 'Гайд', qty: 1, price: '10' }] },
+  ]
+
+  async function show(status) {
+    fetchMyOrders.mockResolvedValue(one(status))
+    const w = mount(BuyerOrders, { global: { plugins: [router] } })
+    await router.isReady()
+    await flushPromises()
+    return w
+  }
+
+  it('у неоплаченного заказа кнопки переписки нет', async () => {
+    // чат заводится только у оплаченного: у остальных сервер ответит 403,
+    // и кнопка вела бы в ошибку
+    const w = await show('pending_payment')
+    expect(w.find('.chat-btn').exists()).toBe(false)
+  })
+
+  it('у оплаченного открывается тред этого заказа', async () => {
+    fetchMyOrderChat.mockResolvedValue({
+      status: 'active',
+      can_send: true,
+      closes_at: null,
+      messages: [{ id: 1, sender: 'seller', body: 'Собрал заказ', created_at: '2026-08-31T10:00:00Z' }],
+    })
+    const w = await show('paid')
+
+    await w.find('.chat-btn').trigger('click')
+    await flushPromises()
+
+    expect(fetchMyOrderChat).toHaveBeenCalledWith(5, false)
+    expect(w.find('.chat-box').text()).toContain('Собрал заказ')
+  })
+
+  it('своё сообщение покупателя — справа, продавца — слева', async () => {
+    fetchMyOrderChat.mockResolvedValue({
+      status: 'active',
+      can_send: true,
+      closes_at: null,
+      messages: [
+        { id: 1, sender: 'seller', body: 'Собрал', created_at: '2026-08-31T10:00:00Z' },
+        { id: 2, sender: 'customer', body: 'Спасибо', created_at: '2026-08-31T10:01:00Z' },
+      ],
+    })
+    const w = await show('paid')
+    await w.find('.chat-btn').trigger('click')
+    await flushPromises()
+
+    // в кабинете продавца стороны зеркальны — «своё» зависит от того, чей экран
+    expect(w.find('.msg.customer').classes()).toContain('mine')
+    expect(w.find('.msg.seller').classes()).toContain('theirs')
+  })
+
+  it('скрепки у покупателя нет — фото из приложения он пока не шлёт', async () => {
+    fetchMyOrderChat.mockResolvedValue({
+      status: 'active', can_send: true, closes_at: null, messages: [],
+    })
+    const w = await show('delivered')
+    await w.find('.chat-btn').trigger('click')
+    await flushPromises()
+
+    expect(w.find('.chat-box .composer').exists()).toBe(true)
+    expect(w.find('.chat-box .plus').exists()).toBe(false)
   })
 })

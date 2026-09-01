@@ -116,6 +116,18 @@ export const rejectReview = (botId, reviewId) =>
   api.post(`/seller/bots/${botId}/reviews/${reviewId}/reject`).then((r) => r.data)
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
+// Чат заказа со стороны покупателя. Тот же тред, что видит продавец, только
+// адресуется своим заказом, а не парой «магазин + заказ»: магазин покупателя
+// уже определён bot_id, а чужой заказ бэкенд отдаёт 403.
+export const fetchMyOrderChat = (orderId, silent = false) =>
+  api
+    .get(`/store/${getBotId()}/orders/${orderId}/chat`, silent ? SILENT : {})
+    .then((r) => r.data)
+export const sendMyOrderChatMessage = (orderId, body) =>
+  api
+    .post(`/store/${getBotId()}/orders/${orderId}/chat/messages`, { body })
+    .then((r) => r.data)
+
 // чат заказа: история читается всегда, писать можно в открытом окне
 export const fetchOrderChat = (botId, orderId, silent = false) =>
   api.get(`/seller/bots/${botId}/orders/${orderId}/chat`, silent ? SILENT : {}).then((r) => r.data)

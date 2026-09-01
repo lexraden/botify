@@ -11,6 +11,7 @@ import {
   submitOrderReviews,
 } from '../api'
 import { t } from '../i18n'
+import OrderChat from './OrderChat.vue'
 import { openTelegramLink } from '../services/telegram'
 import { apiError } from '../services/apiError'
 
@@ -167,6 +168,15 @@ async function doCancel(o) {
   }
 }
 
+// Чат заказа разворачивается прямо в карточке: покупатель уже стоит в списке
+// покупок, а уход на отдельный экран сбросил бы опрос этого списка.
+// Открыт не больше одного — иначе на экране два опроса и две прокрутки.
+const chatFor = ref(null)
+// Чат заводится только у оплаченного заказа (services/chat.py:
+// get_or_create_chat), у остальных эндпоинт ответит 403 — кнопку не рисуем
+const PAID = ['paid', 'fulfilled', 'delivered']
+const canChat = (o) => PAID.includes(o.status)
+
 // Статусы меняются на бэкенде (вебхук оплаты, отправка продавцом) — обновляем
 // сами, без перезахода. Опрос только пока вкладка видима, как в OrderChat:
 // в свёрнутом Telegram таймер не нужен.
@@ -249,6 +259,15 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="actionError.id === o.id" class="action-error">{{ actionError.text }}</p>
       </template>
+      <!-- связь с продавцом по этой покупке: тот же тред, что он видит
+           в кабинете, и тот же, что идёт в диалоге с ботом -->
+      <button v-if="canChat(o)" class="chat-btn" @click="chatFor = chatFor === o.id ? null : o.id">
+        {{ chatFor === o.id ? t('orders.chatHide') : t('orders.chatOpen') }}
+      </button>
+      <div v-if="chatFor === o.id" class="chat-box">
+        <OrderChat mode="buyer" :order-id="o.id" />
+      </div>
+
       <button v-if="canRate(o) && formFor !== o.id" class="rate-btn" @click="openForm(o)">
         {{ allReviewed(o) ? t('orders.editReview') : t('orders.rate') }}
       </button>
@@ -387,6 +406,13 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .variant { color: var(--sub); }
+.chat-btn {
+  width: 100%; margin-top: 10px; padding: 11px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: 14px; font-weight: 700; cursor: pointer;
+}
+/* высота фиксированная: без неё чат растягивает карточку на весь список */
+.chat-box { margin-top: 10px; height: 320px; display: flex; }
 .stars { display: flex; gap: 4px; }
 .stars button {
   border: 0;
