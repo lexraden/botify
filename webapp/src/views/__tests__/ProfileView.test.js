@@ -75,11 +75,19 @@ describe('ProfileView — профиль покупателя', () => {
 
     const prefs = wrapper.findAll('.pref-btn')
     expect(prefs).toHaveLength(2)
-    // язык: ru -> en
+    // На кнопке — текущий язык, а не тот, на который она переключит: при
+    // русском интерфейсе там RU. Раньше было наоборот и читалось как «сейчас
+    // английский».
+    expect(locale.value).toBe('ru')
+    expect(prefs[1].text()).toBe('RU')
+
     await prefs[1].trigger('click')
     expect(locale.value).toBe('en')
+    expect(prefs[1].text()).toBe('EN')
+
     await prefs[1].trigger('click')
     expect(locale.value).toBe('ru')
+    expect(prefs[1].text()).toBe('RU')
 
     // тема: луна = сейчас светло, тап включает тёмную
     expect(prefs[0].text()).toBe('🌙')

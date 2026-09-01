@@ -92,8 +92,10 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
         <button class="pref-btn" :aria-label="t('profile.themeToggle')" @click="toggleTheme">
           {{ isDark ? '☀️' : '🌙' }}
         </button>
+        <!-- на кнопке текущий язык, а не тот, на который переключит: RU у
+             русского интерфейса, EN у английского -->
         <button class="pref-btn lang" :aria-label="t('profile.langToggle')" @click="toggleLang">
-          {{ locale === 'ru' ? 'EN' : 'RU' }}
+          {{ locale.toUpperCase() }}
         </button>
       </div>
     </div>
