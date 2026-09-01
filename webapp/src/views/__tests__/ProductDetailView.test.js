@@ -53,6 +53,28 @@ describe('ProductDetailView — рейтинг и отзывы на страни
     })
   }
 
+  it('зачёркнутая цена показана здесь — и с валютой, как текущая', async () => {
+    // из сетки её убрали намеренно: там карточка мелкая, место есть только тут
+    fetchShop.mockResolvedValue({
+      products: [{ ...product, price: '50', compare_at_price: '80.000000' }],
+    })
+    fetchProductReviews.mockResolvedValue([])
+    const wrapper = await mountView()
+    await flushPromises()
+
+    expect(wrapper.find('.price-line .was').text()).toBe('80 USDT')
+    expect(wrapper.find('.price-line .price').text()).toBe('50 USDT')
+  })
+
+  it('без скидки зачёркнутой цены нет вовсе', async () => {
+    fetchShop.mockResolvedValue({ products: [{ ...product, compare_at_price: null }] })
+    fetchProductReviews.mockResolvedValue([])
+    const wrapper = await mountView()
+    await flushPromises()
+
+    expect(wrapper.find('.price-line .was').exists()).toBe(false)
+  })
+
   it('показывает средний рейтинг и список отзывов', async () => {
     fetchShop.mockResolvedValue({ products: [product] })
     fetchProductReviews.mockResolvedValue([
