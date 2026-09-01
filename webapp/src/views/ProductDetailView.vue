@@ -119,7 +119,7 @@ onMounted(async () => {
       <h2>{{ title }}</h2>
       <div class="price-line">
         <b class="price">{{ price }} USDT</b>
-        <s v-if="comparePrice" class="was">{{ comparePrice }}</s>
+        <s v-if="comparePrice" class="was">{{ comparePrice }} USDT</s>
         <span v-if="product.reviews_count" class="state rating">
           ★ {{ Number(product.avg_rating).toFixed(1) }} · {{ product.reviews_count }}
         </span>

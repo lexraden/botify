@@ -74,7 +74,7 @@ const maxed = computed(() => props.product.stock != null && qty.value >= props.p
         <div class="price">
           <span v-if="hasVariants" class="from">{{ t('card.from') }}</span>
           {{ Number(product.price) }} USDT
-          <s v-if="discount" class="was">{{ discount }}</s>
+          <s v-if="discount" class="was">{{ discount }} USDT</s>
         </div>
         <div v-if="product.reviews_count" class="rating">
           ★ {{ Number(product.avg_rating).toFixed(1) }} · {{ product.reviews_count }}
