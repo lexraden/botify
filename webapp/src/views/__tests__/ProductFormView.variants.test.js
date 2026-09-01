@@ -8,6 +8,13 @@ vi.mock('../../api', () => ({
   fetchProducts: (...a) => fetchProducts(...a),
   saveProduct: (...a) => saveProduct(...a),
   uploadProductImage: (...a) => uploadProductImage(...a),
+  fetchSubscription: () => Promise.resolve({
+    plan: 'free', pro_expires_at: null,
+    price_usdt: '20', price_stars: 1500,
+    plus_price_usdt: '50', plus_price_stars: 3750,
+    period_days: 30, crypto_available: true,
+  }),
+  createSubscriptionInvoice: vi.fn(),
 }))
 vi.mock('../../services/telegram', () => ({
   tg: null,
@@ -355,5 +362,43 @@ describe('ProductFormView — действия над фото', () => {
 
     expect(w.find('.thumb.big').exists()).toBe(false)
     expect(w.find('.drop-zone').exists()).toBe(true)
+  })
+})
+
+describe('ProductFormView — упёрлись в лимит тарифа', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    routeParams = { botId: '1' }
+  })
+
+  it('403 про лимит открывает тарифы, а не красную строку', async () => {
+    const w = mount(ProductFormView)
+    await flushPromises()
+    await w.findAll('input')[0].setValue('Одиннадцатый товар')
+    await w.findAll('input').filter((i) => i.attributes('inputmode') === 'decimal')[0].setValue('5')
+
+    saveProduct.mockRejectedValue({
+      response: { status: 403, data: { detail: 'plan limit reached: 10 товаров на бесплатном тарифе' } },
+    })
+    await w.find('.actions .btn-primary').trigger('click')
+    await flushPromises()
+
+    // внутренняя строка бэкенда покупателю ничего не объясняет — вместо неё окно
+    expect(w.find('.error').exists()).toBe(false)
+    expect(w.find('.tier').exists()).toBe(true)
+  })
+
+  it('обычная ошибка сохранения по-прежнему строкой', async () => {
+    const w = mount(ProductFormView)
+    await flushPromises()
+    await w.findAll('input')[0].setValue('Товар')
+    await w.findAll('input').filter((i) => i.attributes('inputmode') === 'decimal')[0].setValue('5')
+
+    saveProduct.mockRejectedValue({ response: { status: 500, data: {} } })
+    await w.find('.actions .btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(w.find('.tier').exists()).toBe(false)
+    expect(w.find('.error').exists()).toBe(true)
   })
 })

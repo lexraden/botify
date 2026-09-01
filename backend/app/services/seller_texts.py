@@ -294,6 +294,15 @@ TEXTS: dict[str, dict[str, str]] = {
         "push.review.body": "«{body}»\n",
         "push.review.tail": "Ответить можно в кабинете, вкладка «Отзывы».",
         "push.chat_message": "💬 Новое сообщение по заказу #{id}{photo} — открой кабинет.",
+        "pro.paid": (
+            "⭐ Оплачено! Botify {plan} активен ещё {days} дней.\n"
+            "Лимиты на товары, услуги и рассылки сняты."
+        ),
+        "pro.expiring": (
+            "⏳ Botify {plan} заканчивается через {days} дн.\n"
+            "Без продления останутся лимиты бесплатного тарифа — "
+            "каталог и покупатели сохранятся, но добавлять новое будет нельзя."
+        ),
         "push.channel_added": (
             "✅ Бот @{username} добавлен в «{title}».\n"
             "Заявки на вступление будут приниматься автоматически, а каждый "
@@ -574,6 +583,15 @@ TEXTS: dict[str, dict[str, str]] = {
         "push.review.body": "“{body}”\n",
         "push.review.tail": "You can reply in the dashboard, “Reviews” tab.",
         "push.chat_message": "💬 New message about order #{id}{photo} — open the dashboard.",
+        "pro.paid": (
+            "⭐ Paid! Botify {plan} is active for another {days} days.\n"
+            "Limits on products, services and mailings are lifted."
+        ),
+        "pro.expiring": (
+            "⏳ Botify {plan} ends in {days} days.\n"
+            "Without renewal the free plan limits come back — your catalog and "
+            "customers stay, but you won't be able to add new ones."
+        ),
         "push.channel_added": (
             "✅ Bot @{username} was added to “{title}”.\n"
             "Join requests will be accepted automatically, and everyone who joins "

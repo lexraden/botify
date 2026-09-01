@@ -14,6 +14,18 @@ const CODES = {
   invoice_failed: 'errors.invoiceFailed',
 }
 
+/** Упёрлись в лимит бесплатного тарифа: не ошибка ввода, а повод предложить
+ *  подписку. Бэкенд отвечает 403 с detail, начинающимся с «plan limit reached».
+ *  Строку целиком не показываем — она внутренняя и по-английски. */
+export function isPlanLimit(e) {
+  const detail = e?.response?.data?.detail
+  return (
+    e?.response?.status === 403 &&
+    typeof detail === 'string' &&
+    detail.startsWith('plan limit reached')
+  )
+}
+
 /** Человеческий текст ошибки запроса. fallbackKey — ключ i18n по умолчанию. */
 export function apiError(e, fallbackKey) {
   const status = e?.response?.status

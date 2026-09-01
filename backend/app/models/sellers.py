@@ -46,6 +46,10 @@ class Seller(Base, CreatedAtMixin):
     # (см. docs/AUDIT.md, решение владельца от 2026-08-18).
     plan: Mapped[str] = mapped_column(String(16), default="free")  # free | pro
     pro_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # О каком окончании подписки продавцу уже напомнили. Ровно это значение,
+    # а не флаг: продлил — метка перестаёт совпадать, и следующий срок
+    # напомнится заново (app/payments/subscription.py:remind_expiring)
+    pro_reminded_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     bots = relationship("SellerBot", back_populates="seller", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="seller", cascade="all, delete-orphan")

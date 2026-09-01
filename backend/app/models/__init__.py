@@ -10,12 +10,14 @@ from app.models.orders import Order, OrderItem, Payout, PayoutBatch
 from app.models.reviews import ProductReview
 from app.models.sellers import Seller
 from app.models.store_admins import StoreAdmin
+from app.models.subscriptions import SubscriptionPayment
 
 __all__ = [
     "Base",
     "Seller",
     "SellerBot",
     "StoreAdmin",
+    "SubscriptionPayment",
     "Customer",
     "Channel",
     "Mailing",

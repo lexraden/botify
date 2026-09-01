@@ -3,7 +3,8 @@ import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchProducts, saveProduct, uploadProductImage } from '../api'
 import { t } from '../i18n'
-import { apiError } from '../services/apiError'
+import { apiError, isPlanLimit } from '../services/apiError'
+import PlanModal from '../components/PlanModal.vue'
 import { MAX_PICK_MB } from '../services/imageCompress'
 
 const route = useRoute()
@@ -118,6 +119,8 @@ const imgLoading = ref(false)
 // раскрыты ли действия поверх фото; закрываются сами при любой смене картинки
 // и при переключении вариации — иначе висят над чужим фото
 const photoMenu = ref(false)
+// какой лимит упёрся: 'products' | 'services' | null
+const planLimit = ref(null)
 const MAX_IMAGE_MB = MAX_PICK_MB
 
 watch(
@@ -325,7 +328,10 @@ async function submit() {
     })
     router.push(`/shop/${botId.value}`)
   } catch (e) {
-    error.value = apiError(e, 'form.saveError')
+    // Лимит бесплатного тарифа — не ошибка ввода: показываем тарифы, а не
+    // красную строку под формой, из которой непонятно, что делать
+    if (isPlanLimit(e)) planLimit.value = form.value.type === 'physical' ? 'products' : 'services'
+    else error.value = apiError(e, 'form.saveError')
   } finally {
     saving.value = false
   }
@@ -470,6 +476,8 @@ async function submit() {
     </label>
 
     <p v-if="error" class="error">{{ error }}</p>
+
+    <PlanModal v-if="planLimit" :reason="planLimit" @close="planLimit = null" @paid="planLimit = null; submit()" />
 
     <div class="actions">
       <button class="btn btn-soft" @click="router.push(`/shop/${botId}`)">{{ t('common.cancel') }}</button>

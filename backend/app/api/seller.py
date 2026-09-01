@@ -38,7 +38,7 @@ from app.models import (
 )
 from app.models.orders import PAID_STATUSES
 from app.payments.payouts import paid_total, pending_total
-from app.plans import SERVICE_TYPES, is_pro, limits_for, over_limit
+from app.plans import SERVICE_TYPES, active_plan, is_pro, limits_for, over_limit
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 from app.services.seller_texts import seller_text
 from app.services.variants import apply_variants, line_title
@@ -103,6 +103,83 @@ async def me(
     """Первый запрос при открытии Mini App: по onboarding_step фронт понимает,
     какой экран рендерить, и не начинает онбординг заново после пересоздания webview."""
     return _me_payload(seller, await _bots_of(session, seller))
+
+
+class SubscriptionOut(BaseModel):
+    """Состояние подписки и цена — всё, что нужно окну «лимит исчерпан»."""
+
+    plan: str  # free | pro | plus
+    pro_expires_at: datetime | None
+    # цены обоих платных тарифов: окно «лимит исчерпан» показывает оба сразу
+    price_usdt: Decimal
+    price_stars: int
+    plus_price_usdt: Decimal
+    plus_price_stars: int
+    period_days: int
+    # оба способа зависят от внешних сервисов: Crypto Pay может быть не
+    # настроен, звёзды — недоступны в клиенте. Кнопку без способа не рисуем.
+    crypto_available: bool
+
+
+class SubscriptionInvoiceIn(BaseModel):
+    method: str  # crypto | stars
+    plan: str = "pro"  # pro | plus
+
+
+class SubscriptionInvoiceOut(BaseModel):
+    # ссылка в @CryptoBot либо ссылка на счёт в звёздах — открываются по-разному
+    payment_url: str | None = None
+    stars_link: str | None = None
+
+
+@router.get("/subscription", response_model=SubscriptionOut)
+async def subscription(seller: Seller = Depends(get_seller)) -> SubscriptionOut:
+    from app.payments.client import get_crypto_pay
+
+    settings = get_settings()
+    return SubscriptionOut(
+        plan=active_plan(seller),
+        pro_expires_at=seller.pro_expires_at,
+        price_usdt=Decimal(str(settings.pro_price_usdt)),
+        price_stars=settings.pro_price_stars,
+        plus_price_usdt=Decimal(str(settings.plus_price_usdt)),
+        plus_price_stars=settings.plus_price_stars,
+        period_days=settings.pro_period_days,
+        crypto_available=get_crypto_pay() is not None,
+    )
+
+
+@router.post("/subscription/invoice", response_model=SubscriptionInvoiceOut)
+async def subscription_invoice(
+    payload: SubscriptionInvoiceIn, seller: Seller = Depends(get_seller)
+) -> SubscriptionInvoiceOut:
+    """Счёт на Pro. Зачисление — не здесь: деньги подтверждает вебхук
+    Crypto Pay или successful_payment от Telegram, и только они выдают Pro."""
+    from app.payments.subscription import create_crypto_invoice, create_stars_link
+    from app.plans import PAID_PLANS
+
+    if payload.plan not in PAID_PLANS:
+        raise HTTPException(status_code=400, detail="unknown plan")
+
+    if payload.method == "crypto":
+        try:
+            url = await create_crypto_invoice(seller.id, payload.plan)
+        except Exception:
+            logger.exception("Счёт на подписку продавцу %s не создался", seller.id)
+            raise HTTPException(status_code=502, detail="invoice_failed") from None
+        if url is None:
+            raise HTTPException(status_code=503, detail="crypto_pay_unavailable")
+        return SubscriptionInvoiceOut(payment_url=url)
+
+    if payload.method == "stars":
+        try:
+            link = await create_stars_link(seller.id, payload.plan)
+        except Exception:
+            logger.exception("Счёт в звёздах продавцу %s не создался", seller.id)
+            raise HTTPException(status_code=502, detail="invoice_failed") from None
+        return SubscriptionInvoiceOut(stars_link=link)
+
+    raise HTTPException(status_code=400, detail="unknown method")
 
 
 @router.post("/onboarding/terms-accept", response_model=MeOut)

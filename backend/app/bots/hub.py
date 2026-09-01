@@ -10,6 +10,7 @@ from app.handlers.hub import mybots as hub_mybots
 from app.handlers.hub import newshop as hub_newshop
 from app.handlers.hub import shop_admins as hub_shop_admins
 from app.handlers.hub import start as hub_start
+from app.handlers.hub import subscription as hub_subscription
 
 HUB_WEBHOOK_PATH = "/webhook/hub"
 
@@ -42,6 +43,7 @@ hub_dp.include_router(hub_shop_admins.router)
 # newshop раньше start: у него свой FSM на текст (название магазина),
 # и он не должен перехватываться приветствием
 hub_dp.include_router(hub_newshop.router)
+hub_dp.include_router(hub_subscription.router)
 hub_dp.include_router(hub_start.router)
 
 

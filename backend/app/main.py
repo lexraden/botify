@@ -76,6 +76,7 @@ async def maintenance_loop() -> None:
         expire_unpaid_orders,
         remind_stuck_orders,
     )
+    from app.payments.subscription import remind_expiring
     from app.services.reviews import auto_publish_stale_reviews
 
     settings = get_settings()
@@ -91,6 +92,7 @@ async def maintenance_loop() -> None:
             ("авто-подтверждение получения", auto_confirm_delivery),
             ("истечение неоплаченных заказов", expire_unpaid_orders),
             ("автопубликация отзывов", auto_publish_stale_reviews),
+            ("напоминания о подписке", remind_expiring),
             ("чистка осиротевших фото", purge_orphan_images),
         ):
             try:
@@ -172,6 +174,22 @@ async def cryptopay_webhook(request: Request) -> dict:
         update = await request.json()
         if update.get("update_type") == "invoice_paid":
             invoice = update.get("payload", {})
+            # Подписка и заказ приходят одним вебхуком и различаются payload.
+            # Развилка до handle_invoice_paid: тот ищет заказ по invoice_id и
+            # на подписочном счёте просто ничего бы не нашёл.
+            from app.payments.subscription import grant_plan, parse_payload
+
+            parsed = parse_payload(invoice.get("payload"))
+            if parsed is not None:
+                seller_id, plan = parsed
+                await grant_plan(
+                    seller_id,
+                    plan,
+                    method="crypto",
+                    invoice_id=invoice.get("invoice_id"),
+                    amount_usdt=Decimal(str(invoice.get("amount") or 0)),
+                )
+                return {"status": "ok"}
             # Crypto Pay сообщает удержанную им комиссию — она вычитается из
             # доли продавца, поэтому берём фактическое значение, а не оценку
             fee = invoice.get("fee_amount")

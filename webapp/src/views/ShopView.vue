@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import PlanModal from '../components/PlanModal.vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   approveReview,
@@ -71,6 +72,9 @@ async function moderateReview(r, action) {
 }
 
 // вкладка восстанавливается из ?tab= — возврат из чата заказа открывает заказы
+// окно тарифов: открывается кнопкой отсюда и само — когда упёрлись в лимит
+const planOpen = ref(false)
+const PLAN_NAME = { pro: 'Pro', plus: 'Plus' }
 const tab = ref(['products', 'orders', 'reviews', 'stats'].includes(route.query.tab)
   ? route.query.tab
   : 'products')
@@ -770,7 +774,7 @@ async function removeLogo() {
 
         <div v-if="summary.limits" class="card plan">
           <div class="plan-head">
-            <b>{{ t('plan.title') }}: {{ summary.limits.plan === 'pro' ? 'Pro' : t('plan.free') }}</b>
+            <b>{{ t('plan.title') }}: {{ PLAN_NAME[summary.limits.plan] || t('plan.free') }}</b>
             <span v-if="!summary.limits.enforced" class="muted">{{ t('plan.limitsOff') }}</span>
           </div>
           <div class="plan-row">
@@ -785,9 +789,13 @@ async function removeLogo() {
             <span>{{ t('plan.mailingRow') }}</span>
             <span>{{ summary.limits.mailing_recipients_cap ? t('plan.upToN', { n: summary.limits.mailing_recipients_cap }) : t('plan.unlimited') }}</span>
           </div>
+          <button class="btn btn-primary upgrade" @click="planOpen = true">
+            {{ t('plan.upgrade') }}
+          </button>
         </div>
       </template>
     </template>
+    <PlanModal v-if="planOpen" @close="planOpen = false" @paid="planOpen = false" />
   </div>
 </template>
 
@@ -945,6 +953,7 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 }
 .reply-error { color: var(--red); font-size: 12px; margin: 4px 0 0; }
 .plan { margin-top: 12px; display: flex; flex-direction: column; gap: 9px; }
+.upgrade { width: 100%; margin-top: 10px; }
 .plan-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .plan-head .muted { font-size: 12px; }
 .plan-row { display: flex; justify-content: space-between; font-size: 14px; }

@@ -114,6 +114,12 @@ export const approveReview = (botId, reviewId) =>
   api.post(`/seller/bots/${botId}/reviews/${reviewId}/approve`).then((r) => r.data)
 export const rejectReview = (botId, reviewId) =>
   api.post(`/seller/bots/${botId}/reviews/${reviewId}/reject`).then((r) => r.data)
+// Pro/Plus: состояние тарифа и счёт на оплату. Тариф общий на продавца,
+// поэтому адрес без bot_id — в отличие от всего остального в кабинете.
+export const fetchSubscription = () =>
+  api.get('/seller/subscription').then((r) => r.data)
+export const createSubscriptionInvoice = (method, plan) =>
+  api.post('/seller/subscription/invoice', { method, plan }).then((r) => r.data)
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
 // Чат заказа со стороны покупателя. Тот же тред, что видит продавец, только
