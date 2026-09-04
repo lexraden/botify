@@ -1,0 +1,1987 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9a68e10..cfd81c3 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -4,6 +4,57 @@
+ поэтому время для заголовка берётся из `git log --date=iso-local`,
+ а не из строки коммита — иначе записи расходятся на четыре часа.
+ 
++## 2026-09-04 14:00 — v2: имя и лого магазина → профиль бота в Telegram; /settings на RU/EN
++
++### Added
++- Сервис `backend/app/services/bot_profile.py`: идентичность магазина из
++  кабинета теперь доезжает до самого бота в Telegram. Смена имени
++  (`PUT /bots/{bot_id}/shop-name`) → `setMyName`; загрузка лого
++  (`POST /bots/{bot_id}/shop-logo`) → аватар бота через `setMyProfilePhoto`
++  (Bot API 9.x, aiogram ≥ 3.30); удаление лого → `removeMyProfilePhoto`;
++  сброс имени (`null`) → боту возвращается исходное Telegram-имя.
++- Лого приводится к квадратному JPEG 640×640: центр-кроп, EXIF-поворот,
++  первый кадр у анимаций, прозрачность ложится на белый фон. В
++  `requirements.txt` добавлен `Pillow`.
++- `seller_bots.default_bot_name` — исходное Telegram-имя бота, фиксируется
++  при подключении (`getMe.first_name`; у managed-бота — имя из
++  `managed_bot_created`). Миграция `c3d4e5f6a7b8`, прогнана up→down→up.
++  У ботов, подключённых до миграции, поле пустое: при сбросе они не
++  переименовываются, задним числом профили не догоняются — всё
++  синхронизируется при следующем изменении имени/лого.
++- Ответы `shop-name`/`shop-logo` дополнены полем `telegram_sync`
++  (`ok | skipped | rate_limited | failed`, `retry_after`): кабинет может
++  показать тост. `summary` отдаёт `default_bot_name`.
++- Seller-бот, `/settings` → «🪪 Профиль в Telegram»: показывает имя,
++  исходное имя и наличие лого; кнопка «🔄 Отправить в Telegram» досылает
++  профиль целиком — для магазинов, подключённых до v2, и после неудачной
++  синхронизации.
++- Тесты `tests/test_bot_profile.py`: конвертация картинки, setMyName /
++  setMyProfilePhoto / removeMyProfilePhoto через фейковый Bot, сброс к
++  исходному имени и пропуск при неизвестном, лимит 429 с `retry_after`,
++  отозванный токен/блокировка/сеть не роняют вызов; паритет ключей
++  `settings.*` RU/EN и неизменность RU-строк.
++
++### Changed
++- Весь маршрут `/settings` seller-бота (меню, приветствие, текст кнопки,
++  каналы, подтверждения, тосты) переведён через ключи `settings.*` в
++  `app/services/seller_texts.py`. Язык — тот же выбор `/lang`
++  (`sellers.locale`); RU-строки байт-в-байт прежние; алерт чужаку
++  «Настройки доступны только владельцу магазина.» по-прежнему русский.
++  Проверка владельца возвращает `Seller` (`owner_of`) — язык берётся из неё,
++  второго запроса в БД нет; `is_owner` оставлен для `start.py`.
++- Ошибки Telegram при синхронизации профиля (токен отозван, бот
++  заблокирован, лимит частоты смены имени) логируются и не роняют запрос
++  кабинета: БД — источник правды, Telegram — зеркало. При `failed` /
++  `rate_limited` к пушу в hub-бот дописывается подсказка
++  (`api.profile_sync_failed`, `api.profile_rate_limited`).
++- `promote_draft` принимает `bot_name` — исходное имя managed-бота.
++- `aiogram` поднят до `>=3.30,<4`.
++
++### Не проверено
++- Живые вызовы `setMyName` / `setMyProfilePhoto` в Telegram (из контейнера
++  недоступны) — проверены только контракт и обработка ошибок на фейке.
++
+ ## 2026-08-29 02:02 — строка документов: «Условия · Конфиденциальность»
+ 
+ ### Changed
+diff --git a/README.md b/README.md
+index b2c1890..a0e05b2 100644
+--- a/README.md
++++ b/README.md
+@@ -6,6 +6,17 @@ Telegram Bot + Mini App маркетплейс: hub-бот для продавц
+ Бриф: `docs/project-brief.md` · Аудит и план: `docs/AUDIT.md` · Правила работы
+ с Claude Code и команды проекта: `CLAUDE.md`
+ 
++## Что нового в v2
++
++- Имя и логотип магазина из кабинета синхронизируются с профилем самого
++  seller-бота в Telegram (`setMyName`, `setMyProfilePhoto`,
++  `removeMyProfilePhoto`) — `backend/app/services/bot_profile.py`. Сброс имени
++  возвращает исходное Telegram-имя (`seller_bots.default_bot_name`, миграция
++  `c3d4e5f6a7b8`). Требует `aiogram>=3.30` и `Pillow`.
++- `/settings` внутри seller-бота говорит на языке продавца из `/lang` (RU/EN),
++  плюс экран «🪪 Профиль в Telegram» с ручной досылкой имени и лого.
++- Подробности — в `CHANGELOG.md` (запись от 2026-09-04).
++
+ ## Структура
+ 
+ - `backend/` — FastAPI + aiogram 3: API для Mini App, вебхуки hub-бота и seller-ботов
+diff --git a/backend/alembic/versions/c3d4e5f6a7b8_default_bot_name.py b/backend/alembic/versions/c3d4e5f6a7b8_default_bot_name.py
+new file mode 100644
+index 0000000..1b9d0e7
+--- /dev/null
++++ b/backend/alembic/versions/c3d4e5f6a7b8_default_bot_name.py
+@@ -0,0 +1,39 @@
++"""Исходное Telegram-имя бота: seller_bots.default_bot_name
++
++Имя и лого магазина теперь уезжают в профиль самого бота (setMyName /
++setMyProfilePhoto, services/bot_profile.py). Чтобы сброс имени (shop_name =
++null) возвращал боту прежнее Telegram-имя, а не оставлял последнее заданное,
++исходное имя запоминается при подключении: getMe.first_name у ручного бота,
++имя из managed_bot_created у созданного через платформу.
++
++Колонка nullable намеренно и без бэкфилла: у ботов, подключённых до этой
++миграции, исходное имя восстановить неоткуда (getMe сейчас вернёт уже
++текущее имя, которое могло быть задано продавцом), и при сбросе они просто
++не переименовываются. Заполнится при следующем подключении/переподключении.
++
++Проверена up -> down -> up на пустой базе.
++
++Revision ID: c3d4e5f6a7b8
++Revises: b2c3d4e5f6a7
++Create Date: 2026-09-04 12:00:00.000000
++
++"""
++from alembic import op
++import sqlalchemy as sa
++
++
++revision = 'c3d4e5f6a7b8'
++down_revision = 'b2c3d4e5f6a7'
++branch_labels = None
++depends_on = None
++
++
++def upgrade() -> None:
++    op.add_column(
++        'seller_bots',
++        sa.Column('default_bot_name', sa.String(length=64), nullable=True),
++    )
++
++
++def downgrade() -> None:
++    op.drop_column('seller_bots', 'default_bot_name')
+diff --git a/backend/app/api/seller.py b/backend/app/api/seller.py
+index f33651d..b5a22b9 100644
+--- a/backend/app/api/seller.py
++++ b/backend/app/api/seller.py
+@@ -39,6 +39,7 @@ from app.models import (
+ from app.models.orders import PAID_STATUSES
+ from app.payments.payouts import paid_total, pending_total
+ from app.plans import SERVICE_TYPES, active_plan, is_pro, limits_for, over_limit
++from app.services import bot_profile
+ from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
+ from app.services.seller_texts import seller_text
+ from app.services.variants import apply_variants, line_title
+@@ -403,6 +404,10 @@ async def set_shop_name(
+         raise HTTPException(status_code=422, detail="shop_name пуст — пришли null для сброса")
+     shop.shop_name = name[:64] or None
+     await session.commit()
++    # Имя уезжает и в профиль бота (setMyName). БД уже закоммичена: Telegram —
++    # зеркало, его отказ (лимит частоты, отозванный токен) не откатывает имя
++    # витрины, а лишь подсвечивается продавцу и в ответе кабинета.
++    sync = await bot_profile.set_bot_name(shop, shop.shop_name)
+     await _notify_seller(
+         seller,
+         seller_text(
+@@ -410,9 +415,22 @@ async def set_shop_name(
+             "api.name_set" if shop.shop_name else "api.name_reset",
+             name=html.escape(shop.shop_name or ""),
+             username=html.escape(shop.bot_username or ""),
+-        ),
++        )
++        + _profile_sync_note(seller, sync),
+     )
+-    return {"shop_name": shop.shop_name}
++    return {"shop_name": shop.shop_name, "telegram_sync": sync.as_dict()}
++
++
++def _profile_sync_note(seller: Seller, sync: bot_profile.SyncResult) -> str:
++    """Дописка к пушу в hub-бот, когда профиль бота в Telegram не обновился.
++    Успех и «пропущено» (черновик, неизвестное исходное имя) не комментируем —
++    продавцу важно только то, что требует его действия."""
++    if sync.status == "rate_limited":
++        minutes = max(1, (sync.retry_after or 60) // 60)
++        return "\n\n" + seller_text(seller, "api.profile_rate_limited", minutes=minutes)
++    if sync.status == "failed":
++        return "\n\n" + seller_text(seller, "api.profile_sync_failed")
++    return ""
+ 
+ 
+ @router.post("/bots/{bot_id}/shop-logo")
+@@ -440,7 +458,10 @@ async def upload_shop_logo(
+     logo = ShopLogo(bot_id=shop.id, mime=mime, size=len(data), data=data)
+     session.add(logo)
+     await session.commit()
+-    return {"url": f"/api/shop-logos/{logo.token}"}
++    # то же лого — на аватар бота (квадратный JPEG 640×640, см. bot_profile);
++    # неудача не мешает витрине показать новый логотип
++    sync = await bot_profile.set_bot_photo(shop, data)
++    return {"url": f"/api/shop-logos/{logo.token}", "telegram_sync": sync.as_dict()}
+ 
+ 
+ @router.delete("/bots/{bot_id}/shop-logo")
+@@ -448,10 +469,12 @@ async def remove_shop_logo(
+     shop: SellerBot = Depends(get_shop),
+     session: AsyncSession = Depends(get_api_session),
+ ) -> dict:
+-    """Убрать лого — вернуться к первой букве имени вместо кружка."""
++    """Убрать лого — вернуться к первой букве имени вместо кружка.
++    У бота в Telegram аватар снимается тоже (removeMyProfilePhoto)."""
+     await session.execute(delete(ShopLogo).where(ShopLogo.bot_id == shop.id))
+     await session.commit()
+-    return {"status": "removed"}
++    sync = await bot_profile.remove_bot_photo(shop)
++    return {"status": "removed", "telegram_sync": sync.as_dict()}
+ 
+ 
+ # --------------------------------------------------------------------------
+@@ -508,6 +531,9 @@ class ShopSummaryOut(BaseModel):
+     # показное имя и лого шапки витрины — префилл панели идентичности кабинета
+     shop_name: str | None = None
+     logo_url: str | None = None
++    # Исходное Telegram-имя бота; null — неизвестно (подключён до v2), и
++    # кабинет может предупредить, что сброс имени бота в Telegram не тронет
++    default_bot_name: str | None = None
+     is_active: bool
+     webhook_status: str
+     customers_count: int
+@@ -594,6 +620,7 @@ async def shop_summary(
+         bot_username=shop.bot_username,
+         shop_name=shop.shop_name,
+         logo_url=f"/api/shop-logos/{logo.token}" if logo else None,
++        default_bot_name=shop.default_bot_name,
+         is_active=shop.is_active,
+         webhook_status=shop.webhook_status,
+         customers_count=customers_count,
+diff --git a/backend/app/handlers/hub/newshop.py b/backend/app/handlers/hub/newshop.py
+index 9b97308..e8a50a2 100644
+--- a/backend/app/handlers/hub/newshop.py
++++ b/backend/app/handlers/hub/newshop.py
+@@ -196,7 +196,13 @@ async def bot_created(message: types.Message) -> None:
+         return
+ 
+     try:
+-        shop = await promote_draft(shop.id, token, created.username or "", created.id)
++        shop = await promote_draft(
++            shop.id,
++            token,
++            created.username or "",
++            created.id,
++            bot_name=getattr(created, "first_name", None),
++        )
+     except DraftPromotionError as exc:
+         await message.answer(
+             text(locale, "newshop.promote_failed", error=html.escape(str(exc))),
+diff --git a/backend/app/handlers/seller/settings.py b/backend/app/handlers/seller/settings.py
+index fb5d15b..5501ce7 100644
+--- a/backend/app/handlers/seller/settings.py
++++ b/backend/app/handlers/seller/settings.py
+@@ -1,4 +1,5 @@
+-"""Настройки seller-бота: приветствие покупателя, кнопка витрины, каналы заявок.
++"""Настройки seller-бота: приветствие покупателя, кнопка витрины, каналы заявок,
++профиль бота в Telegram.
+ 
+ Меню живёт в самом seller-боте: продавец попадает сюда командой /settings или
+ по диплинку «⚙️ Настройки бота» из хаб-бота (t.me/<bot>?start=settings).
+@@ -6,23 +7,34 @@
+ Изоляция по bot_id здесь бесплатна и обязательна одновременно: апдейты
+ приходят на вебхук конкретного бота, и всё, что читается/меняется, ключуется
+ на bot_record.id — чужие магазины из этого хендлера не видны в принципе.
++
++Язык. Весь маршрут говорит на языке продавца из /lang hub-бота
++(sellers.locale, правило — services/seller_texts.py): владелец у hub-бота и
++seller-бота один и тот же человек, второй переключатель ему не нужен.
++Проверка владельца возвращает саму строку Seller — из неё и берётся язык,
++второго запроса в БД нет. Единственная строка не из словаря — OWNER_ONLY:
++чужак, набравший диплинк, получает русский алерт, как и раньше (его язык мы
++не знаем, а исторический текст менять незачем).
+ """
+ 
+ import html
+ 
+ from aiogram import F, Router, types
+-from aiogram.filters import Command, StateFilter
++from aiogram.filters import Command
+ from aiogram.fsm.context import FSMContext
+ from aiogram.fsm.state import State, StatesGroup
+ from aiogram.utils.keyboard import InlineKeyboardBuilder
+ from sqlalchemy import select
+ 
+ from app.db import get_session
+-from app.models import Channel, Seller, SellerBot
++from app.models import Channel, Seller, SellerBot, ShopLogo
+ from app.services.channels import deactivate_channel_by_id
++from app.services.seller_texts import seller_text as _t
+ 
+ router = Router(name="seller_settings")
+ 
++# Текст кнопки меню бота по умолчанию — одинаков для всех языков (на этом
++# пути продаёт продавец, а не платформа); runner читает константу отсюда.
+ DEFAULT_BUTTON_TEXT = "Open"
+ OWNER_ONLY = "Настройки доступны только владельцу магазина."
+ 
+@@ -49,14 +61,31 @@ async def _refresh_menu_button(bot: SellerBot | None) -> None:
+ # --------------------------------------------------------------------------
+ 
+ 
+-async def is_owner(bot_record: SellerBot, tg_user) -> bool:
+-    """Диплинк на настройки может набрать кто угодно — меню открывается
+-    только продавцу, остальные получают обычное приветствие покупателя."""
++async def owner_of(bot_record: SellerBot, tg_user) -> Seller | None:
++    """Владелец магазина, если это он нажал/написал; иначе None.
++
++    Диплинк на настройки может набрать кто угодно — меню открывается только
++    продавцу, остальные получают обычное приветствие покупателя. Возвращаем
++    строку Seller, а не bool: из неё берётся язык экранов."""
+     if tg_user is None:
+-        return False
++        return None
+     async with get_session() as session:
+         seller = await session.get(Seller, bot_record.seller_id)
+-    return seller is not None and seller.telegram_id == tg_user.id
++    if seller is None or seller.telegram_id != tg_user.id:
++        return None
++    return seller
++
++
++async def is_owner(bot_record: SellerBot, tg_user) -> bool:
++    """Совместимость с handlers/seller/start.py (диплинк ?start=settings)."""
++    return await owner_of(bot_record, tg_user) is not None
++
++
++async def _seller_of(bot_record: SellerBot) -> Seller | None:
++    """Владелец для языка, когда проверка доступа уже пройдена выше
++    (диплинк из start.py, FSM-ответы: чужой в это состояние не попадёт)."""
++    async with get_session() as session:
++        return await session.get(Seller, bot_record.seller_id)
+ 
+ 
+ async def _bot_channels(bot_id: int) -> list[Channel]:
+@@ -92,84 +121,107 @@ async def _update_channel(bot_id: int, channel_id: int, **fields) -> Channel | N
+         return channel
+ 
+ 
++def _channel_id(callback: types.CallbackQuery) -> int | None:
++    try:
++        return int((callback.data or "").split(":")[-1])
++    except ValueError:
++        return None
++
++
+ # --------------------------------------------------------------------------
+ # Меню настроек
+ # --------------------------------------------------------------------------
+ 
+ 
+-def settings_text(bot_record: SellerBot, channels_count: int) -> str:
+-    button = "включена" if bot_record.show_catalog_button else "выключена"
++def settings_text(bot_record: SellerBot, channels_count: int, seller: Seller | None = None) -> str:
++    state_key = "settings.state.on" if bot_record.show_catalog_button else "settings.state.off"
+     # текст продавца идёт в сообщение с parse_mode=HTML: один «<» — и меню
+     # перестаёт отправляться, а починить его из бота уже нельзя
+     btn_text = html.escape(bot_record.catalog_button_text or DEFAULT_BUTTON_TEXT)
+     # обрезаем до экранирования: иначе срез может разрубить «&amp;» пополам
+-    welcome = html.escape((bot_record.welcome_text or "стандартное приветствие")[:120])
+-    return (
+-        f"⚙️ <b>Настройки бота @{bot_record.bot_username}</b>\n\n"
+-        f"👋 Приветствие на /start:\n<i>{welcome}</i>\n\n"
+-        f"🔘 Кнопка «{btn_text}»: {button}\n"
+-        f"📢 Каналы для приёма заявок: {channels_count}"
++    welcome = html.escape(
++        (bot_record.welcome_text or _t(seller, "settings.default_welcome"))[:120]
++    )
++    return _t(
++        seller,
++        "settings.menu",
++        username=bot_record.bot_username,
++        welcome=welcome,
++        button=btn_text,
++        state=_t(seller, state_key),
++        channels=channels_count,
+     )
+ 
+ 
+-def settings_keyboard(bot_record: SellerBot, channels_count: int) -> types.InlineKeyboardMarkup:
++def settings_keyboard(
++    bot_record: SellerBot, channels_count: int, seller: Seller | None = None
++) -> types.InlineKeyboardMarkup:
++    short = "settings.state.short_on" if bot_record.show_catalog_button else "settings.state.short_off"
+     kb = InlineKeyboardBuilder()
+-    kb.button(text="✍️ Приветствие", callback_data="set:welcome")
++    kb.button(text=_t(seller, "settings.btn.welcome"), callback_data="set:welcome")
+     kb.button(
+-        text=f"🔘 Кнопка каталога: {'вкл' if bot_record.show_catalog_button else 'выкл'}",
++        text=_t(seller, "settings.btn.catalog_toggle", state=_t(seller, short)),
+         callback_data="set:btn_toggle",
+     )
+-    kb.button(text="✏️ Текст кнопки", callback_data="set:btn_text")
+-    kb.button(text=f"📢 Каналы ({channels_count})", callback_data="set:channels")
+-    kb.button(text="✖️ Закрыть", callback_data="set:close")
++    kb.button(text=_t(seller, "settings.btn.button_text"), callback_data="set:btn_text")
++    kb.button(text=_t(seller, "settings.btn.channels", n=channels_count), callback_data="set:channels")
++    kb.button(text=_t(seller, "settings.btn.profile"), callback_data="set:profile")
++    kb.button(text=_t(seller, "settings.btn.close"), callback_data="set:close")
+     kb.adjust(1)
+     return kb.as_markup()
+ 
+ 
+-async def show_settings_menu(message: types.Message, bot_record: SellerBot) -> None:
++async def show_settings_menu(
++    message: types.Message, bot_record: SellerBot, seller: Seller | None = None
++) -> None:
++    if seller is None:
++        seller = await _seller_of(bot_record)
+     channels = await _bot_channels(bot_record.id)
+     await message.answer(
+-        settings_text(bot_record, len(channels)),
+-        reply_markup=settings_keyboard(bot_record, len(channels)),
++        settings_text(bot_record, len(channels), seller),
++        reply_markup=settings_keyboard(bot_record, len(channels), seller),
+     )
+ 
+ 
+ async def _edit_menu(
+-    message: types.Message, bot_record: SellerBot, state: FSMContext
++    message: types.Message, bot_record: SellerBot, state: FSMContext, seller: Seller
+ ) -> None:
+     await state.clear()
+     channels = await _bot_channels(bot_record.id)
+     await message.edit_text(
+-        settings_text(bot_record, len(channels)),
+-        reply_markup=settings_keyboard(bot_record, len(channels)),
++        settings_text(bot_record, len(channels), seller),
++        reply_markup=settings_keyboard(bot_record, len(channels), seller),
+     )
+ 
+ 
+ @router.message(Command("settings"))
+ async def cmd_settings(message: types.Message, bot_record: SellerBot) -> None:
+-    if not await is_owner(bot_record, message.from_user):
++    seller = await owner_of(bot_record, message.from_user)
++    if seller is None:
+         await message.answer(OWNER_ONLY)
+         return
+-    await show_settings_menu(message, bot_record)
++    await show_settings_menu(message, bot_record, seller)
+ 
+ 
+ @router.callback_query(F.data == "set:menu")
+ async def back_to_menu(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+     await callback.answer()
+     if callback.message:
+-        await _edit_menu(callback.message, bot_record, state)
++        await _edit_menu(callback.message, bot_record, state, seller)
+ 
+ 
+ @router.callback_query(F.data == "set:close")
+ async def close_menu(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+     await state.clear()
+@@ -190,21 +242,22 @@ async def close_menu(
+ async def ask_welcome(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+     await callback.answer()
+     await state.set_state(SettingsStates.waiting_welcome)
+     if callback.message:
+         kb = InlineKeyboardBuilder()
+-        kb.button(text="Сбросить на стандартное", callback_data="set:welcome_reset")
+-        kb.button(text="⬅️ Назад", callback_data="set:menu")
++        kb.button(text=_t(seller, "settings.btn.reset_default"), callback_data="set:welcome_reset")
++        kb.button(text=_t(seller, "settings.btn.back"), callback_data="set:menu")
+         kb.adjust(1)
+-        current = html.escape(bot_record.welcome_text or "— стандартное приветствие —")
++        current = html.escape(
++            bot_record.welcome_text or _t(seller, "settings.welcome.current_default")
++        )
+         await callback.message.edit_text(
+-            "Пришли новый текст приветствия — его увидит покупатель на /start.\n"
+-            'Можно использовать HTML: <b>&lt;b&gt;</b>, <b>&lt;i&gt;</b>, <b>&lt;a href="…"&gt;</b>\n\n'
+-            f"Сейчас:\n{current}",
++            _t(seller, "settings.welcome.prompt", current=current),
+             reply_markup=kb.as_markup(),
+         )
+ 
+@@ -213,29 +266,31 @@ async def ask_welcome(
+ async def reset_welcome(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+-    await callback.answer("Сброшено")
++    await callback.answer(_t(seller, "settings.toast.reset"))
+     bot = await _update_bot(bot_record.id, welcome_text=None)
+     if callback.message and bot is not None:
+-        await _edit_menu(callback.message, bot, state)
++        await _edit_menu(callback.message, bot, state, seller)
+ 
+ 
+ @router.message(SettingsStates.waiting_welcome, F.text)
+ async def save_welcome(
+     message: types.Message, state: FSMContext, bot_record: SellerBot
+ ) -> None:
++    seller = await _seller_of(bot_record)
+     text = (message.text or "").strip()
+     if text.lower() in {"/cancel", "/start"} or not text:
+-        await message.answer("Хорошо, без изменений.")
+-        await show_settings_menu(message, bot_record)
++        await message.answer(_t(seller, "settings.no_changes"))
++        await show_settings_menu(message, bot_record, seller)
+         return
+     bot = await _update_bot(bot_record.id, welcome_text=text[:4000])
+     await state.clear()
+-    await message.answer("✅ Приветствие сохранено")
++    await message.answer(_t(seller, "settings.welcome.saved"))
+     if bot is not None:
+-        await show_settings_menu(message, bot)
++        await show_settings_menu(message, bot, seller)
+ 
+ 
+ # --------------------------------------------------------------------------
+@@ -247,7 +302,8 @@ async def save_welcome(
+ async def toggle_catalog_button(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+     await callback.answer()
+@@ -256,27 +312,27 @@ async def toggle_catalog_button(
+     )
+     await _refresh_menu_button(bot)
+     if callback.message and bot is not None:
+-        await _edit_menu(callback.message, bot, state)
++        await _edit_menu(callback.message, bot, state, seller)
+ 
+ 
+ @router.callback_query(F.data == "set:btn_text")
+ async def ask_button_text(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+     await callback.answer()
+     await state.set_state(SettingsStates.waiting_button_text)
+     if callback.message:
+         kb = InlineKeyboardBuilder()
+-        kb.button(text="Сбросить на стандартный", callback_data="set:btn_text_reset")
+-        kb.button(text="⬅️ Назад", callback_data="set:menu")
++        kb.button(text=_t(seller, "settings.btn.reset_default_m"), callback_data="set:btn_text_reset")
++        kb.button(text=_t(seller, "settings.btn.back"), callback_data="set:menu")
+         kb.adjust(1)
+         current = html.escape(bot_record.catalog_button_text or DEFAULT_BUTTON_TEXT)
+         await callback.message.edit_text(
+-            "Пришли новый текст кнопки открытия магазина (до 64 символов).\n\n"
+-            f"Сейчас: {current}",
++            _t(seller, "settings.button.prompt", current=current),
+             reply_markup=kb.as_markup(),
+         )
+ 
+@@ -285,31 +341,33 @@ async def ask_button_text(
+ async def reset_button_text(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+-    await callback.answer("Сброшено")
++    await callback.answer(_t(seller, "settings.toast.reset"))
+     bot = await _update_bot(bot_record.id, catalog_button_text=None)
+     await _refresh_menu_button(bot)
+     if callback.message and bot is not None:
+-        await _edit_menu(callback.message, bot, state)
++        await _edit_menu(callback.message, bot, state, seller)
+ 
+ 
+ @router.message(SettingsStates.waiting_button_text, F.text)
+ async def save_button_text(
+     message: types.Message, state: FSMContext, bot_record: SellerBot
+ ) -> None:
++    seller = await _seller_of(bot_record)
+     text = (message.text or "").strip()
+     if text.lower() in {"/cancel", "/start"} or not text:
+-        await message.answer("Хорошо, без изменений.")
+-        await show_settings_menu(message, bot_record)
++        await message.answer(_t(seller, "settings.no_changes"))
++        await show_settings_menu(message, bot_record, seller)
+         return
+     bot = await _update_bot(bot_record.id, catalog_button_text=text[:64])
+     await state.clear()
+     await _refresh_menu_button(bot)
+-    await message.answer("✅ Текст кнопки сохранён")
++    await message.answer(_t(seller, "settings.button.saved"))
+     if bot is not None:
+-        await show_settings_menu(message, bot)
++        await show_settings_menu(message, bot, seller)
+ 
+ 
+ # --------------------------------------------------------------------------
+@@ -317,25 +375,19 @@ async def save_button_text(
+ # --------------------------------------------------------------------------
+ 
+ 
+-def channels_text(channels: list[Channel]) -> str:
+-    if not channels:
+-        return (
+-            "📢 <b>Каналы</b>\n\nКаналов пока нет. Добавь бота администратором "
+-            "в канал — он появится здесь автоматически."
+-        )
+-    return (
+-        "📢 <b>Каналы</b>\n\nЗелёный — заявки принимаются автоматически. "
+-        "Нажми на канал, чтобы поменять настройки и приветствие вступившим."
+-    )
++def channels_text(channels: list[Channel], seller: Seller | None = None) -> str:
++    return _t(seller, "settings.channels.list" if channels else "settings.channels.empty")
+ 
+ 
+-def channels_keyboard(channels: list[Channel]) -> types.InlineKeyboardMarkup:
++def channels_keyboard(
++    channels: list[Channel], seller: Seller | None = None
++) -> types.InlineKeyboardMarkup:
+     kb = InlineKeyboardBuilder()
+     for ch in channels:
+         icon = "🟢" if ch.auto_accept else "⚪"
+         kb.button(text=f"{icon} {ch.title}", callback_data=f"set:ch:{ch.id}")
+-    kb.button(text="➕ Как подключить канал", callback_data="set:ch_help")
+-    kb.button(text="⬅️ Назад", callback_data="set:menu")
++    kb.button(text=_t(seller, "settings.btn.channel_help"), callback_data="set:ch_help")
++    kb.button(text=_t(seller, "settings.btn.back"), callback_data="set:menu")
+     kb.adjust(1)
+     return kb.as_markup()
+ 
+@@ -344,14 +396,15 @@ def channels_keyboard(channels: list[Channel]) -> types.InlineKeyboardMarkup:
+ async def show_channels(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+     await callback.answer()
+     channels = await _bot_channels(bot_record.id)
+     if callback.message:
+         await callback.message.edit_text(
+-            channels_text(channels), reply_markup=channels_keyboard(channels)
++            channels_text(channels, seller), reply_markup=channels_keyboard(channels, seller)
+         )
+ 
+ 
+@@ -359,37 +412,39 @@ async def show_channels(
+ async def channels_help(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+     await callback.answer()
+     if callback.message:
+         kb = InlineKeyboardBuilder()
+-        kb.button(text="⬅️ Назад", callback_data="set:channels")
++        kb.button(text=_t(seller, "settings.btn.back"), callback_data="set:channels")
+         kb.adjust(1)
+         await callback.message.edit_text(
+-            "➕ <b>Как подключить канал</b>\n\n"
+-            f"1. Добавь бота @{bot_record.bot_username} администратором в свой канал.\n"
+-            "2. Отметь право «Приглашать пользователей» — без него бот не видит заявки.\n"
+-            "3. Канал появится в списке автоматически.\n\n"
+-            "Каждый, кто нажмёт «Подать заявку» в приватном канале, будет "
+-            "автоматически принят и попадёт в твою базу покупателей.",
++            _t(seller, "settings.channels.help", username=bot_record.bot_username),
+             reply_markup=kb.as_markup(),
+         )
+ 
+ 
+-def channel_text(channel: Channel) -> str:
+-    auto = "включён 🟢" if channel.auto_accept else "выключен ⚪"
++def channel_text(channel: Channel, seller: Seller | None = None) -> str:
++    auto = _t(seller, "settings.channel.auto_on" if channel.auto_accept else "settings.channel.auto_off")
+     # название канала приходит из Telegram и тоже может содержать «<»
+-    greeting = html.escape((channel.greeting_text or "— стандартное приветствие канала —")[:200])
+-    return (
+-        f"📢 <b>{html.escape(channel.title)}</b>\n\n"
+-        f"Авто-приём заявок: {auto}\n"
+-        f"Приветствие вступившим:\n<i>{greeting}</i>"
++    greeting = html.escape(
++        (channel.greeting_text or _t(seller, "settings.channel.default_greeting"))[:200]
++    )
++    return _t(
++        seller,
++        "settings.channel.card",
++        title=html.escape(channel.title),
++        auto=auto,
++        greeting=greeting,
+     )
+ 
+ 
+-async def _own_channel(bot_record: SellerBot, channel_id: int) -> Channel | None:
++async def _own_channel(bot_record: SellerBot, channel_id: int | None) -> Channel | None:
++    if channel_id is None:
++        return None
+     async with get_session() as session:
+         channel = await session.get(Channel, channel_id)
+     if channel is None or channel.bot_id != bot_record.id or not channel.is_active:
+@@ -397,98 +452,84 @@ async def _own_channel(bot_record: SellerBot, channel_id: int) -> Channel | None
+     return channel
+ 
+ 
++def channel_keyboard(channel: Channel, seller: Seller | None = None) -> types.InlineKeyboardMarkup:
++    kb = InlineKeyboardBuilder()
++    kb.button(
++        text=_t(seller, "settings.btn.auto_off" if channel.auto_accept else "settings.btn.auto_on"),
++        callback_data=f"set:ch_auto:{channel.id}",
++    )
++    kb.button(text=_t(seller, "settings.btn.channel_greeting"), callback_data=f"set:ch_greet:{channel.id}")
++    kb.button(text=_t(seller, "settings.btn.channel_remove"), callback_data=f"set:ch_del:{channel.id}")
++    kb.button(text=_t(seller, "settings.btn.back"), callback_data="set:channels")
++    kb.adjust(1)
++    return kb.as_markup()
++
++
++async def _render_channel(message: types.Message, channel: Channel, seller: Seller) -> None:
++    await message.edit_text(channel_text(channel, seller), reply_markup=channel_keyboard(channel, seller))
++
++
+ @router.callback_query(F.data.startswith("set:ch:"))
+ async def channel_menu(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+-    try:
+-        channel_id = int(callback.data.split(":")[-1])
+-    except ValueError:
+-        await callback.answer("Канал не найден", show_alert=True)
+-        return
+-    channel = await _own_channel(bot_record, channel_id)
++    channel = await _own_channel(bot_record, _channel_id(callback))
+     if channel is None:
+-        await callback.answer("Канал не найден", show_alert=True)
++        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+         return
+     await callback.answer()
+     if callback.message:
+-        await callback.message.edit_text(
+-            channel_text(channel), reply_markup=channel_keyboard(channel)
+-        )
+-
+-
+-def channel_keyboard(channel: Channel) -> types.InlineKeyboardMarkup:
+-    kb = InlineKeyboardBuilder()
+-    kb.button(
+-        text="Выключить авто-приём" if channel.auto_accept else "Включить авто-приём",
+-        callback_data=f"set:ch_auto:{channel.id}",
+-    )
+-    kb.button(text="✍️ Приветствие вступившим", callback_data=f"set:ch_greet:{channel.id}")
+-    kb.button(text="🗑 Отключить канал", callback_data=f"set:ch_del:{channel.id}")
+-    kb.button(text="⬅️ Назад", callback_data="set:channels")
+-    kb.adjust(1)
+-    return kb.as_markup()
++        await _render_channel(callback.message, channel, seller)
+ 
+ 
+ @router.callback_query(F.data.startswith("set:ch_auto:"))
+ async def toggle_auto_accept(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+-    try:
+-        channel_id = int(callback.data.split(":")[-1])
+-    except ValueError:
+-        await callback.answer("Канал не найден", show_alert=True)
+-        return
+-    current = await _own_channel(bot_record, channel_id)
++    current = await _own_channel(bot_record, _channel_id(callback))
+     if current is None:
+-        await callback.answer("Канал не найден", show_alert=True)
++        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+         return
+-    channel = await _update_channel(
+-        bot_record.id, channel_id, auto_accept=not current.auto_accept
+-    )
++    channel = await _update_channel(bot_record.id, current.id, auto_accept=not current.auto_accept)
+     if channel is None:
+-        await callback.answer("Канал не найден", show_alert=True)
++        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+         return
+-    await callback.answer("Выключено" if not channel.auto_accept else "Включено")
+-    if callback.message and channel is not None:
++    await callback.answer(
++        _t(seller, "settings.toast.enabled" if channel.auto_accept else "settings.toast.disabled")
++    )
++    if callback.message:
+         # перерисовываем подменю канала с новым состоянием
+-        await callback.message.edit_text(
+-            channel_text(channel), reply_markup=channel_keyboard(channel)
+-        )
++        await _render_channel(callback.message, channel, seller)
+ 
+ 
+ @router.callback_query(F.data.startswith("set:ch_del:"))
+ async def confirm_remove_channel(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+-    try:
+-        channel_id = int(callback.data.split(":")[-1])
+-    except ValueError:
+-        await callback.answer("Канал не найден", show_alert=True)
+-        return
+-    channel = await _own_channel(bot_record, channel_id)
++    channel = await _own_channel(bot_record, _channel_id(callback))
+     if channel is None:
+-        await callback.answer("Канал не найден", show_alert=True)
++        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+         return
+     await callback.answer()
+     if callback.message:
+         kb = InlineKeyboardBuilder()
+-        kb.button(text="Да, отключить", callback_data=f"set:ch_del_yes:{channel.id}")
+-        kb.button(text="Отмена", callback_data=f"set:ch:{channel.id}")
++        kb.button(text=_t(seller, "settings.btn.yes_remove"), callback_data=f"set:ch_del_yes:{channel.id}")
++        kb.button(text=_t(seller, "settings.btn.cancel"), callback_data=f"set:ch:{channel.id}")
+         kb.adjust(1)
+         await callback.message.edit_text(
+-            f"Отключить канал «{html.escape(channel.title)}»?\n\n"
+-            "Бот перестанет принимать заявки из него и приветствовать вступивших. "
+-            "Канал вернётся в список, только если заново добавить бота в канал.",
++            _t(seller, "settings.channel.remove_confirm", title=html.escape(channel.title)),
+             reply_markup=kb.as_markup(),
+         )
+ 
+@@ -497,22 +538,19 @@ async def confirm_remove_channel(
+ async def do_remove_channel(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+-    try:
+-        channel_id = int(callback.data.split(":")[-1])
+-    except ValueError:
+-        await callback.answer("Канал не найден", show_alert=True)
+-        return
+-    if not await deactivate_channel_by_id(bot_record.id, channel_id):
+-        await callback.answer("Канал не найден", show_alert=True)
++    channel_id = _channel_id(callback)
++    if channel_id is None or not await deactivate_channel_by_id(bot_record.id, channel_id):
++        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+         return
+-    await callback.answer("Канал отключён")
++    await callback.answer(_t(seller, "settings.toast.channel_removed"))
+     if callback.message:
+         channels = await _bot_channels(bot_record.id)
+         await callback.message.edit_text(
+-            channels_text(channels), reply_markup=channels_keyboard(channels)
++            channels_text(channels, seller), reply_markup=channels_keyboard(channels, seller)
+         )
+ 
+ 
+@@ -520,31 +558,30 @@ async def do_remove_channel(
+ async def ask_greeting(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+-    try:
+-        channel_id = int(callback.data.split(":")[-1])
+-    except ValueError:
+-        await callback.answer("Канал не найден", show_alert=True)
+-        return
+-    channel = await _own_channel(bot_record, channel_id)
++    channel = await _own_channel(bot_record, _channel_id(callback))
+     if channel is None:
+-        await callback.answer("Канал не найден", show_alert=True)
++        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+         return
+     await callback.answer()
+     await state.set_state(SettingsStates.waiting_greeting)
+     await state.update_data(channel_id=channel.id)
+     if callback.message:
+         kb = InlineKeyboardBuilder()
+-        kb.button(text="Сбросить на стандартное", callback_data=f"set:ch_greet_reset:{channel.id}")
+-        kb.button(text="⬅️ Назад", callback_data=f"set:ch:{channel.id}")
++        kb.button(
++            text=_t(seller, "settings.btn.reset_default"),
++            callback_data=f"set:ch_greet_reset:{channel.id}",
++        )
++        kb.button(text=_t(seller, "settings.btn.back"), callback_data=f"set:ch:{channel.id}")
+         kb.adjust(1)
+-        current = html.escape(channel.greeting_text or "— стандартное приветствие канала —")
++        current = html.escape(
++            channel.greeting_text or _t(seller, "settings.channel.default_greeting")
++        )
+         await callback.message.edit_text(
+-            "Пришли приветствие, которое бот отправит вступившему в ЛС.\n"
+-            "/reset — вернуть стандартное.\n\n"
+-            f"Сейчас:\n{current}",
++            _t(seller, "settings.greeting.prompt", current=current),
+             reply_markup=kb.as_markup(),
+         )
+ 
+@@ -553,37 +590,37 @@ async def ask_greeting(
+ async def reset_greeting(
+     callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+ ) -> None:
+-    if not await is_owner(bot_record, callback.from_user):
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
+         await callback.answer(OWNER_ONLY, show_alert=True)
+         return
+-    try:
+-        channel_id = int(callback.data.split(":")[-1])
+-    except ValueError:
+-        await callback.answer("Канал не найден", show_alert=True)
++    channel_id = _channel_id(callback)
++    if channel_id is None:
++        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+         return
+     channel = await _update_channel(bot_record.id, channel_id, greeting_text=None)
+     if channel is None:
+-        await callback.answer("Канал не найден", show_alert=True)
++        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+         return
+-    await callback.answer("Сброшено")
++    await callback.answer(_t(seller, "settings.toast.reset"))
+     await state.clear()
+     if callback.message:
+         # возврат к подменю канала со свежими данными
+-        callback.data = f"set:ch:{channel.id}"
+-        await channel_menu(callback, state, bot_record)
++        await _render_channel(callback.message, channel, seller)
+ 
+ 
+ @router.message(SettingsStates.waiting_greeting, F.text)
+ async def save_greeting(
+     message: types.Message, state: FSMContext, bot_record: SellerBot
+ ) -> None:
++    seller = await _seller_of(bot_record)
+     data = await state.get_data()
+     channel_id = data.get("channel_id")
+     text = (message.text or "").strip()
+ 
+     if text.lower() in {"/cancel", "/start"}:
+-        await message.answer("Хорошо, без изменений.")
+-        await show_settings_menu(message, bot_record)
++        await message.answer(_t(seller, "settings.no_changes"))
++        await show_settings_menu(message, bot_record, seller)
+         return
+ 
+     if text.lower() == "/reset":
+@@ -593,14 +630,120 @@ async def save_greeting(
+ 
+     await state.clear()
+     if channel is None:
+-        await message.answer("Канал не найден — возможно, он уже отключён.")
+-        await show_settings_menu(message, bot_record)
++        await message.answer(_t(seller, "settings.channel.gone"))
++        await show_settings_menu(message, bot_record, seller)
+         return
+-    await message.answer("✅ Приветствие сохранено")
+-    await show_channels_message(message, bot_record)
++    await message.answer(_t(seller, "settings.greeting.saved"))
++    await show_channels_message(message, bot_record, seller)
+ 
+ 
+-async def show_channels_message(message: types.Message, bot_record: SellerBot) -> None:
++async def show_channels_message(
++    message: types.Message, bot_record: SellerBot, seller: Seller | None = None
++) -> None:
+     """Список каналов новым сообщением (для сохранения после ввода текста)."""
++    if seller is None:
++        seller = await _seller_of(bot_record)
+     channels = await _bot_channels(bot_record.id)
+-    await message.answer(channels_text(channels), reply_markup=channels_keyboard(channels))
++    await message.answer(
++        channels_text(channels, seller), reply_markup=channels_keyboard(channels, seller)
++    )
++
++
++# --------------------------------------------------------------------------
++# Профиль бота в Telegram: имя и аватар из кабинета (services/bot_profile.py).
++# Здесь их не редактируют — только смотрят и досылают в Telegram: для
++# магазинов, подключённых до синхронизации, и после неудачной попытки.
++# --------------------------------------------------------------------------
++
++
++async def _fresh_bot(bot_id: int) -> tuple[SellerBot | None, bytes | None]:
++    """Актуальная строка бота и байты лого: bot_record из middleware мог быть
++    прочитан до правок в кабинете, а лого нужно самому сервису."""
++    async with get_session() as session:
++        bot = await session.get(SellerBot, bot_id)
++        logo = (
++            await session.execute(select(ShopLogo.data).where(ShopLogo.bot_id == bot_id))
++        ).scalar_one_or_none()
++    return bot, logo
++
++
++def profile_text(bot_record: SellerBot, has_logo: bool, seller: Seller) -> str:
++    default = bot_record.default_bot_name
++    return _t(
++        seller,
++        "settings.profile",
++        name=html.escape(bot_record.shop_name or bot_record.default_bot_name or f"@{bot_record.bot_username}"),
++        default=html.escape(default) if default else _t(seller, "settings.profile.unknown"),
++        logo=_t(seller, "settings.profile.logo_yes" if has_logo else "settings.profile.logo_no"),
++    )
++
++
++def profile_keyboard(seller: Seller) -> types.InlineKeyboardMarkup:
++    kb = InlineKeyboardBuilder()
++    kb.button(text=_t(seller, "settings.btn.profile_sync"), callback_data="set:profile_sync")
++    kb.button(text=_t(seller, "settings.btn.back"), callback_data="set:menu")
++    kb.adjust(1)
++    return kb.as_markup()
++
++
++@router.callback_query(F.data == "set:profile")
++async def show_profile(
++    callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
++) -> None:
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
++        await callback.answer(OWNER_ONLY, show_alert=True)
++        return
++    await callback.answer()
++    await state.clear()
++    bot, logo = await _fresh_bot(bot_record.id)
++    if callback.message and bot is not None:
++        await callback.message.edit_text(
++            profile_text(bot, logo is not None, seller), reply_markup=profile_keyboard(seller)
++        )
++
++
++def _sync_summary(seller: Seller, results: dict) -> str:
++    """Один тост из двух исходов (имя, аватар)."""
++    statuses = {key: r.status for key, r in results.items()}
++    done = [key for key, st in statuses.items() if st == "ok"]
++    limited = next((r for r in results.values() if r.status == "rate_limited"), None)
++    if limited is not None:
++        return _t(seller, "settings.profile.sync_rate_limited", seconds=limited.retry_after or 60)
++    if any(st == "failed" for st in statuses.values()):
++        return _t(seller, "settings.profile.sync_failed")
++    if not done:
++        return _t(seller, "settings.profile.sync_skipped")
++    if len(done) == len(results):
++        return _t(seller, "settings.profile.sync_ok")
++    details = ", ".join(_t(seller, f"settings.profile.part.{key}") for key in done)
++    return _t(seller, "settings.profile.sync_partial", details=details)
++
++
++@router.callback_query(F.data == "set:profile_sync")
++async def sync_profile(
++    callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
++) -> None:
++    seller = await owner_of(bot_record, callback.from_user)
++    if seller is None:
++        await callback.answer(OWNER_ONLY, show_alert=True)
++        return
++    from app.services.bot_profile import sync_bot_profile
++
++    bot, logo = await _fresh_bot(bot_record.id)
++    if bot is None:
++        await callback.answer(_t(seller, "alert.bot_not_found"), show_alert=True)
++        return
++    results = await sync_bot_profile(bot, logo)
++    # без аватара нечего досылать — но «пропущено» из-за отсутствия лого не
++    # должно портить итог, если имя ушло
++    if logo is None:
++        results.pop("photo", None)
++    await callback.answer(_sync_summary(seller, results), show_alert=True)
++    if callback.message:
++        try:
++            await callback.message.edit_text(
++                profile_text(bot, logo is not None, seller), reply_markup=profile_keyboard(seller)
++            )
++        except Exception:
++            pass  # текст не изменился — Telegram отвечает «message is not modified»
+diff --git a/backend/app/models/bots.py b/backend/app/models/bots.py
+index dd10ac6..4fc501c 100644
+--- a/backend/app/models/bots.py
++++ b/backend/app/models/bots.py
+@@ -50,6 +50,13 @@ class SellerBot(Base, CreatedAtMixin):
+     # показывает @username, как раньше. Меняется продавцом из кабинета.
+     shop_name: Mapped[str | None] = mapped_column(String(64))
+ 
++    # Исходное Telegram-имя бота на момент подключения (getMe.first_name; у
++    # managed-бота — имя из managed_bot_created). Нужно ровно для одного:
++    # при сбросе shop_name на null вернуть боту в Telegram его прежнее имя
++    # (services/bot_profile.py). NULL у ботов, подключённых до этого поля, —
++    # такие при сбросе не переименовываются: во что — неизвестно.
++    default_bot_name: Mapped[str | None] = mapped_column(String(64))
++
+     # Настройки из /settings самого бота: приветствие покупателю на /start
+     # и кнопка открытия витрины (None -> стандартный «Open»)
+     welcome_text: Mapped[str | None] = mapped_column(Text)
+diff --git a/backend/app/services/bot_connect.py b/backend/app/services/bot_connect.py
+index 75ec3a7..d6a12f2 100644
+--- a/backend/app/services/bot_connect.py
++++ b/backend/app/services/bot_connect.py
+@@ -46,6 +46,9 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
+         # показное имя магазина по умолчанию — Telegram-имя бота; продавец
+         # сможет сменить его в кабинете
+         default_shop_name = (getattr(me, "first_name", "") or "").strip()[:64] or None
++        # оно же — исходное Telegram-имя, к которому бот вернётся при сбросе
++        # shop_name (services/bot_profile.py); фиксируется один раз
++        default_bot_name = default_shop_name
+ 
+         existing = (
+             await session.execute(
+@@ -66,6 +69,12 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
+             # ботам, у которых его ещё нет
+             if not existing.shop_name and default_shop_name:
+                 existing.shop_name = default_shop_name
++            # у ботов, подключённых до появления поля, исходное имя неизвестно:
++            # переподключение — первый момент, когда его можно записать.
++            # Перезаписывать уже известное нельзя — getMe теперь может вернуть
++            # имя, которое мы сами и поставили через setMyName.
++            if not existing.default_bot_name and default_bot_name:
++                existing.default_bot_name = default_bot_name
+             existing.is_active = True
+             webhook_ok = await setup_seller_webhook(existing)
+             existing.webhook_status = "active" if webhook_ok else "pending"
+@@ -78,6 +87,7 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
+             bot_username=me.username or str(me.id),
+             telegram_bot_id=me.id,
+             shop_name=default_shop_name,
++            default_bot_name=default_bot_name,
+             webhook_status="pending",
+         )
+         session.add(record)
+diff --git a/backend/app/services/bot_profile.py b/backend/app/services/bot_profile.py
+new file mode 100644
+index 0000000..ef68868
+--- /dev/null
++++ b/backend/app/services/bot_profile.py
+@@ -0,0 +1,227 @@
++"""Профиль seller-бота в Telegram: имя и аватар вслед за настройками магазина.
++
++До этого имя и логотип магазина жили только в шапке витрины, а сам бот в
++Telegram оставался с тем именем и аватаркой, что продавец когда-то задал в
++@BotFather (или без аватарки вовсе). Теперь кабинет — единственное место, где
++продавец меняет идентичность магазина, и она доезжает до Telegram:
++
++- смена имени (PUT /bots/{id}/shop-name)      -> setMyName
++- загрузка лого (POST /bots/{id}/shop-logo)   -> setMyProfilePhoto (Bot API 9.x)
++- удаление лого (DELETE /bots/{id}/shop-logo) -> removeMyProfilePhoto
++- сброс имени (shop_name = null)              -> setMyName(default_bot_name)
++
++Исходное Telegram-имя бота запоминается при подключении в
++seller_bots.default_bot_name (getMe.first_name; у managed-бота — имя из
++managed_bot_created). У ботов, подключённых до этого поля, оно пустое —
++такой бот при сбросе не переименовывается (мы не знаем, во что), а профиль
++догоняется при следующем изменении имени/лого или кнопкой «Профиль в
++Telegram» в /settings самого бота.
++
++Ошибки Telegram — отозванный токен, заблокированный бот, лимит частоты
++смены имени (429) — логируются и возвращаются статусом, но никогда не
++поднимаются наружу: запрос кабинета должен пройти, БД — источник правды,
++Telegram — зеркало, которое можно обновить позже.
++
++Pillow нужен только здесь: Telegram принимает статичный аватар лишь как
++JPEG, а продавцы грузят PNG с прозрачностью, WebP и вертикальные фото.
++"""
++
++from __future__ import annotations
++
++import io
++import logging
++from collections.abc import Awaitable, Callable
++from dataclasses import dataclass
++from typing import Literal
++
++from aiogram import Bot
++from aiogram.exceptions import (
++    TelegramAPIError,
++    TelegramForbiddenError,
++    TelegramRetryAfter,
++    TelegramUnauthorizedError,
++)
++from aiogram.types import BufferedInputFile, InputProfilePhotoStatic
++
++from app.models import SellerBot
++from app.security import decrypt_bot_token
++
++logger = logging.getLogger(__name__)
++
++# Сторона квадрата аватара. Telegram сам ужмёт что угодно, но 640 — размер,
++# который он отдаёт в profile_photos как «big», больше грузить бессмысленно.
++PROFILE_PHOTO_SIZE = 640
++JPEG_QUALITY = 90
++# Лимит setMyName (Bot API): до 64 символов
++BOT_NAME_MAX = 64
++
++SyncStatus = Literal["ok", "skipped", "rate_limited", "failed"]
++
++
++@dataclass(frozen=True)
++class SyncResult:
++    """Исход одного вызова к Telegram. Возвращается, а не бросается: кабинет
++    показывает тост по status, а запрос при любом исходе отвечает 200."""
++
++    status: SyncStatus
++    # для rate_limited: через сколько секунд Telegram готов принять смену имени
++    retry_after: int | None = None
++    # человекочитаемая причина для лога/ответа API (не для показа как есть)
++    error: str | None = None
++
++    @property
++    def ok(self) -> bool:
++        return self.status == "ok"
++
++    def as_dict(self) -> dict:
++        return {"status": self.status, "retry_after": self.retry_after, "error": self.error}
++
++
++SKIPPED_DRAFT = SyncResult("skipped", error="draft")
++SKIPPED_NO_DEFAULT = SyncResult("skipped", error="default_name_unknown")
++
++
++# --------------------------------------------------------------------------
++# Картинка: любой поддерживаемый формат -> квадратный JPEG 640×640
++# --------------------------------------------------------------------------
++
++
++def prepare_profile_photo(data: bytes, size: int = PROFILE_PHOTO_SIZE) -> bytes:
++    """Привести загруженное лого к формату аватара Telegram.
++
++    - EXIF-ориентация применяется (фото с телефона иначе ляжет боком);
++    - у анимаций (GIF/WebP) берётся первый кадр;
++    - центр-кроп до квадрата, затем ресайз до size×size (и вверх тоже:
++      маленькое лого лучше размытое, чем отказ);
++    - прозрачность кладётся на белый фон — JPEG альфу не умеет, а чёрный
++      фон под прозрачным логотипом выглядит как ошибка.
++
++    Бросает ValueError, если байты не картинка: вызывающий уже проверил
++    магические байты (services/images.sniff_image_mime), так что сюда это
++    попадает только при повреждённом файле.
++    """
++    from PIL import Image, ImageOps, UnidentifiedImageError
++
++    try:
++        with Image.open(io.BytesIO(data)) as source:
++            if getattr(source, "is_animated", False):
++                source.seek(0)
++            image = ImageOps.exif_transpose(source) or source
++            image = image.convert("RGBA")
++    except (UnidentifiedImageError, OSError, ValueError) as exc:
++        raise ValueError("не удалось прочитать изображение") from exc
++
++    width, height = image.size
++    side = min(width, height)
++    left = (width - side) // 2
++    top = (height - side) // 2
++    image = image.crop((left, top, left + side, top + side))
++    if side != size:
++        image = image.resize((size, size), Image.LANCZOS)
++
++    canvas = Image.new("RGB", (size, size), (255, 255, 255))
++    canvas.paste(image, mask=image.getchannel("A"))
++
++    out = io.BytesIO()
++    canvas.save(out, format="JPEG", quality=JPEG_QUALITY, optimize=True)
++    return out.getvalue()
++
++
++# --------------------------------------------------------------------------
++# Вызовы Telegram с единообразной обработкой ошибок
++# --------------------------------------------------------------------------
++
++
++def _bot_for(record: SellerBot) -> Bot | None:
++    """Экземпляр Bot по зашифрованному токену; None у черновика без бота."""
++    if record.bot_token_encrypted is None:
++        return None
++    return Bot(token=decrypt_bot_token(record.bot_token_encrypted))
++
++
++async def _call(
++    record: SellerBot, method: str, action: Callable[[Bot], Awaitable[object]]
++) -> SyncResult:
++    bot = _bot_for(record)
++    if bot is None:
++        return SKIPPED_DRAFT
++    try:
++        await action(bot)
++        logger.info("Профиль seller-бота id=%s: %s ok", record.id, method)
++        return SyncResult("ok")
++    except TelegramRetryAfter as exc:
++        # setMyName Telegram разрешает менять нечасто; это не ошибка, а «позже»
++        logger.warning(
++            "Профиль seller-бота id=%s: %s — лимит Telegram, retry_after=%s",
++            record.id, method, exc.retry_after,
++        )
++        return SyncResult("rate_limited", retry_after=exc.retry_after, error="retry_after")
++    except (TelegramUnauthorizedError, TelegramForbiddenError) as exc:
++        # токен отозван в @BotFather либо бот заблокирован — сообщать нечего,
++        # об этом продавцу отдельно расскажет bot_health
++        logger.warning(
++            "Профиль seller-бота id=%s: %s — токен недействителен: %s",
++            record.id, method, exc,
++        )
++        return SyncResult("failed", error="unauthorized")
++    except TelegramAPIError as exc:
++        logger.warning("Профиль seller-бота id=%s: %s — ошибка Telegram: %s", record.id, method, exc)
++        return SyncResult("failed", error=str(exc))
++    except Exception:  # сеть, таймауты — что угодно, лишь бы не уронить запрос
++        logger.exception("Профиль seller-бота id=%s: %s — неожиданная ошибка", record.id, method)
++        return SyncResult("failed", error="unexpected")
++    finally:
++        await bot.session.close()
++
++
++def resolve_bot_name(record: SellerBot, shop_name: str | None) -> str | None:
++    """Какое имя должно стоять у бота в Telegram.
++
++    Своё имя магазина — оно; при сбросе (None) — исходное из default_bot_name;
++    если и его нет (бот подключён до миграции) — None: трогать имя нельзя,
++    мы не знаем, во что его возвращать.
++    """
++    target = (shop_name or "").strip() or (record.default_bot_name or "").strip()
++    return target[:BOT_NAME_MAX] or None
++
++
++async def set_bot_name(record: SellerBot, shop_name: str | None) -> SyncResult:
++    """setMyName: имя магазина -> имя бота. None = вернуть исходное имя."""
++    target = resolve_bot_name(record, shop_name)
++    if target is None:
++        logger.info(
++            "Профиль seller-бота id=%s: сброс имени пропущен — исходное имя неизвестно",
++            record.id,
++        )
++        return SKIPPED_NO_DEFAULT
++    return await _call(record, "setMyName", lambda bot: bot.set_my_name(name=target))
++
++
++async def set_bot_photo(record: SellerBot, image: bytes) -> SyncResult:
++    """setMyProfilePhoto: загруженное лого -> аватар бота."""
++    try:
++        jpeg = prepare_profile_photo(image)
++    except ValueError:
++        logger.exception("Профиль seller-бота id=%s: лого не удалось конвертировать", record.id)
++        return SyncResult("failed", error="bad_image")
++    photo = InputProfilePhotoStatic(photo=BufferedInputFile(jpeg, filename="logo.jpg"))
++    return await _call(
++        record, "setMyProfilePhoto", lambda bot: bot.set_my_profile_photo(photo=photo)
++    )
++
++
++async def remove_bot_photo(record: SellerBot) -> SyncResult:
++    """removeMyProfilePhoto: лого удалено -> аватар снят."""
++    return await _call(record, "removeMyProfilePhoto", lambda bot: bot.remove_my_profile_photo())
++
++
++async def sync_bot_profile(record: SellerBot, logo: bytes | None) -> dict[str, SyncResult]:
++    """Догнать профиль целиком: имя и аватар по текущему состоянию магазина.
++
++    Для ботов, подключённых до появления синхронизации, и для случаев, когда
++    отдельный вызов упал (лимит, сеть). Логотип передаётся байтами, чтобы
++    сервис не лез в БД сам: вызывающий уже держит сессию.
++    """
++    name = await set_bot_name(record, record.shop_name)
++    photo = await set_bot_photo(record, logo) if logo else SyncResult("skipped", error="no_logo")
++    return {"name": name, "photo": photo}
+diff --git a/backend/app/services/seller_texts.py b/backend/app/services/seller_texts.py
+index 66063dd..647e2e4 100644
+--- a/backend/app/services/seller_texts.py
++++ b/backend/app/services/seller_texts.py
+@@ -12,10 +12,10 @@
+    различие, а не рассинхрон.
+ 
+ Здесь живут все продавецские строки: меню магазинов, карточка, онбординг
+-/newshop, администраторы, пуши о заказах/выплатах/отзывах/токенах. Чего
++/newshop, администраторы, пуши о заказах/выплатах/отзывах/токенах, а с v2 —
++и экраны /settings внутри seller-бота (ключи settings.*). Чего
+ здесь нет: команды супер-админа платформы (handlers/hub/admin.py —
+-внутренний инструмент), экраны настроек внутри seller-бота и всё, что
+-написал сам продавец (названия товаров, тексты каналов). html.escape
++внутренний инструмент) и всё, что написал сам продавец (названия товаров, тексты каналов). html.escape
+ остаётся на местах вызова; RU-строки держатся байт-в-байт прежними, чтобы
+ не трогать сложившиеся тесты.
+ """
+@@ -329,6 +329,128 @@ TEXTS: dict[str, dict[str, str]] = {
+         ),
+         "api.name_set": "🏪 Название магазина теперь <b>{name}</b>.",
+         "api.name_reset": "🏪 Название магазина сброшено к <b>@{username}</b>.",
++        "api.profile_sync_failed": (
++            "⚠️ Профиль бота в Telegram обновить не удалось — проверь, что токен "
++            "действителен. Витрина уже обновлена; в Telegram изменения доедут при "
++            "следующем сохранении или кнопкой «Профиль в Telegram» в /settings бота."
++        ),
++        "api.profile_rate_limited": (
++            "⏳ Telegram ограничивает частоту смены имени бота: попробуй ещё раз "
++            "через {minutes} мин. Витрина уже показывает новое имя."
++        ),
++        # --- /settings внутри seller-бота ---
++        # Язык — тот же выбор /lang продавца: меню открывает только владелец,
++        # а он у обоих ботов один и тот же человек. Алерт чужаку остаётся
++        # русским (константа OWNER_ONLY в handlers/seller/settings.py): его
++        # язык неизвестен, а менять исторический текст незачем.
++        "settings.default_button": "Open",
++        "settings.state.on": "включена",
++        "settings.state.off": "выключена",
++        "settings.state.short_on": "вкл",
++        "settings.state.short_off": "выкл",
++        "settings.default_welcome": "стандартное приветствие",
++        "settings.menu": (
++            "⚙️ <b>Настройки бота @{username}</b>\n\n"
++            "👋 Приветствие на /start:\n<i>{welcome}</i>\n\n"
++            "🔘 Кнопка «{button}»: {state}\n"
++            "📢 Каналы для приёма заявок: {channels}"
++        ),
++        "settings.btn.welcome": "✍️ Приветствие",
++        "settings.btn.catalog_toggle": "🔘 Кнопка каталога: {state}",
++        "settings.btn.button_text": "✏️ Текст кнопки",
++        "settings.btn.channels": "📢 Каналы ({n})",
++        "settings.btn.profile": "🪪 Профиль в Telegram",
++        "settings.btn.close": "✖️ Закрыть",
++        "settings.btn.back": "⬅️ Назад",
++        "settings.btn.reset_default": "Сбросить на стандартное",
++        "settings.btn.reset_default_m": "Сбросить на стандартный",
++        "settings.btn.cancel": "Отмена",
++        "settings.toast.reset": "Сброшено",
++        "settings.no_changes": "Хорошо, без изменений.",
++        "settings.welcome.current_default": "— стандартное приветствие —",
++        "settings.welcome.prompt": (
++            "Пришли новый текст приветствия — его увидит покупатель на /start.\n"
++            'Можно использовать HTML: <b>&lt;b&gt;</b>, <b>&lt;i&gt;</b>, <b>&lt;a href="…"&gt;</b>\n\n'
++            "Сейчас:\n{current}"
++        ),
++        "settings.welcome.saved": "✅ Приветствие сохранено",
++        "settings.button.prompt": (
++            "Пришли новый текст кнопки открытия магазина (до 64 символов).\n\n"
++            "Сейчас: {current}"
++        ),
++        "settings.button.saved": "✅ Текст кнопки сохранён",
++        "settings.channels.empty": (
++            "📢 <b>Каналы</b>\n\nКаналов пока нет. Добавь бота администратором "
++            "в канал — он появится здесь автоматически."
++        ),
++        "settings.channels.list": (
++            "📢 <b>Каналы</b>\n\nЗелёный — заявки принимаются автоматически. "
++            "Нажми на канал, чтобы поменять настройки и приветствие вступившим."
++        ),
++        "settings.btn.channel_help": "➕ Как подключить канал",
++        "settings.channels.help": (
++            "➕ <b>Как подключить канал</b>\n\n"
++            "1. Добавь бота @{username} администратором в свой канал.\n"
++            "2. Отметь право «Приглашать пользователей» — без него бот не видит заявки.\n"
++            "3. Канал появится в списке автоматически.\n\n"
++            "Каждый, кто нажмёт «Подать заявку» в приватном канале, будет "
++            "автоматически принят и попадёт в твою базу покупателей."
++        ),
++        "settings.channel.auto_on": "включён 🟢",
++        "settings.channel.auto_off": "выключен ⚪",
++        "settings.channel.default_greeting": "— стандартное приветствие канала —",
++        "settings.channel.card": (
++            "📢 <b>{title}</b>\n\n"
++            "Авто-приём заявок: {auto}\n"
++            "Приветствие вступившим:\n<i>{greeting}</i>"
++        ),
++        "settings.alert.channel_not_found": "Канал не найден",
++        "settings.btn.auto_off": "Выключить авто-приём",
++        "settings.btn.auto_on": "Включить авто-приём",
++        "settings.btn.channel_greeting": "✍️ Приветствие вступившим",
++        "settings.btn.channel_remove": "🗑 Отключить канал",
++        "settings.toast.enabled": "Включено",
++        "settings.toast.disabled": "Выключено",
++        "settings.btn.yes_remove": "Да, отключить",
++        "settings.channel.remove_confirm": (
++            "Отключить канал «{title}»?\n\n"
++            "Бот перестанет принимать заявки из него и приветствовать вступивших. "
++            "Канал вернётся в список, только если заново добавить бота в канал."
++        ),
++        "settings.toast.channel_removed": "Канал отключён",
++        "settings.greeting.prompt": (
++            "Пришли приветствие, которое бот отправит вступившему в ЛС.\n"
++            "/reset — вернуть стандартное.\n\n"
++            "Сейчас:\n{current}"
++        ),
++        "settings.channel.gone": "Канал не найден — возможно, он уже отключён.",
++        "settings.greeting.saved": "✅ Приветствие сохранено",
++        # профиль бота в Telegram (имя/аватар из кабинета, см. services/bot_profile.py)
++        "settings.profile": (
++            "🪪 <b>Профиль бота в Telegram</b>\n\n"
++            "Имя: <b>{name}</b>\n"
++            "Исходное имя: {default}\n"
++            "Логотип: {logo}\n\n"
++            "Имя и логотип меняются в кабинете и сами уезжают в профиль бота. "
++            "Кнопка ниже отправляет их в Telegram заново — для магазинов, "
++            "подключённых раньше, или если прошлая синхронизация не прошла."
++        ),
++        "settings.profile.logo_yes": "загружен",
++        "settings.profile.logo_no": "не загружен",
++        "settings.profile.unknown": "неизвестно (бот подключён до обновления)",
++        "settings.btn.profile_sync": "🔄 Отправить в Telegram",
++        "settings.toast.syncing": "Синхронизирую…",
++        "settings.profile.sync_ok": "✅ Профиль бота обновлён.",
++        "settings.profile.sync_partial": "✅ Профиль обновлён частично: {details}",
++        "settings.profile.sync_rate_limited": (
++            "⏳ Telegram просит подождать {seconds} сек. перед сменой имени."
++        ),
++        "settings.profile.sync_failed": (
++            "⚠️ Не удалось обновить профиль — проверь, что токен бота действителен."
++        ),
++        "settings.profile.sync_skipped": "Отправлять нечего: имя и лого ещё не заданы.",
++        "settings.profile.part.name": "имя",
++        "settings.profile.part.photo": "аватар",
+     },
+     "en": {
+         # --- /start ---
+@@ -618,6 +740,124 @@ TEXTS: dict[str, dict[str, str]] = {
+         ),
+         "api.name_set": "🏪 The shop name is now <b>{name}</b>.",
+         "api.name_reset": "🏪 The shop name was reset to <b>@{username}</b>.",
++        "api.profile_sync_failed": (
++            "⚠️ Couldn't update the bot's Telegram profile — check that the token "
++            "is still valid. The storefront is already updated; Telegram will catch "
++            "up on the next save or via “Telegram profile” in the bot's /settings."
++        ),
++        "api.profile_rate_limited": (
++            "⏳ Telegram limits how often a bot can be renamed: try again in "
++            "{minutes} min. The storefront already shows the new name."
++        ),
++        # --- /settings inside the seller bot ---
++        "settings.default_button": "Open",
++        "settings.state.on": "enabled",
++        "settings.state.off": "disabled",
++        "settings.state.short_on": "on",
++        "settings.state.short_off": "off",
++        "settings.default_welcome": "default greeting",
++        "settings.menu": (
++            "⚙️ <b>Settings of @{username}</b>\n\n"
++            "👋 Greeting on /start:\n<i>{welcome}</i>\n\n"
++            "🔘 “{button}” button: {state}\n"
++            "📢 Channels accepting join requests: {channels}"
++        ),
++        "settings.btn.welcome": "✍️ Greeting",
++        "settings.btn.catalog_toggle": "🔘 Catalog button: {state}",
++        "settings.btn.button_text": "✏️ Button text",
++        "settings.btn.channels": "📢 Channels ({n})",
++        "settings.btn.profile": "🪪 Telegram profile",
++        "settings.btn.close": "✖️ Close",
++        "settings.btn.back": "⬅️ Back",
++        "settings.btn.reset_default": "Reset to default",
++        "settings.btn.reset_default_m": "Reset to default",
++        "settings.btn.cancel": "Cancel",
++        "settings.toast.reset": "Reset",
++        "settings.no_changes": "Okay, nothing changed.",
++        "settings.welcome.current_default": "— default greeting —",
++        "settings.welcome.prompt": (
++            "Send the new greeting text — customers will see it on /start.\n"
++            'HTML is allowed: <b>&lt;b&gt;</b>, <b>&lt;i&gt;</b>, <b>&lt;a href="…"&gt;</b>\n\n'
++            "Current:\n{current}"
++        ),
++        "settings.welcome.saved": "✅ Greeting saved",
++        "settings.button.prompt": (
++            "Send the new text for the shop button (up to 64 characters).\n\n"
++            "Current: {current}"
++        ),
++        "settings.button.saved": "✅ Button text saved",
++        "settings.channels.empty": (
++            "📢 <b>Channels</b>\n\nNo channels yet. Add the bot as an administrator "
++            "to a channel — it will show up here automatically."
++        ),
++        "settings.channels.list": (
++            "📢 <b>Channels</b>\n\nGreen — join requests are accepted automatically. "
++            "Tap a channel to change its settings and the greeting for new members."
++        ),
++        "settings.btn.channel_help": "➕ How to connect a channel",
++        "settings.channels.help": (
++            "➕ <b>How to connect a channel</b>\n\n"
++            "1. Add @{username} as an administrator to your channel.\n"
++            "2. Grant the “Invite users” right — without it the bot can't see join requests.\n"
++            "3. The channel appears in the list automatically.\n\n"
++            "Everyone who taps “Request to join” in a private channel is accepted "
++            "automatically and lands in your customer base."
++        ),
++        "settings.channel.auto_on": "on 🟢",
++        "settings.channel.auto_off": "off ⚪",
++        "settings.channel.default_greeting": "— default channel greeting —",
++        "settings.channel.card": (
++            "📢 <b>{title}</b>\n\n"
++            "Auto-accept join requests: {auto}\n"
++            "Greeting for new members:\n<i>{greeting}</i>"
++        ),
++        "settings.alert.channel_not_found": "Channel not found",
++        "settings.btn.auto_off": "Turn auto-accept off",
++        "settings.btn.auto_on": "Turn auto-accept on",
++        "settings.btn.channel_greeting": "✍️ Greeting for new members",
++        "settings.btn.channel_remove": "🗑 Disconnect channel",
++        "settings.toast.enabled": "Enabled",
++        "settings.toast.disabled": "Disabled",
++        "settings.btn.yes_remove": "Yes, disconnect",
++        "settings.channel.remove_confirm": (
++            "Disconnect “{title}”?\n\n"
++            "The bot will stop accepting join requests from it and greeting new members. "
++            "The channel comes back to the list only if you add the bot to it again."
++        ),
++        "settings.toast.channel_removed": "Channel disconnected",
++        "settings.greeting.prompt": (
++            "Send the greeting the bot will DM to everyone who joins.\n"
++            "/reset — back to the default one.\n\n"
++            "Current:\n{current}"
++        ),
++        "settings.channel.gone": "Channel not found — it may already be disconnected.",
++        "settings.greeting.saved": "✅ Greeting saved",
++        # bot profile in Telegram (name/avatar from the dashboard, see services/bot_profile.py)
++        "settings.profile": (
++            "🪪 <b>Bot profile in Telegram</b>\n\n"
++            "Name: <b>{name}</b>\n"
++            "Original name: {default}\n"
++            "Logo: {logo}\n\n"
++            "The name and logo are edited in the dashboard and are pushed to the "
++            "bot's profile automatically. The button below sends them to Telegram "
++            "again — for shops connected earlier, or if the last sync failed."
++        ),
++        "settings.profile.logo_yes": "uploaded",
++        "settings.profile.logo_no": "not uploaded",
++        "settings.profile.unknown": "unknown (bot connected before the update)",
++        "settings.btn.profile_sync": "🔄 Send to Telegram",
++        "settings.toast.syncing": "Syncing…",
++        "settings.profile.sync_ok": "✅ Bot profile updated.",
++        "settings.profile.sync_partial": "✅ Profile partially updated: {details}",
++        "settings.profile.sync_rate_limited": (
++            "⏳ Telegram asks to wait {seconds} s before renaming the bot."
++        ),
++        "settings.profile.sync_failed": (
++            "⚠️ Couldn't update the profile — check that the bot token is still valid."
++        ),
++        "settings.profile.sync_skipped": "Nothing to send: no name or logo set yet.",
++        "settings.profile.part.name": "name",
++        "settings.profile.part.photo": "avatar",
+     },
+ }
+ 
+diff --git a/backend/app/services/shop_draft.py b/backend/app/services/shop_draft.py
+index a1aa46f..b4f5cb4 100644
+--- a/backend/app/services/shop_draft.py
++++ b/backend/app/services/shop_draft.py
+@@ -149,7 +149,11 @@ class DraftPromotionError(Exception):
+ 
+ 
+ async def promote_draft(
+-    shop_id: int, token: str, bot_username: str, telegram_bot_id: int
++    shop_id: int,
++    token: str,
++    bot_username: str,
++    telegram_bot_id: int,
++    bot_name: str | None = None,
+ ) -> SellerBot:
+     """Дописать боту черновик и включить магазин.
+ 
+@@ -187,6 +191,13 @@ async def promote_draft(
+         # названия. Своё имя, если продавец успел его задать, не трогаем.
+         if not shop.shop_name and shop.title:
+             shop.shop_name = shop.title[:64]
++        # исходное Telegram-имя для возврата при сбросе shop_name
++        # (services/bot_profile.py): у managed-бота это имя, с которым его
++        # создал @BotFather, — оно приходит в managed_bot_created; если по
++        # какой-то причине не пришло, берём название магазина, из которого
++        # оно и собиралось
++        if not shop.default_bot_name:
++            shop.default_bot_name = ((bot_name or shop.title or "").strip()[:64]) or None
+         await session.commit()
+         await session.refresh(shop)
+         return shop
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index 7ffd4d9..8d95b81 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -1,4 +1,4 @@
+-aiogram>=3.13,<4
++aiogram>=3.30,<4  # setMyProfilePhoto / removeMyProfilePhoto (Bot API 9.x)
+ fastapi>=0.115
+ uvicorn[standard]>=0.30
+ sqlalchemy[asyncio]>=2.0
+@@ -9,3 +9,4 @@ cryptography>=43.0
+ aiocryptopay>=0.3.4
+ python-dotenv>=1.0
+ psycopg2-binary>=2.9  # только для alembic (sync-драйвер)
++Pillow>=10.4  # лого -> квадратный JPEG для аватара бота (services/bot_profile.py)
+diff --git a/backend/tests/test_bot_profile.py b/backend/tests/test_bot_profile.py
+new file mode 100644
+index 0000000..58e0f23
+--- /dev/null
++++ b/backend/tests/test_bot_profile.py
+@@ -0,0 +1,267 @@
++"""Профиль seller-бота в Telegram (services/bot_profile.py) и RU/EN настроек.
++
++Telegram здесь не вызывается: Bot подменяется фейком, который записывает
++вызовы и по желанию бросает нужное исключение. Проверяется контракт сервиса —
++что именно уходит в Telegram и что возвращается кабинету, — а не aiogram.
++БД тоже не нужна: сервис получает строку SellerBot и байты лого от вызывающего.
++"""
++
++import io
++import types as pytypes
++
++import pytest
++from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter, TelegramUnauthorizedError
++from aiogram.methods import SetMyName
++from PIL import Image
++
++from app.models import SellerBot
++from app.security import encrypt_bot_token
++from app.services import bot_profile
++from app.services.seller_texts import TEXTS, text
++
++TOKEN = "123456:TEST-token-for-tests-only"
++
++
++def _record(**overrides) -> SellerBot:
++    fields = dict(
++        id=7,
++        seller_id=1,
++        bot_username="petshop_bot",
++        telegram_bot_id=123456,
++        bot_token_encrypted=encrypt_bot_token(TOKEN),
++        shop_name="Pet Shop",
++        default_bot_name="petshop",
++    )
++    fields.update(overrides)
++    return SellerBot(**fields)
++
++
++class FakeBot:
++    """Записывает вызовы; raise_with — исключение на любой метод."""
++
++    instances: list["FakeBot"] = []
++
++    def __init__(self, token: str, raise_with: Exception | None = None):
++        self.token = token
++        self.calls: list[tuple[str, dict]] = []
++        self.raise_with = raise_with
++        self.session = pytypes.SimpleNamespace(closed=False)
++
++        async def close():
++            self.session.closed = True
++
++        self.session.close = close
++        FakeBot.instances.append(self)
++
++    async def _record_call(self, method: str, kw: dict):
++        self.calls.append((method, kw))
++        if self.raise_with is not None:
++            raise self.raise_with
++
++    async def set_my_name(self, **kw):
++        await self._record_call("setMyName", kw)
++
++    async def set_my_profile_photo(self, **kw):
++        await self._record_call("setMyProfilePhoto", kw)
++
++    async def remove_my_profile_photo(self, **kw):
++        await self._record_call("removeMyProfilePhoto", kw)
++
++
++@pytest.fixture
++def fake_bot(monkeypatch):
++    FakeBot.instances.clear()
++    state = {"raise_with": None}
++
++    def factory(token: str):
++        return FakeBot(token, raise_with=state["raise_with"])
++
++    monkeypatch.setattr(bot_profile, "Bot", factory)
++    return state
++
++
++def _png(width: int, height: int, color=(255, 0, 0, 128), mode="RGBA") -> bytes:
++    img = Image.new(mode, (width, height), color)
++    out = io.BytesIO()
++    img.save(out, format="PNG")
++    return out.getvalue()
++
++
++# --------------------------------------------------------------------------
++# Картинка
++# --------------------------------------------------------------------------
++
++
++def test_prepare_profile_photo_square_jpeg_from_landscape_png():
++    jpeg = bot_profile.prepare_profile_photo(_png(1200, 400))
++    with Image.open(io.BytesIO(jpeg)) as out:
++        assert out.format == "JPEG"
++        assert out.size == (640, 640)
++        assert out.mode == "RGB"
++
++
++def test_prepare_profile_photo_upscales_small_and_flattens_alpha_on_white():
++    # полностью прозрачный PNG -> после наложения на белый должен стать белым
++    jpeg = bot_profile.prepare_profile_photo(_png(64, 100, color=(0, 0, 0, 0)))
++    with Image.open(io.BytesIO(jpeg)) as out:
++        assert out.size == (640, 640)
++        r, g, b = out.getpixel((320, 320))
++        assert min(r, g, b) > 245
++
++
++def test_prepare_profile_photo_rejects_garbage():
++    with pytest.raises(ValueError):
++        bot_profile.prepare_profile_photo(b"\xff\xd8\xff not really a jpeg")
++
++
++# --------------------------------------------------------------------------
++# Имя
++# --------------------------------------------------------------------------
++
++
++async def test_set_bot_name_calls_set_my_name(fake_bot):
++    result = await bot_profile.set_bot_name(_record(), "Мой магазин")
++    assert result.ok
++    bot = FakeBot.instances[-1]
++    assert bot.token == TOKEN
++    assert bot.calls == [("setMyName", {"name": "Мой магазин"})]
++    assert bot.session.closed  # сессия закрывается при любом исходе
++
++
++async def test_reset_name_returns_default_bot_name(fake_bot):
++    result = await bot_profile.set_bot_name(_record(default_bot_name="petshop"), None)
++    assert result.ok
++    assert FakeBot.instances[-1].calls == [("setMyName", {"name": "petshop"})]
++
++
++async def test_reset_name_skipped_when_default_unknown(fake_bot):
++    # бот подключён до миграции: во что переименовывать — неизвестно
++    result = await bot_profile.set_bot_name(_record(default_bot_name=None), None)
++    assert result.status == "skipped"
++    assert FakeBot.instances == []  # к Telegram даже не ходили
++
++
++async def test_draft_shop_is_skipped(fake_bot):
++    result = await bot_profile.set_bot_name(_record(bot_token_encrypted=None), "X")
++    assert result.status == "skipped"
++    assert FakeBot.instances == []
++
++
++def test_resolve_bot_name_truncates_to_64():
++    assert bot_profile.resolve_bot_name(_record(), "a" * 100) == "a" * 64
++
++
++# --------------------------------------------------------------------------
++# Аватар
++# --------------------------------------------------------------------------
++
++
++async def test_set_bot_photo_sends_static_jpeg(fake_bot):
++    result = await bot_profile.set_bot_photo(_record(), _png(300, 500))
++    assert result.ok
++    name, kw = FakeBot.instances[-1].calls[0]
++    assert name == "setMyProfilePhoto"
++    photo = kw["photo"]
++    assert photo.type == "static"
++    data = photo.photo.data
++    with Image.open(io.BytesIO(data)) as out:
++        assert out.format == "JPEG" and out.size == (640, 640)
++
++
++async def test_set_bot_photo_bad_image_is_failed_not_raised(fake_bot):
++    result = await bot_profile.set_bot_photo(_record(), b"not an image at all")
++    assert result.status == "failed" and result.error == "bad_image"
++    assert FakeBot.instances == []
++
++
++async def test_remove_bot_photo(fake_bot):
++    result = await bot_profile.remove_bot_photo(_record())
++    assert result.ok
++    assert FakeBot.instances[-1].calls == [("removeMyProfilePhoto", {})]
++
++
++# --------------------------------------------------------------------------
++# Ошибки Telegram не роняют запрос
++# --------------------------------------------------------------------------
++
++
++async def test_rate_limit_is_reported_with_retry_after(fake_bot):
++    fake_bot["raise_with"] = TelegramRetryAfter(
++        method=SetMyName(name="x"), message="Too Many Requests: retry after 3600", retry_after=3600
++    )
++    result = await bot_profile.set_bot_name(_record(), "New")
++    assert result.status == "rate_limited"
++    assert result.retry_after == 3600
++    assert FakeBot.instances[-1].session.closed
++
++
++@pytest.mark.parametrize(
++    "exc",
++    [
++        TelegramUnauthorizedError(method=SetMyName(name="x"), message="Unauthorized"),
++        TelegramForbiddenError(method=SetMyName(name="x"), message="Forbidden: bot was blocked"),
++        RuntimeError("network down"),
++    ],
++)
++async def test_telegram_failures_are_swallowed(fake_bot, exc):
++    fake_bot["raise_with"] = exc
++    result = await bot_profile.set_bot_name(_record(), "New")
++    assert result.status == "failed"
++    assert FakeBot.instances[-1].session.closed
++
++
++async def test_sync_bot_profile_pushes_name_and_photo(fake_bot):
++    results = await bot_profile.sync_bot_profile(_record(), _png(100, 100))
++    assert results["name"].ok and results["photo"].ok
++    names = [c[0] for bot in FakeBot.instances for c in bot.calls]
++    assert names == ["setMyName", "setMyProfilePhoto"]
++
++
++async def test_sync_without_logo_skips_photo(fake_bot):
++    results = await bot_profile.sync_bot_profile(_record(), None)
++    assert results["name"].ok and results["photo"].status == "skipped"
++
++
++# --------------------------------------------------------------------------
++# RU/EN настроек seller-бота
++# --------------------------------------------------------------------------
++
++
++def test_settings_keys_exist_in_both_locales():
++    ru = {k for k in TEXTS["ru"] if k.startswith("settings.")}
++    en = {k for k in TEXTS["en"] if k.startswith("settings.")}
++    assert ru and ru == en
++
++
++def test_settings_ru_strings_unchanged():
++    # RU-строки байт-в-байт прежние: меню собиралось из этих же кусков
++    assert text("ru", "settings.btn.welcome") == "✍️ Приветствие"
++    assert text("ru", "settings.btn.close") == "✖️ Закрыть"
++    assert text("ru", "settings.welcome.saved") == "✅ Приветствие сохранено"
++    assert text("ru", "settings.button.saved") == "✅ Текст кнопки сохранён"
++    assert text("ru", "settings.alert.channel_not_found") == "Канал не найден"
++    menu = text(
++        "ru", "settings.menu", username="petshop_bot", welcome="стандартное приветствие",
++        button="Open", state="включена", channels=2,
++    )
++    assert menu == (
++        "⚙️ <b>Настройки бота @petshop_bot</b>\n\n"
++        "👋 Приветствие на /start:\n<i>стандартное приветствие</i>\n\n"
++        "🔘 Кнопка «Open»: включена\n"
++        "📢 Каналы для приёма заявок: 2"
++    )
++
++
++def test_settings_menu_follows_seller_locale():
++    from app.handlers.seller.settings import OWNER_ONLY, settings_keyboard, settings_text
++
++    bot = _record(show_catalog_button=True)
++    ru_seller = pytypes.SimpleNamespace(locale="ru", language_code="en")
++    en_seller = pytypes.SimpleNamespace(locale="en", language_code="ru")
++    assert settings_text(bot, 0, ru_seller).startswith("⚙️ <b>Настройки бота @petshop_bot</b>")
++    assert settings_text(bot, 0, en_seller).startswith("⚙️ <b>Settings of @petshop_bot</b>")
++    en_buttons = [b.text for row in settings_keyboard(bot, 3, en_seller).inline_keyboard for b in row]
++    assert en_buttons[:2] == ["✍️ Greeting", "🔘 Catalog button: on"]
++    assert "📢 Channels (3)" in en_buttons
++    # чужаку — по-прежнему русский алерт, вне словаря
++    assert OWNER_ONLY == "Настройки доступны только владельцу магазина."

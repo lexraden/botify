@@ -1,0 +1,400 @@
+"""Relay-чат по оплаченному заказу (см. app/models/chat.py).
+
+Правила:
+- чат появляется у заказа, как только тот оплачен (PAID_STATUSES), и привязан
+  к одному order_id;
+- писать можно, пока заказ не доставлен либо с доставки прошло <= 72 часов;
+  после — только чтение (история не удаляется никогда);
+- отменённый заказ закрывает чат навсегда;
+- личности сторон наружу не раскрываются: в API уходит только роль отправителя
+  ('seller' | 'customer'), покупателю сообщения приходят от самого бота.
+
+Источник истины об открытости считается на каждой отправке из delivered_at,
+фоновый джоб лишь проставляет статус для выборок/UI. Архивация: через
+archive_chat_after_days после блокировки сообщения переносятся в
+chat_messages_archive, чтение смотрит в обе таблицы.
+"""
+
+import html
+import logging
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
+from time import monotonic
+
+from sqlalchemy import select, update
+from sqlalchemy.sql import func
+
+from app.config import get_settings
+from app.db import get_session
+from app.models import ChatMessage, Order, OrderChat, SellerBot
+from app.models.chat import ChatMessageArchive
+from app.services import seller_texts
+from app.models.orders import PAID_STATUSES
+from app.security import decrypt_bot_token
+from app.services.notify_texts import text as notify_text
+
+logger = logging.getLogger(__name__)
+
+CHAT_LOCKED_DETAIL = "chat_locked"
+MAX_MESSAGE_LEN = 1000
+
+# Rate limit на участника чата: антиспам базовый, без модерации контента.
+MIN_SEND_INTERVAL_SEC = 2.0
+MAX_MESSAGES_PER_WINDOW = 30
+WINDOW_SEC = 5 * 60
+# после скольких накопленных ключей чистим протухшие (см. _prune_rate_limit)
+PRUNE_AFTER_KEYS = 1000
+
+
+class ChatLockedError(Exception):
+    """Чат закрыт для новых сообщений (истёкшее окно / отменённый заказ)."""
+
+
+class RateLimitedError(Exception):
+    """Слишком много сообщений от участника подряд."""
+
+
+# --- rate limiting (in-process; деплой однопроцессный) ---
+
+_sends: dict[tuple[int, str], deque[float]] = defaultdict(deque)
+_last_send_at: dict[tuple[int, str], float] = {}
+
+
+def _prune_rate_limit(now: float) -> None:
+    """Счётчики чатов, в которые давно не писали, из памяти выбрасываются:
+    ключей столько же, сколько было чатов за время жизни процесса, а окно
+    живёт пять минут. Без этого словари растут вместе с числом заказов."""
+    stale = [key for key, last in _last_send_at.items() if now - last > WINDOW_SEC]
+    for key in stale:
+        _last_send_at.pop(key, None)
+        _sends.pop(key, None)
+
+
+def _check_rate_limit(chat_id: int, sender_role: str, *, min_interval: bool = True) -> None:
+    """`min_interval=False` — сообщение из пачки, которую человек отправил одним
+    действием (фото посылки при отправке заказа уходят отдельными запросами
+    подряд). Двухсекундная пауза здесь не защищает ни от чего: это не спам, а
+    одно нажатие. Общий потолок MAX_MESSAGES_PER_WINDOW остаётся в силе.
+    """
+    key = (chat_id, sender_role)
+    now = monotonic()
+    if len(_last_send_at) > PRUNE_AFTER_KEYS:
+        _prune_rate_limit(now)
+    last = _last_send_at.get(key)
+    if min_interval and last is not None and now - last < MIN_SEND_INTERVAL_SEC:
+        raise RateLimitedError()
+    window = _sends[key]
+    while window and now - window[0] > WINDOW_SEC:
+        window.popleft()
+    if len(window) >= MAX_MESSAGES_PER_WINDOW:
+        raise RateLimitedError()
+    window.append(now)
+    _last_send_at[key] = now
+
+
+# --- состояние чата ---
+
+
+def _aware(dt: datetime) -> datetime:
+    """Postgres возвращает aware-время, SQLite — наивное UTC; приводим к
+    одному виду, иначе сравнение с now() падает по таймзоне."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def chat_is_open(order: Order) -> bool:
+    """Писать в чат можно, пока заказ оплачен и (не доставлен либо с доставки
+    не прошло окно). Считается на каждом вызове — джоб на решение не влияет."""
+    if order.status not in PAID_STATUSES:
+        return False
+    if order.status != "delivered" or order.delivered_at is None:
+        return True
+    deadline = _aware(order.delivered_at) + timedelta(hours=get_settings().chat_window_hours)
+    return datetime.now(timezone.utc) < deadline
+
+
+def closes_at(order: Order) -> datetime | None:
+    """Когда окно закроется (для UI-отсчёта); None — дедлайна пока нет."""
+    if order.status == "delivered" and order.delivered_at is not None:
+        return _aware(order.delivered_at) + timedelta(hours=get_settings().chat_window_hours)
+    return None
+
+
+async def get_or_create_chat(session, order: Order) -> OrderChat | None:
+    """Чат заказа; None — заказ ни разу не был оплачен, обсуждать нечего.
+    Отменённый после оплаты заказ получает закрытый read-only чат: история
+    обсуждения должна остаться доступной обеим сторонам."""
+    result = await session.execute(select(OrderChat).where(OrderChat.order_id == order.id))
+    chat = result.scalar_one_or_none()
+    if chat is not None:
+        return chat
+    if order.status not in PAID_STATUSES and order.paid_at is None:
+        return None
+    chat = OrderChat(
+        order_id=order.id,
+        bot_id=order.bot_id,
+        seller_id=order.seller_id,
+        customer_id=order.customer_id,
+    )
+    session.add(chat)
+    await session.flush()
+    return chat
+
+
+async def read_history(session, chat_id: int) -> list[ChatMessage]:
+    """Все сообщения чата, включая уже заархивированные. Порядок — по id."""
+    live = (
+        (await session.execute(select(ChatMessage).where(ChatMessage.chat_id == chat_id)))
+        .scalars()
+        .all()
+    )
+    archived = (
+        (
+            await session.execute(
+                select(ChatMessageArchive).where(ChatMessageArchive.chat_id == chat_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # archived_at у архивных строк не участвует в сортировке истории —
+    # порядок переписки восстанавливает исходный id
+    merged = [*live, *archived]
+    merged.sort(key=lambda m: m.id)
+    return merged
+
+
+async def send_message(
+    session,
+    chat: OrderChat,
+    order: Order,
+    sender_role: str,
+    body: str,
+    image_token: str | None = None,
+) -> ChatMessage:
+    """Записать сообщение от стороны сделки. Бросает ChatLockedError /
+    RateLimitedError — вызывающий переводит их в ответы API или бота.
+    Фото-сообщение несёт image_token; без картинки тело обязательно."""
+    body = (body or "").strip()
+    if not body and not image_token:
+        raise ValueError("message must have a body or an image")
+    if len(body) > MAX_MESSAGE_LEN:
+        raise ValueError("message body must be up to 1000 chars")
+    if not chat_is_open(order):
+        raise ChatLockedError()
+    # Фото уходят пачкой по 2-3 штуки за одно действие продавца, и каждое —
+    # отдельный запрос. С двухсекундной паузой второе и третье получали 429,
+    # а покупателю уже ушёл пуш «Фото посылки ниже (3 шт.)».
+    _check_rate_limit(chat.id, sender_role, min_interval=image_token is None)
+
+    message = ChatMessage(
+        chat_id=chat.id, sender=sender_role, body=body, image_token=image_token
+    )
+    session.add(message)
+    await session.flush()
+    return message
+
+
+async def add_service_note(session, chat: OrderChat, order: Order, body: str) -> ChatMessage | None:
+    """Служебная запись в историю чата от имени продавца (не от пользователя):
+    без rate limit — иначе фото, отправленные продавцом сразу после fulfill,
+    упёрлись бы в двухсекундный интервал и молча терялись. Чат закрыт —
+    записи нет."""
+    body = (body or "").strip()
+    if not body or not chat_is_open(order):
+        return None
+    message = ChatMessage(chat_id=chat.id, sender="seller", body=body[:MAX_MESSAGE_LEN])
+    session.add(message)
+    await session.flush()
+    return message
+
+
+async def notify_customer(
+    bot_record: SellerBot, customer_tg: int, order_id: int, body: str, locale: str = "en"
+) -> int | None:
+    """Сообщение продавца -> покупателю от бота магазина. Возвращает message_id
+    в Telegram (по реплаю на него ответ адресуется этому заказу). Обёртка
+    «💬 Заказ #N» — на языке покупателя, тело не переводится."""
+    # импорт внутри функции: app.bots.runner сам импортирует хендлеры чата,
+    # модульный импорт наверху даёт цикл runner → chat → services.chat → runner
+    from app.bots.runner import make_seller_bot
+
+    bot = make_seller_bot(decrypt_bot_token(bot_record.bot_token_encrypted))
+    try:
+        sent = await bot.send_message(
+            customer_tg,
+            f"{notify_text(locale, 'chat.header', id=order_id)}\n\n{html.escape(body)}",
+        )
+        return sent.message_id
+    except Exception:
+        logger.exception("Не удалось доставить сообщение по заказу %s покупателю", order_id)
+        return None
+    finally:
+        await bot.session.close()
+
+
+async def notify_customer_photo(
+    bot_record: SellerBot,
+    customer_tg: int,
+    order_id: int,
+    data: bytes,
+    mime: str,
+    caption: str | None,
+    locale: str = "en",
+) -> int | None:
+    """Фото продавца -> покупателю от бота магазина (send_photo). Возвращает
+    message_id в Telegram — реплай на него адресует этот же заказ. Обёртка
+    «💬 Заказ #N» — на языке покупателя, подпись не переводится."""
+    # импорт внутри функции — тот же цикл runner → chat → services.chat → runner,
+    # что и в notify_customer
+    from aiogram.types import BufferedInputFile
+
+    from app.bots.runner import make_seller_bot
+
+    bot = make_seller_bot(decrypt_bot_token(bot_record.bot_token_encrypted))
+    try:
+        header = notify_text(locale, "chat.header", id=order_id)
+        if caption:
+            header += f"\n\n{html.escape(caption)}"
+        sent = await bot.send_photo(
+            customer_tg,
+            BufferedInputFile(data, filename=f"order-{order_id}.{mime.split('/')[-1]}"),
+            caption=header,
+        )
+        return sent.message_id
+    except Exception:
+        logger.exception("Не удалось доставить фото по заказу %s покупателю", order_id)
+        return None
+    finally:
+        await bot.session.close()
+
+
+async def notify_seller(
+    seller_tg: int, order_id: int, has_photo: bool = False, locale: str = "ru"
+) -> None:
+    """Сообщение покупателя -> пуш продавцу в hub-бот (без деталей личности)."""
+    from app.bots.hub import hub_bot
+
+    photo_mark = " 📷" if has_photo else ""
+    try:
+        await hub_bot.send_message(
+            seller_tg,
+            seller_texts.text(
+                locale, "push.chat_message", id=order_id, photo=photo_mark
+            ),
+        )
+    except Exception:
+        logger.exception("Не удалось уведомить продавца о сообщении по заказу %s", order_id)
+
+
+# --- фоновые джобы (вызываются из цикла в app/main.py) ---
+
+
+async def lock_expired_chats() -> int:
+    """Закрывает окна, истёкшие 72 часа назад. Возвращает число закрытых."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=get_settings().chat_window_hours)
+    async with get_session() as session:
+        expired_ids = list(
+            (
+                await session.execute(
+                    select(OrderChat.id)
+                    .join(Order, Order.id == OrderChat.order_id)
+                    .where(
+                        OrderChat.status == "active",
+                        Order.status == "delivered",
+                        # NULL delivered_at у legacy-строк окно не закрывает:
+                        # честнее оставить чат открытым, чем запереть навсегда
+                        Order.delivered_at.is_not(None),
+                        Order.delivered_at < cutoff,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not expired_ids:
+            return 0
+        await session.execute(
+            update(OrderChat)
+            .where(OrderChat.id.in_(expired_ids), OrderChat.status == "active")
+            .values(status="locked_by_timeout", locked_at=func.now())
+        )
+        await session.commit()
+        return len(expired_ids)
+
+
+async def archive_old_chats() -> int:
+    """Переносит сообщения чатов, заблокированных > archive_chat_after_days
+    назад, в холодное хранилище. Чтение истории прозрачно объединяет таблицы."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=get_settings().archive_chat_after_days)
+    moved = 0
+    async with get_session() as session:
+        chats = (
+            (
+                await session.execute(
+                    select(OrderChat).where(
+                        OrderChat.status == "locked_by_timeout",
+                        OrderChat.locked_at.is_not(None),
+                        OrderChat.locked_at < cutoff,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for chat in chats:
+            messages = (
+                (
+                    await session.execute(
+                        select(ChatMessage)
+                        .where(ChatMessage.chat_id == chat.id)
+                        .order_by(ChatMessage.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for message in messages:
+                session.add(
+                    ChatMessageArchive(
+                        # id переносится как есть: у архивной таблицы своя
+                        # последовательность, и без этого read_history,
+                        # сортирующий обе таблицы по id, перемешал бы порядок
+                        # переписки, а во фронте совпали бы :key соседних строк
+                        id=message.id,
+                        chat_id=message.chat_id,
+                        sender=message.sender,
+                        body=message.body,
+                        tg_message_id=message.tg_message_id,
+                        image_token=message.image_token,
+                        created_at=message.created_at,
+                    )
+                )
+            if messages:
+                moved += len(messages)
+                for message in messages:
+                    await session.delete(message)
+            chat.status = "archived"
+        await session.commit()
+    if moved:
+        logger.info("Заархивировано %d сообщений чатов старше %d дней", moved, get_settings().archive_chat_after_days)
+    return moved
+
+
+async def latest_open_order(session, bot_id: int, customer_id: int) -> Order | None:
+    """Последний заказ клиента в этом магазине с открытым окном обсуждения —
+    независимо от того, заводился ли уже чат. Туда падает текст покупателя без
+    реплая; чат создаётся на месте (get_or_create_chat у вызывающего)."""
+    result = await session.execute(
+        select(Order)
+        .where(
+            Order.bot_id == bot_id,
+            Order.customer_id == customer_id,
+            Order.status.in_(PAID_STATUSES),
+        )
+        .order_by(Order.id.desc())
+        .limit(20)
+    )
+    for order in result.scalars().all():
+        if chat_is_open(order):
+            return order
+    return None
