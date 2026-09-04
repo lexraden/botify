@@ -39,6 +39,7 @@ from app.models import (
 from app.models.orders import PAID_STATUSES
 from app.payments.payouts import paid_total, pending_total
 from app.plans import SERVICE_TYPES, active_plan, is_pro, limits_for, over_limit
+from app.services import bot_profile
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 from app.services.seller_texts import seller_text
 from app.services.variants import apply_variants, line_title
@@ -403,6 +404,10 @@ async def set_shop_name(
         raise HTTPException(status_code=422, detail="shop_name пуст — пришли null для сброса")
     shop.shop_name = name[:64] or None
     await session.commit()
+    # Имя уезжает и в профиль бота (setMyName). БД уже закоммичена: Telegram —
+    # зеркало, его отказ (лимит частоты, отозванный токен) не откатывает имя
+    # витрины, а лишь подсвечивается продавцу и в ответе кабинета.
+    sync = await bot_profile.set_bot_name(shop, shop.shop_name)
     await _notify_seller(
         seller,
         seller_text(
@@ -410,9 +415,22 @@ async def set_shop_name(
             "api.name_set" if shop.shop_name else "api.name_reset",
             name=html.escape(shop.shop_name or ""),
             username=html.escape(shop.bot_username or ""),
-        ),
+        )
+        + _profile_sync_note(seller, sync),
     )
-    return {"shop_name": shop.shop_name}
+    return {"shop_name": shop.shop_name, "telegram_sync": sync.as_dict()}
+
+
+def _profile_sync_note(seller: Seller, sync: bot_profile.SyncResult) -> str:
+    """Дописка к пушу в hub-бот, когда профиль бота в Telegram не обновился.
+    Успех и «пропущено» (черновик, неизвестное исходное имя) не комментируем —
+    продавцу важно только то, что требует его действия."""
+    if sync.status == "rate_limited":
+        minutes = max(1, (sync.retry_after or 60) // 60)
+        return "\n\n" + seller_text(seller, "api.profile_rate_limited", minutes=minutes)
+    if sync.status == "failed":
+        return "\n\n" + seller_text(seller, "api.profile_sync_failed")
+    return ""
 
 
 @router.post("/bots/{bot_id}/shop-logo")
@@ -440,7 +458,10 @@ async def upload_shop_logo(
     logo = ShopLogo(bot_id=shop.id, mime=mime, size=len(data), data=data)
     session.add(logo)
     await session.commit()
-    return {"url": f"/api/shop-logos/{logo.token}"}
+    # то же лого — на аватар бота (квадратный JPEG 640×640, см. bot_profile);
+    # неудача не мешает витрине показать новый логотип
+    sync = await bot_profile.set_bot_photo(shop, data)
+    return {"url": f"/api/shop-logos/{logo.token}", "telegram_sync": sync.as_dict()}
 
 
 @router.delete("/bots/{bot_id}/shop-logo")
@@ -448,10 +469,12 @@ async def remove_shop_logo(
     shop: SellerBot = Depends(get_shop),
     session: AsyncSession = Depends(get_api_session),
 ) -> dict:
-    """Убрать лого — вернуться к первой букве имени вместо кружка."""
+    """Убрать лого — вернуться к первой букве имени вместо кружка.
+    У бота в Telegram аватар снимается тоже (removeMyProfilePhoto)."""
     await session.execute(delete(ShopLogo).where(ShopLogo.bot_id == shop.id))
     await session.commit()
-    return {"status": "removed"}
+    sync = await bot_profile.remove_bot_photo(shop)
+    return {"status": "removed", "telegram_sync": sync.as_dict()}
 
 
 # --------------------------------------------------------------------------
@@ -508,6 +531,9 @@ class ShopSummaryOut(BaseModel):
     # показное имя и лого шапки витрины — префилл панели идентичности кабинета
     shop_name: str | None = None
     logo_url: str | None = None
+    # Исходное Telegram-имя бота; null — неизвестно (подключён до v2), и
+    # кабинет может предупредить, что сброс имени бота в Telegram не тронет
+    default_bot_name: str | None = None
     is_active: bool
     webhook_status: str
     customers_count: int
@@ -594,6 +620,7 @@ async def shop_summary(
         bot_username=shop.bot_username,
         shop_name=shop.shop_name,
         logo_url=f"/api/shop-logos/{logo.token}" if logo else None,
+        default_bot_name=shop.default_bot_name,
         is_active=shop.is_active,
         webhook_status=shop.webhook_status,
         customers_count=customers_count,

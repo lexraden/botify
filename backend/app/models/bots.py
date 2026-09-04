@@ -50,6 +50,13 @@ class SellerBot(Base, CreatedAtMixin):
     # показывает @username, как раньше. Меняется продавцом из кабинета.
     shop_name: Mapped[str | None] = mapped_column(String(64))
 
+    # Исходное Telegram-имя бота на момент подключения (getMe.first_name; у
+    # managed-бота — имя из managed_bot_created). Нужно ровно для одного:
+    # при сбросе shop_name на null вернуть боту в Telegram его прежнее имя
+    # (services/bot_profile.py). NULL у ботов, подключённых до этого поля, —
+    # такие при сбросе не переименовываются: во что — неизвестно.
+    default_bot_name: Mapped[str | None] = mapped_column(String(64))
+
     # Настройки из /settings самого бота: приветствие покупателю на /start
     # и кнопка открытия витрины (None -> стандартный «Open»)
     welcome_text: Mapped[str | None] = mapped_column(Text)

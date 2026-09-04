@@ -196,7 +196,13 @@ async def bot_created(message: types.Message) -> None:
         return
 
     try:
-        shop = await promote_draft(shop.id, token, created.username or "", created.id)
+        shop = await promote_draft(
+            shop.id,
+            token,
+            created.username or "",
+            created.id,
+            bot_name=getattr(created, "first_name", None),
+        )
     except DraftPromotionError as exc:
         await message.answer(
             text(locale, "newshop.promote_failed", error=html.escape(str(exc))),

@@ -43,6 +43,24 @@ def stranger_headers():
     }
 
 
+@pytest.fixture(autouse=True)
+def no_telegram_profile(monkeypatch):
+    """Кабинетные запросы не ходят в Telegram: синхронизация профиля бота
+    подменяется заглушкой (контракт сервиса проверяется в test_bot_profile)."""
+    from app.services import bot_profile
+
+    stub = bot_profile.SyncResult("skipped", error="stubbed-in-tests")
+    mocks = SimpleNamespace(
+        name=AsyncMock(return_value=stub),
+        photo=AsyncMock(return_value=stub),
+        remove=AsyncMock(return_value=stub),
+    )
+    monkeypatch.setattr(bot_profile, "set_bot_name", mocks.name)
+    monkeypatch.setattr(bot_profile, "set_bot_photo", mocks.photo)
+    monkeypatch.setattr(bot_profile, "remove_bot_photo", mocks.remove)
+    return mocks
+
+
 # --- дефолт имени из Telegram -------------------------------------------
 
 
@@ -54,6 +72,7 @@ async def test_connect_saves_first_name_as_shop_name(db):
 
     assert result.ok
     assert result.bot_record.shop_name == "Shopik"
+    assert result.bot_record.default_bot_name == "Shopik"  # исходное имя для сброса
 
 
 @pytest.mark.asyncio
@@ -145,6 +164,24 @@ async def test_put_shop_name_sets_resets_and_guards(db):
             assert r.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_shop_name_change_pushes_bot_name_sync(db, no_telegram_profile):
+    """Смена имени в кабинете доезжает до профиля бота (зеркало setMyName)."""
+    bot_id = await setup_shop(db)
+    with patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()):
+        async with client() as c:
+            r = await c.put(
+                f"/api/seller/bots/{bot_id}/shop-name",
+                headers=seller_headers(),
+                json={"shop_name": "Новое имя"},
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["telegram_sync"]["status"] == "skipped"  # заглушка
+
+    record, name = no_telegram_profile.name.await_args.args
+    assert record.id == bot_id and name == "Новое имя"
+
+
 # --- логотип -------------------------------------------------------------
 
 
@@ -158,7 +195,7 @@ async def _upload_logo(bot_id: int, data: bytes):
 
 
 @pytest.mark.asyncio
-async def test_upload_logo_upload_replace_delete(db):
+async def test_upload_logo_upload_replace_delete(db, no_telegram_profile):
     bot_id = await setup_shop(db)
 
     async with client() as c:
@@ -167,6 +204,9 @@ async def test_upload_logo_upload_replace_delete(db):
         assert r.status_code == 200, r.text
         url = r.json()["url"]
         assert url.startswith("/api/shop-logos/")
+        # то же лого уезжает на аватар бота (заглушка: байты дошли до сервиса)
+        record, image = no_telegram_profile.photo.await_args.args
+        assert record.id == bot_id and image == PNG_BYTES
 
         served = await c.get(url)
         assert served.status_code == 200
@@ -195,6 +235,9 @@ async def test_upload_logo_upload_replace_delete(db):
         assert await _logo_rows(db) == []
         store = await c.get(f"/api/store/{bot_id}", headers=buyer_headers())
         assert store.json()["logo_url"] is None
+        # аватар бота снят вместе с лого
+        no_telegram_profile.remove.assert_awaited_once()
+        assert no_telegram_profile.remove.await_args.args[0].id == bot_id
 
 
 async def _logo_rows(db) -> list[ShopLogo]:

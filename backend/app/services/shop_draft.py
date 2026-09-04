@@ -149,7 +149,11 @@ class DraftPromotionError(Exception):
 
 
 async def promote_draft(
-    shop_id: int, token: str, bot_username: str, telegram_bot_id: int
+    shop_id: int,
+    token: str,
+    bot_username: str,
+    telegram_bot_id: int,
+    bot_name: str | None = None,
 ) -> SellerBot:
     """Дописать боту черновик и включить магазин.
 
@@ -187,6 +191,13 @@ async def promote_draft(
         # названия. Своё имя, если продавец успел его задать, не трогаем.
         if not shop.shop_name and shop.title:
             shop.shop_name = shop.title[:64]
+        # исходное Telegram-имя для возврата при сбросе shop_name
+        # (services/bot_profile.py): у managed-бота это имя, с которым его
+        # создал @BotFather, — оно приходит в managed_bot_created; если по
+        # какой-то причине не пришло, берём название магазина, из которого
+        # оно и собиралось
+        if not shop.default_bot_name:
+            shop.default_bot_name = ((bot_name or shop.title or "").strip()[:64]) or None
         await session.commit()
         await session.refresh(shop)
         return shop

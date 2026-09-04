@@ -12,10 +12,10 @@
    различие, а не рассинхрон.
 
 Здесь живут все продавецские строки: меню магазинов, карточка, онбординг
-/newshop, администраторы, пуши о заказах/выплатах/отзывах/токенах. Чего
+/newshop, администраторы, пуши о заказах/выплатах/отзывах/токенах, а с v2 —
+и экраны /settings внутри seller-бота (ключи settings.*). Чего
 здесь нет: команды супер-админа платформы (handlers/hub/admin.py —
-внутренний инструмент), экраны настроек внутри seller-бота и всё, что
-написал сам продавец (названия товаров, тексты каналов). html.escape
+внутренний инструмент) и всё, что написал сам продавец (названия товаров, тексты каналов). html.escape
 остаётся на местах вызова; RU-строки держатся байт-в-байт прежними, чтобы
 не трогать сложившиеся тесты.
 """
@@ -329,6 +329,128 @@ TEXTS: dict[str, dict[str, str]] = {
         ),
         "api.name_set": "🏪 Название магазина теперь <b>{name}</b>.",
         "api.name_reset": "🏪 Название магазина сброшено к <b>@{username}</b>.",
+        "api.profile_sync_failed": (
+            "⚠️ Профиль бота в Telegram обновить не удалось — проверь, что токен "
+            "действителен. Витрина уже обновлена; в Telegram изменения доедут при "
+            "следующем сохранении или кнопкой «Профиль в Telegram» в /settings бота."
+        ),
+        "api.profile_rate_limited": (
+            "⏳ Telegram ограничивает частоту смены имени бота: попробуй ещё раз "
+            "через {minutes} мин. Витрина уже показывает новое имя."
+        ),
+        # --- /settings внутри seller-бота ---
+        # Язык — тот же выбор /lang продавца: меню открывает только владелец,
+        # а он у обоих ботов один и тот же человек. Алерт чужаку остаётся
+        # русским (константа OWNER_ONLY в handlers/seller/settings.py): его
+        # язык неизвестен, а менять исторический текст незачем.
+        "settings.default_button": "Open",
+        "settings.state.on": "включена",
+        "settings.state.off": "выключена",
+        "settings.state.short_on": "вкл",
+        "settings.state.short_off": "выкл",
+        "settings.default_welcome": "стандартное приветствие",
+        "settings.menu": (
+            "⚙️ <b>Настройки бота @{username}</b>\n\n"
+            "👋 Приветствие на /start:\n<i>{welcome}</i>\n\n"
+            "🔘 Кнопка «{button}»: {state}\n"
+            "📢 Каналы для приёма заявок: {channels}"
+        ),
+        "settings.btn.welcome": "✍️ Приветствие",
+        "settings.btn.catalog_toggle": "🔘 Кнопка каталога: {state}",
+        "settings.btn.button_text": "✏️ Текст кнопки",
+        "settings.btn.channels": "📢 Каналы ({n})",
+        "settings.btn.profile": "🪪 Профиль в Telegram",
+        "settings.btn.close": "✖️ Закрыть",
+        "settings.btn.back": "⬅️ Назад",
+        "settings.btn.reset_default": "Сбросить на стандартное",
+        "settings.btn.reset_default_m": "Сбросить на стандартный",
+        "settings.btn.cancel": "Отмена",
+        "settings.toast.reset": "Сброшено",
+        "settings.no_changes": "Хорошо, без изменений.",
+        "settings.welcome.current_default": "— стандартное приветствие —",
+        "settings.welcome.prompt": (
+            "Пришли новый текст приветствия — его увидит покупатель на /start.\n"
+            'Можно использовать HTML: <b>&lt;b&gt;</b>, <b>&lt;i&gt;</b>, <b>&lt;a href="…"&gt;</b>\n\n'
+            "Сейчас:\n{current}"
+        ),
+        "settings.welcome.saved": "✅ Приветствие сохранено",
+        "settings.button.prompt": (
+            "Пришли новый текст кнопки открытия магазина (до 64 символов).\n\n"
+            "Сейчас: {current}"
+        ),
+        "settings.button.saved": "✅ Текст кнопки сохранён",
+        "settings.channels.empty": (
+            "📢 <b>Каналы</b>\n\nКаналов пока нет. Добавь бота администратором "
+            "в канал — он появится здесь автоматически."
+        ),
+        "settings.channels.list": (
+            "📢 <b>Каналы</b>\n\nЗелёный — заявки принимаются автоматически. "
+            "Нажми на канал, чтобы поменять настройки и приветствие вступившим."
+        ),
+        "settings.btn.channel_help": "➕ Как подключить канал",
+        "settings.channels.help": (
+            "➕ <b>Как подключить канал</b>\n\n"
+            "1. Добавь бота @{username} администратором в свой канал.\n"
+            "2. Отметь право «Приглашать пользователей» — без него бот не видит заявки.\n"
+            "3. Канал появится в списке автоматически.\n\n"
+            "Каждый, кто нажмёт «Подать заявку» в приватном канале, будет "
+            "автоматически принят и попадёт в твою базу покупателей."
+        ),
+        "settings.channel.auto_on": "включён 🟢",
+        "settings.channel.auto_off": "выключен ⚪",
+        "settings.channel.default_greeting": "— стандартное приветствие канала —",
+        "settings.channel.card": (
+            "📢 <b>{title}</b>\n\n"
+            "Авто-приём заявок: {auto}\n"
+            "Приветствие вступившим:\n<i>{greeting}</i>"
+        ),
+        "settings.alert.channel_not_found": "Канал не найден",
+        "settings.btn.auto_off": "Выключить авто-приём",
+        "settings.btn.auto_on": "Включить авто-приём",
+        "settings.btn.channel_greeting": "✍️ Приветствие вступившим",
+        "settings.btn.channel_remove": "🗑 Отключить канал",
+        "settings.toast.enabled": "Включено",
+        "settings.toast.disabled": "Выключено",
+        "settings.btn.yes_remove": "Да, отключить",
+        "settings.channel.remove_confirm": (
+            "Отключить канал «{title}»?\n\n"
+            "Бот перестанет принимать заявки из него и приветствовать вступивших. "
+            "Канал вернётся в список, только если заново добавить бота в канал."
+        ),
+        "settings.toast.channel_removed": "Канал отключён",
+        "settings.greeting.prompt": (
+            "Пришли приветствие, которое бот отправит вступившему в ЛС.\n"
+            "/reset — вернуть стандартное.\n\n"
+            "Сейчас:\n{current}"
+        ),
+        "settings.channel.gone": "Канал не найден — возможно, он уже отключён.",
+        "settings.greeting.saved": "✅ Приветствие сохранено",
+        # профиль бота в Telegram (имя/аватар из кабинета, см. services/bot_profile.py)
+        "settings.profile": (
+            "🪪 <b>Профиль бота в Telegram</b>\n\n"
+            "Имя: <b>{name}</b>\n"
+            "Исходное имя: {default}\n"
+            "Логотип: {logo}\n\n"
+            "Имя и логотип меняются в кабинете и сами уезжают в профиль бота. "
+            "Кнопка ниже отправляет их в Telegram заново — для магазинов, "
+            "подключённых раньше, или если прошлая синхронизация не прошла."
+        ),
+        "settings.profile.logo_yes": "загружен",
+        "settings.profile.logo_no": "не загружен",
+        "settings.profile.unknown": "неизвестно (бот подключён до обновления)",
+        "settings.btn.profile_sync": "🔄 Отправить в Telegram",
+        "settings.toast.syncing": "Синхронизирую…",
+        "settings.profile.sync_ok": "✅ Профиль бота обновлён.",
+        "settings.profile.sync_partial": "✅ Профиль обновлён частично: {details}",
+        "settings.profile.sync_rate_limited": (
+            "⏳ Telegram просит подождать {seconds} сек. перед сменой имени."
+        ),
+        "settings.profile.sync_failed": (
+            "⚠️ Не удалось обновить профиль — проверь, что токен бота действителен."
+        ),
+        "settings.profile.sync_skipped": "Отправлять нечего: имя и лого ещё не заданы.",
+        "settings.profile.part.name": "имя",
+        "settings.profile.part.photo": "аватар",
     },
     "en": {
         # --- /start ---
@@ -618,6 +740,124 @@ TEXTS: dict[str, dict[str, str]] = {
         ),
         "api.name_set": "🏪 The shop name is now <b>{name}</b>.",
         "api.name_reset": "🏪 The shop name was reset to <b>@{username}</b>.",
+        "api.profile_sync_failed": (
+            "⚠️ Couldn't update the bot's Telegram profile — check that the token "
+            "is still valid. The storefront is already updated; Telegram will catch "
+            "up on the next save or via “Telegram profile” in the bot's /settings."
+        ),
+        "api.profile_rate_limited": (
+            "⏳ Telegram limits how often a bot can be renamed: try again in "
+            "{minutes} min. The storefront already shows the new name."
+        ),
+        # --- /settings inside the seller bot ---
+        "settings.default_button": "Open",
+        "settings.state.on": "enabled",
+        "settings.state.off": "disabled",
+        "settings.state.short_on": "on",
+        "settings.state.short_off": "off",
+        "settings.default_welcome": "default greeting",
+        "settings.menu": (
+            "⚙️ <b>Settings of @{username}</b>\n\n"
+            "👋 Greeting on /start:\n<i>{welcome}</i>\n\n"
+            "🔘 “{button}” button: {state}\n"
+            "📢 Channels accepting join requests: {channels}"
+        ),
+        "settings.btn.welcome": "✍️ Greeting",
+        "settings.btn.catalog_toggle": "🔘 Catalog button: {state}",
+        "settings.btn.button_text": "✏️ Button text",
+        "settings.btn.channels": "📢 Channels ({n})",
+        "settings.btn.profile": "🪪 Telegram profile",
+        "settings.btn.close": "✖️ Close",
+        "settings.btn.back": "⬅️ Back",
+        "settings.btn.reset_default": "Reset to default",
+        "settings.btn.reset_default_m": "Reset to default",
+        "settings.btn.cancel": "Cancel",
+        "settings.toast.reset": "Reset",
+        "settings.no_changes": "Okay, nothing changed.",
+        "settings.welcome.current_default": "— default greeting —",
+        "settings.welcome.prompt": (
+            "Send the new greeting text — customers will see it on /start.\n"
+            'HTML is allowed: <b>&lt;b&gt;</b>, <b>&lt;i&gt;</b>, <b>&lt;a href="…"&gt;</b>\n\n'
+            "Current:\n{current}"
+        ),
+        "settings.welcome.saved": "✅ Greeting saved",
+        "settings.button.prompt": (
+            "Send the new text for the shop button (up to 64 characters).\n\n"
+            "Current: {current}"
+        ),
+        "settings.button.saved": "✅ Button text saved",
+        "settings.channels.empty": (
+            "📢 <b>Channels</b>\n\nNo channels yet. Add the bot as an administrator "
+            "to a channel — it will show up here automatically."
+        ),
+        "settings.channels.list": (
+            "📢 <b>Channels</b>\n\nGreen — join requests are accepted automatically. "
+            "Tap a channel to change its settings and the greeting for new members."
+        ),
+        "settings.btn.channel_help": "➕ How to connect a channel",
+        "settings.channels.help": (
+            "➕ <b>How to connect a channel</b>\n\n"
+            "1. Add @{username} as an administrator to your channel.\n"
+            "2. Grant the “Invite users” right — without it the bot can't see join requests.\n"
+            "3. The channel appears in the list automatically.\n\n"
+            "Everyone who taps “Request to join” in a private channel is accepted "
+            "automatically and lands in your customer base."
+        ),
+        "settings.channel.auto_on": "on 🟢",
+        "settings.channel.auto_off": "off ⚪",
+        "settings.channel.default_greeting": "— default channel greeting —",
+        "settings.channel.card": (
+            "📢 <b>{title}</b>\n\n"
+            "Auto-accept join requests: {auto}\n"
+            "Greeting for new members:\n<i>{greeting}</i>"
+        ),
+        "settings.alert.channel_not_found": "Channel not found",
+        "settings.btn.auto_off": "Turn auto-accept off",
+        "settings.btn.auto_on": "Turn auto-accept on",
+        "settings.btn.channel_greeting": "✍️ Greeting for new members",
+        "settings.btn.channel_remove": "🗑 Disconnect channel",
+        "settings.toast.enabled": "Enabled",
+        "settings.toast.disabled": "Disabled",
+        "settings.btn.yes_remove": "Yes, disconnect",
+        "settings.channel.remove_confirm": (
+            "Disconnect “{title}”?\n\n"
+            "The bot will stop accepting join requests from it and greeting new members. "
+            "The channel comes back to the list only if you add the bot to it again."
+        ),
+        "settings.toast.channel_removed": "Channel disconnected",
+        "settings.greeting.prompt": (
+            "Send the greeting the bot will DM to everyone who joins.\n"
+            "/reset — back to the default one.\n\n"
+            "Current:\n{current}"
+        ),
+        "settings.channel.gone": "Channel not found — it may already be disconnected.",
+        "settings.greeting.saved": "✅ Greeting saved",
+        # bot profile in Telegram (name/avatar from the dashboard, see services/bot_profile.py)
+        "settings.profile": (
+            "🪪 <b>Bot profile in Telegram</b>\n\n"
+            "Name: <b>{name}</b>\n"
+            "Original name: {default}\n"
+            "Logo: {logo}\n\n"
+            "The name and logo are edited in the dashboard and are pushed to the "
+            "bot's profile automatically. The button below sends them to Telegram "
+            "again — for shops connected earlier, or if the last sync failed."
+        ),
+        "settings.profile.logo_yes": "uploaded",
+        "settings.profile.logo_no": "not uploaded",
+        "settings.profile.unknown": "unknown (bot connected before the update)",
+        "settings.btn.profile_sync": "🔄 Send to Telegram",
+        "settings.toast.syncing": "Syncing…",
+        "settings.profile.sync_ok": "✅ Bot profile updated.",
+        "settings.profile.sync_partial": "✅ Profile partially updated: {details}",
+        "settings.profile.sync_rate_limited": (
+            "⏳ Telegram asks to wait {seconds} s before renaming the bot."
+        ),
+        "settings.profile.sync_failed": (
+            "⚠️ Couldn't update the profile — check that the bot token is still valid."
+        ),
+        "settings.profile.sync_skipped": "Nothing to send: no name or logo set yet.",
+        "settings.profile.part.name": "name",
+        "settings.profile.part.photo": "avatar",
     },
 }
 

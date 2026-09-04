@@ -46,6 +46,9 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
         # показное имя магазина по умолчанию — Telegram-имя бота; продавец
         # сможет сменить его в кабинете
         default_shop_name = (getattr(me, "first_name", "") or "").strip()[:64] or None
+        # оно же — исходное Telegram-имя, к которому бот вернётся при сбросе
+        # shop_name (services/bot_profile.py); фиксируется один раз
+        default_bot_name = default_shop_name
 
         existing = (
             await session.execute(
@@ -66,6 +69,12 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
             # ботам, у которых его ещё нет
             if not existing.shop_name and default_shop_name:
                 existing.shop_name = default_shop_name
+            # у ботов, подключённых до появления поля, исходное имя неизвестно:
+            # переподключение — первый момент, когда его можно записать.
+            # Перезаписывать уже известное нельзя — getMe теперь может вернуть
+            # имя, которое мы сами и поставили через setMyName.
+            if not existing.default_bot_name and default_bot_name:
+                existing.default_bot_name = default_bot_name
             existing.is_active = True
             webhook_ok = await setup_seller_webhook(existing)
             existing.webhook_status = "active" if webhook_ok else "pending"
@@ -78,6 +87,7 @@ async def connect_seller_bot(seller_id: int, raw_token: str) -> ConnectResult:
             bot_username=me.username or str(me.id),
             telegram_bot_id=me.id,
             shop_name=default_shop_name,
+            default_bot_name=default_bot_name,
             webhook_status="pending",
         )
         session.add(record)

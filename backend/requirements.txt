@@ -1,4 +1,4 @@
-aiogram>=3.13,<4
+aiogram>=3.30,<4  # setMyProfilePhoto / removeMyProfilePhoto (Bot API 9.x)
 fastapi>=0.115
 uvicorn[standard]>=0.30
 sqlalchemy[asyncio]>=2.0
@@ -9,3 +9,4 @@ cryptography>=43.0
 aiocryptopay>=0.3.4
 python-dotenv>=1.0
 psycopg2-binary>=2.9  # только для alembic (sync-драйвер)
+Pillow>=10.4  # лого -> квадратный JPEG для аватара бота (services/bot_profile.py)

@@ -6,6 +6,17 @@ Telegram Bot + Mini App маркетплейс: hub-бот для продавц
 Бриф: `docs/project-brief.md` · Аудит и план: `docs/AUDIT.md` · Правила работы
 с Claude Code и команды проекта: `CLAUDE.md`
 
+## Что нового в v2
+
+- Имя и логотип магазина из кабинета синхронизируются с профилем самого
+  seller-бота в Telegram (`setMyName`, `setMyProfilePhoto`,
+  `removeMyProfilePhoto`) — `backend/app/services/bot_profile.py`. Сброс имени
+  возвращает исходное Telegram-имя (`seller_bots.default_bot_name`, миграция
+  `c3d4e5f6a7b8`). Требует `aiogram>=3.30` и `Pillow`.
+- `/settings` внутри seller-бота говорит на языке продавца из `/lang` (RU/EN),
+  плюс экран «🪪 Профиль в Telegram» с ручной досылкой имени и лого.
+- Подробности — в `CHANGELOG.md` (запись от 2026-09-04).
+
 ## Структура
 
 - `backend/` — FastAPI + aiogram 3: API для Mini App, вебхуки hub-бота и seller-ботов
