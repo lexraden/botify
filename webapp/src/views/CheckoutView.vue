@@ -1,8 +1,10 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { createOrder } from '../api'
+import { createOrder, trackEvent } from '../api'
+import { t } from '../i18n'
 import { useCartStore } from '../stores/cart'
+import { apiError } from '../services/apiError'
 
 const router = useRouter()
 const cart = useCartStore()
@@ -10,21 +12,62 @@ const comment = ref('')
 const submitting = ref(false)
 const error = ref('')
 
+// Физический товар нужно куда-то везти. У цифровых заказов адрес не спрашиваем:
+// лишние поля в чекауте стоят конверсии, а продавцу они там не нужны.
+const needsDelivery = computed(() =>
+  Object.values(cart.items).some((i) => i.product.type === 'physical'),
+)
+// одно поле адреса: имя/телефон убрали — лишний ввод стоял конверсии
+const address = ref('')
+const deliveryReady = computed(() => !needsDelivery.value || address.value.trim())
+
+function linePrice(entry) {
+  return (entry.variant ?? entry.product).price
+}
+
+function variantLabel(variant) {
+  return Object.values(variant.attributes || {})
+    .map((x) => String(x).trim())
+    .filter(Boolean)
+    .join(' · ')
+}
+
+onMounted(() => trackEvent('checkout_start'))
+
 async function pay() {
   if (!cart.count || submitting.value) return
+  if (!deliveryReady.value) {
+    error.value = t('checkout.deliveryRequired')
+    return
+  }
   submitting.value = true
   error.value = ''
   try {
-    const order = await createOrder(cart.asOrderItems, comment.value || null)
+    const order = await createOrder(
+      cart.asOrderItems,
+      comment.value || null,
+      needsDelivery.value ? { address: address.value.trim() } : null,
+    )
     cart.clear()
-    if (order.payment_url) {
-      const tg = window.Telegram?.WebApp
-      if (tg?.openTelegramLink) tg.openTelegramLink(order.payment_url)
-      else window.open(order.payment_url, '_blank')
+    if (!order.payment_url) {
+      // Счёт не создался (Crypto Pay недоступен), но заказ уже есть: бэкенд
+      // намеренно его сохраняет. Молча вернуть покупателя в каталог нельзя —
+      // он не узнает ни про заказ, ни про то, что платить надо заново.
+      // Ведём в «Мои покупки»: там заказ виден и есть кнопка «Оплатить».
+      router.push({ path: '/my-orders', query: { created: order.id, pay: '0' } })
+      return
     }
-    router.push({ name: 'my-orders', query: { created: order.id, pay: order.payment_url ? 1 : 0 } })
+    const tg = window.Telegram?.WebApp
+    if (tg?.openTelegramLink) tg.openTelegramLink(order.payment_url)
+    else window.open(order.payment_url, '_blank')
+    // Ведём в «Мои покупки», а не в каталог: окно @CryptoBot уже открыто
+    // поверх приложения, и вернувшись из него, человек должен увидеть свою
+    // покупку и её статус. Заказ в этот момент ещё pending_payment — в paid
+    // его переводит вебхук, а список сам обновится (BuyerOrders опрашивает
+    // сервер, пока вкладка видима).
+    router.push({ path: '/my-orders', query: { created: order.id, pay: '1' } })
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Не удалось оформить заказ'
+    error.value = apiError(e, 'checkout.error')
   } finally {
     submitting.value = false
   }
@@ -34,69 +77,97 @@ async function pay() {
 <template>
   <div class="checkout">
     <header>
-      <h2>YOUR ORDER</h2>
-      <a class="edit" @click="router.push('/')">Edit</a>
+      <h2>{{ t('checkout.title') }}</h2>
+      <a class="edit" @click="router.push('/')">{{ t('checkout.edit') }}</a>
     </header>
 
-    <div v-for="entry in Object.values(cart.items)" :key="entry.product.id" class="row">
+    <!-- ключ — пара «товар + вариация»: два размера одной футболки это две
+         строки, и по product.id они бы столкнулись -->
+    <div v-for="(entry, key) in cart.items" :key="key" class="row">
       <div class="info">
-        <b>{{ entry.product.title }}</b>
+        <!-- у вариации может быть своё название: показать товарное значило бы
+             назвать чужой вариант — товарное это имя первой вариации -->
+        <b>{{ entry.variant?.title || entry.product.title }}</b>
+        <span v-if="entry.variant" class="variant">{{ variantLabel(entry.variant) }}</span>
         <span class="qty">{{ entry.qty }}x</span>
       </div>
-      <div class="price">{{ (Number(entry.product.price) * entry.qty).toFixed(2) }} USDT</div>
+      <!-- цена строки — из вариации, если она есть: у товара price витринная -->
+      <div class="price">{{ (Number(linePrice(entry)) * entry.qty).toFixed(2) }} USDT</div>
     </div>
 
-    <p v-if="!cart.count" class="empty">Корзина пуста. <a @click="router.push('/')">В каталог</a></p>
+    <p v-if="!cart.count" class="empty">{{ t('checkout.empty') }} <a @click="router.push('/')">{{ t('common.toCatalog') }}</a></p>
 
-    <textarea v-model="comment" placeholder="Комментарий к заказу — детали, пожелания…" rows="3" />
+    <section v-if="needsDelivery" class="delivery">
+      <h3>{{ t('checkout.deliveryTitle') }}</h3>
+      <p class="hint">{{ t('checkout.deliveryHint') }}</p>
+      <textarea
+        v-model="address"
+        :placeholder="t('checkout.addressPh')"
+        :maxlength="512"
+        rows="2"
+      />
+    </section>
+
+    <textarea v-model="comment" :placeholder="t('checkout.commentPh')" rows="3" />
 
     <p v-if="error" class="error">{{ error }}</p>
 
-    <button class="pay" :disabled="!cart.count || submitting" @click="pay">
-      {{ submitting ? '…' : `PAY ${cart.total.toFixed(2)} USDT` }}
+    <button class="pay" :disabled="!cart.count || submitting || !deliveryReady" @click="pay">
+      {{ submitting ? '…' : t('checkout.pay', { sum: cart.total.toFixed(2) }) }}
     </button>
   </div>
 </template>
 
 <style scoped lang="scss">
-.checkout { padding: 16px 16px 84px; }
+.checkout { padding: 16px 16px 80px; }
 header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  h2 { margin: 0 0 16px; font-size: 18px; letter-spacing: 0.5px; }
-  .edit { color: #2ecc71; cursor: pointer; }
+  h2 { margin: 0 0 14px; font-size: 17px; letter-spacing: 0.3px; }
+  .edit { color: var(--green); cursor: pointer; }
 }
 .row {
   display: flex;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px solid var(--tg-theme-secondary-bg-color, #f0f0f0);
+  border-bottom: 1px solid var(--surface2);
   .qty { color: #f5a623; font-weight: 700; margin-left: 8px; }
+  .variant { color: var(--sub); font-size: 12px; margin-left: 8px; }
+}
+.delivery {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  h3 { margin: 0; font-size: 15px; }
+  .hint { margin: -4px 0 2px; font-size: 13px; color: var(--sub); }
+  textarea { margin-top: 0; }
 }
 textarea {
   width: 100%;
   box-sizing: border-box;
   margin-top: 16px;
-  border: 1px solid var(--tg-theme-secondary-bg-color, #ddd);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px;
-  background: var(--tg-theme-bg-color, #fff);
+  background: var(--surface);
   color: inherit;
   font: inherit;
   resize: none;
 }
-.empty { text-align: center; opacity: 0.7; a { color: var(--tg-theme-link-color, #2481cc); cursor: pointer; } }
-.error { color: #e74c3c; }
+.empty { text-align: center; opacity: 0.7; a { color: var(--accent); cursor: pointer; } }
+.error { color: var(--red); }
 .pay {
   position: fixed;
   left: 0; right: 0; bottom: 0;
+  z-index: 20; /* поверх плашки «Сделано через Botify» */
   border: 0;
-  background: #2ecc71;
+  background: var(--green);
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
-  padding: 16px;
+  padding: 15px;
   cursor: pointer;
   &:disabled { opacity: 0.5; }
 }

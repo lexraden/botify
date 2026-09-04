@@ -1,75 +1,45 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+// Тонкая обёртка: заголовок и notice из query (?created/?pay) после оплаты.
+// Сам список покупок — components/BuyerOrders.vue, он же живёт в профиле.
 import { useRoute, useRouter } from 'vue-router'
-import { fetchMyOrders } from '../api'
+import { t } from '../i18n'
+import BrandBadge from '../components/BrandBadge.vue'
+import BuyerOrders from '../components/BuyerOrders.vue'
 
 const route = useRoute()
 const router = useRouter()
-const orders = ref(null)
-
-const STATUS = {
-  pending_payment: '⏳ Ожидает оплаты',
-  paid: '✅ Оплачен',
-  fulfilled: '📦 Отправлен',
-  delivered: '🎉 Доставлен',
-  cancelled: '✖️ Отменён',
-}
-
-onMounted(async () => {
-  orders.value = await fetchMyOrders()
-})
 </script>
 
 <template>
   <div class="orders">
     <header>
-      <h2>Мои покупки</h2>
-      <a @click="router.push('/')">В каталог</a>
+      <h2>{{ t('orders.title') }}</h2>
+      <a @click="router.push('/')">{{ t('common.toCatalog') }}</a>
     </header>
     <p v-if="route.query.created" class="notice">
-      Заказ #{{ route.query.created }} создан.
+      {{ t('orders.created', { n: route.query.created }) }}
       <template v-if="route.query.pay === '1'">
-        Заверши оплату в открывшемся окне @CryptoBot — после оплаты придёт подтверждение в чат
-        с ботом.
+        {{ t('orders.payWindow') }}
       </template>
-      <template v-else>Оплата временно недоступна — попробуй позже.</template>
+      <template v-else>{{ t('orders.payUnavailable') }}</template>
     </p>
-    <p v-if="orders && !orders.length" class="empty">Покупок пока нет.</p>
-    <div v-for="o in orders" :key="o.id" class="order">
-      <div class="head">
-        <b>Заказ #{{ o.id }}</b>
-        <span>{{ STATUS[o.status] || o.status }}</span>
-      </div>
-      <div v-for="i in o.items" :key="i.product_id" class="item">
-        {{ i.title }} × {{ i.qty }} — {{ (Number(i.price) * i.qty).toFixed(2) }} USDT
-      </div>
-      <div class="total">Итого: {{ Number(o.total).toFixed(2) }} {{ o.currency }}</div>
-    </div>
+    <BuyerOrders />
+    <BrandBadge />
   </div>
 </template>
 
 <style scoped lang="scss">
-.orders { padding: 16px; }
+.orders { padding: 16px 16px 24px; }
 header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  a { color: var(--tg-theme-link-color, #2481cc); cursor: pointer; font-size: 14px; }
+  a { color: var(--accent); cursor: pointer; font-size: 14px; }
 }
 .notice {
-  background: var(--tg-theme-secondary-bg-color, #fff8e6);
-  border-radius: 10px;
+  background: var(--accent-soft);
+  border-radius: 11px;
   padding: 10px 12px;
-  font-size: 14px;
-}
-.empty { text-align: center; opacity: 0.6; margin-top: 40px; }
-.order {
-  border: 1px solid var(--tg-theme-secondary-bg-color, #eee);
-  border-radius: 12px;
-  padding: 12px;
-  margin-bottom: 10px;
-  .head { display: flex; justify-content: space-between; margin-bottom: 6px; }
-  .item { font-size: 14px; padding: 2px 0; }
-  .total { margin-top: 6px; font-weight: 700; }
+  font-size: 13px;
 }
 </style>

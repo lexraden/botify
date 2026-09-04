@@ -1,0 +1,87 @@
+<script setup>
+import { computed, onUnmounted, ref, watch } from 'vue'
+import { tList } from '../i18n'
+import { isLoading } from '../services/loading'
+
+// Пока идёт загрузка, подпись под спиннером меняется — так ожидание
+// читается как работа, а не как зависший экран. Пул подписей берём из словаря,
+// поэтому на смене языка следующая подпись приедет уже на новом языке.
+const MESSAGES = computed(() => tList('loading.messages'))
+const STEP_MS = 1400
+
+// Подписи идут вразнобой, но подряд одна и та же не повторяется
+function pickMessage(previous) {
+  const pool = MESSAGES.value.filter((m) => m !== previous)
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
+const message = ref(pickMessage(null))
+let timer = null
+
+// наружу — только для тестов: пул подписей проверяется на «Botifying…»
+defineExpose({ messages: MESSAGES })
+
+function startCycling() {
+  message.value = pickMessage(null)
+  timer = setInterval(() => {
+    message.value = pickMessage(message.value)
+  }, STEP_MS)
+}
+
+function stopCycling() {
+  if (timer !== null) {
+    clearInterval(timer)
+    timer = null
+  }
+}
+
+watch(isLoading, (value) => (value ? startCycling() : stopCycling()), { immediate: true })
+onUnmounted(stopCycling)
+</script>
+
+<template>
+  <Transition name="fade">
+    <div v-if="isLoading" class="overlay">
+      <div class="spinner" />
+      <Transition name="swap" mode="out-in">
+        <div :key="message" class="message">{{ message }}</div>
+      </Transition>
+    </div>
+  </Transition>
+</template>
+
+<style scoped>
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  backdrop-filter: blur(2px);
+}
+.spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid var(--surface2);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+.message {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--sub);
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.swap-enter-active, .swap-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
+.swap-enter-from { opacity: 0; transform: translateY(6px); }
+.swap-leave-to { opacity: 0; transform: translateY(-6px); }
+</style>

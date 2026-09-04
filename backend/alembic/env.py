@@ -12,9 +12,13 @@ config = context.config
 
 # DATABASE_URL из окружения; alembic работает через sync-драйвер
 url = os.getenv("DATABASE_URL")
-if url:
-    url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
-    config.set_main_option("sqlalchemy.url", url)
+if not url:
+    raise RuntimeError(
+        "DATABASE_URL is not set. On Railway: add a PostgreSQL database to the "
+        "project and set service variable DATABASE_URL=${{Postgres.DATABASE_URL}}."
+    )
+url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+config.set_main_option("sqlalchemy.url", url)
 
 target_metadata = Base.metadata
 

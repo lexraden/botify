@@ -47,6 +47,46 @@ async def deactivate_channel(chat_id: int) -> None:
             await session.commit()
 
 
+async def list_channels(bot_id: int) -> list[Channel]:
+    async with get_session() as session:
+        result = await session.execute(
+            select(Channel).where(Channel.bot_id == bot_id).order_by(Channel.id)
+        )
+        return list(result.scalars().all())
+
+
+async def get_bot_channel(bot_id: int, channel_id: int) -> Channel | None:
+    """Канал достаётся только парой (bot_id, channel_id): чужой канал другого
+    магазина из этого контекста недостижим."""
+    async with get_session() as session:
+        channel = await session.get(Channel, channel_id)
+    if channel is None or channel.bot_id != bot_id:
+        return None
+    return channel
+
+
+async def get_channel_for_bot(bot_id: int, chat_id: int) -> Channel | None:
+    """Канал этого бота по telegram_chat_id; чужой магазин недостижим."""
+    async with get_session() as session:
+        result = await session.execute(
+            select(Channel).where(
+                Channel.telegram_chat_id == chat_id, Channel.bot_id == bot_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+
+async def deactivate_channel_by_id(bot_id: int, channel_id: int) -> bool:
+    """Отключает канал продавца по id; чужой канал не трогаем."""
+    async with get_session() as session:
+        channel = await session.get(Channel, channel_id)
+        if channel is None or channel.bot_id != bot_id:
+            return False
+        channel.is_active = False
+        await session.commit()
+        return True
+
+
 async def get_channel(chat_id: int) -> Channel | None:
     async with get_session() as session:
         return (
@@ -62,11 +102,20 @@ class TgUserInfo:
     language_code: str | None = None
 
 
+# Языки, на которые умеет говорить платформа (уведомления покупателю)
+CUSTOMER_LOCALES = ("ru", "en")
+
+
 async def upsert_customer(
-    bot_record: SellerBot, user: TgUserInfo, source: str | None = None
+    bot_record: SellerBot,
+    user: TgUserInfo,
+    source: str | None = None,
+    locale: str | None = None,
 ) -> tuple[Customer, bool]:
     """Добавляет покупателя в базу конкретного seller-бота (или обновляет).
-    source записывается только при первом контакте — фиксируем происхождение лида."""
+    source записывается только при первом контакте — фиксируем происхождение лида.
+    locale — ручной выбор языка из Mini App (X-Locale): валидные значения
+    сохраняются, мусор и пустая строка существующий выбор не сбрасывают."""
     async with get_session() as session:
         customer = (
             await session.execute(
@@ -80,6 +129,14 @@ async def upsert_customer(
         if customer is not None:
             customer.username = user.username
             customer.first_name = user.first_name
+            # Telegram-профиль мог смениться с прошлого визита: без этого
+            # смена языка в самом Telegram никогда бы не подхватилась.
+            customer.language_code = user.language_code
+            if locale in CUSTOMER_LOCALES:
+                customer.locale = locale
+            # Раз он снова здесь — бот разблокирован, рассылки опять доходят.
+            # Иначе отметка «не доставляется» осталась бы навсегда.
+            customer.mailing_blocked = False
             await session.commit()
             return customer, False
 
@@ -90,6 +147,7 @@ async def upsert_customer(
             username=user.username,
             first_name=user.first_name,
             language_code=user.language_code,
+            locale=locale if locale in CUSTOMER_LOCALES else None,
             source=source,
         )
         session.add(customer)

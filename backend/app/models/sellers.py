@@ -17,10 +17,24 @@ class Seller(Base, CreatedAtMixin):
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str | None] = mapped_column(String(128))
     language_code: Mapped[str | None] = mapped_column(String(8))
+    # Ручной выбор языка hub-бота (/lang). None = не выбирал: тогда ru* по
+    # language_code идёт RU, остальным EN, а при неизвестном языке Telegram —
+    # RU (у покупателей наоборот: неизвестный — EN, платформа для них англ.
+    # по умолчанию; у продавцов hub всегда был русским, и молча переводить
+    # существующих на EN нельзя). Разбор правила — services/seller_texts.py.
+    locale: Mapped[str | None] = mapped_column(String(8))
 
-    # Онбординг: none -> cryptobot -> bot_connect -> done
-    onboarding_step: Mapped[str] = mapped_column(String(32), default="none")
-    # Продавец нажал /start у @CryptoBot — без этого transfer не сработает
+    # Онбординг идёт в Mini App; прогресс хранится здесь, чтобы пересоздание
+    # webview (уход в @BotFather и обратно) не сбрасывало шаг.
+    # Единственный шаг — подключение бота. Дефолт ниже — питоновский (все
+    # вставки идут через ORM); серверный DEFAULT в базе остался старым
+    # ('payment_pending') как legacy и роли не играет.
+    onboarding_step: Mapped[str] = mapped_column(String(32), default="bot_pending")
+    # Принятие условий использования на первом экране онбординга; null = ещё не принял
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Ставится по факту состоявшейся выплаты: API Crypto Pay не умеет отвечать,
+    # открыт ли @CryptoBot, а спрашивать об этом продавца бессмысленно. Ничего
+    # не блокирует — справочный флаг «выплаты до него уже доходили».
     cryptobot_connected: Mapped[bool] = mapped_column(Boolean, default=False)
 
     commission_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=5)
@@ -32,6 +46,10 @@ class Seller(Base, CreatedAtMixin):
     # (см. docs/AUDIT.md, решение владельца от 2026-08-18).
     plan: Mapped[str] = mapped_column(String(16), default="free")  # free | pro
     pro_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # О каком окончании подписки продавцу уже напомнили. Ровно это значение,
+    # а не флаг: продлил — метка перестаёт совпадать, и следующий срок
+    # напомнится заново (app/payments/subscription.py:remind_expiring)
+    pro_reminded_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     bots = relationship("SellerBot", back_populates="seller", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="seller", cascade="all, delete-orphan")

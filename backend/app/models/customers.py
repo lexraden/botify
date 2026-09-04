@@ -19,7 +19,17 @@ class Customer(Base, CreatedAtMixin):
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str | None] = mapped_column(String(128))
     language_code: Mapped[str | None] = mapped_column(String(8))
+    # Ручной выбор языка в профиле Mini App; None = человек не выбирал — тогда
+    # язык уведомлений берётся из language_code (ru* -> RU, остальные -> EN).
+    locale: Mapped[str | None] = mapped_column(String(8))
     source: Mapped[str | None] = mapped_column(String(128))  # UTM / deep-link параметр из /start
+    # Настоящий бан: закрывает доступ к Mini App целиком.
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Бот заблокирован покупателем или чат удалён — сообщения ему не доходят.
+    # Влияет только на рассылки: глушить бота не значит отказываться от своих
+    # заказов, истории и переписки с продавцом.
+    mailing_blocked: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     bot = relationship("SellerBot", back_populates="customers")

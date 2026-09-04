@@ -1,27 +1,93 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getBotId } from './services/telegram'
+import { enterFullscreen, exitFullscreen, getBotId } from './services/telegram'
+import { fetchMe } from './api'
+
 import StoreView from './views/StoreView.vue'
+import ProductDetailView from './views/ProductDetailView.vue'
 import CheckoutView from './views/CheckoutView.vue'
+import ProfileView from './views/ProfileView.vue'
 import MyOrdersView from './views/MyOrdersView.vue'
-import SellerView from './views/SellerView.vue'
+import WelcomeView from './views/WelcomeView.vue'
+import OnboardingBot from './views/OnboardingBot.vue'
+import OnboardingDone from './views/OnboardingDone.vue'
+import ShopsView from './views/ShopsView.vue'
+import ShopView from './views/ShopView.vue'
+import SellerProfileView from './views/SellerProfileView.vue'
 import ProductFormView from './views/ProductFormView.vue'
+import OrderChatView from './views/OrderChatView.vue'
+import MailingsView from './views/MailingsView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    // покупатель (открыто из seller-бота, есть ?bot_id=)
+    // покупатель — Mini App открыт из seller-бота (есть ?bot_id=)
     { path: '/', name: 'store', component: StoreView },
-    { path: '/checkout', name: 'checkout', component: CheckoutView },
+    { path: '/product/:id', name: 'product', component: ProductDetailView },
+    { path: '/checkout', component: CheckoutView },
+    { path: '/profile', name: 'profile', component: ProfileView },
     { path: '/my-orders', name: 'my-orders', component: MyOrdersView },
-    // продавец (открыто из hub-бота)
-    { path: '/seller', name: 'seller', component: SellerView },
-    { path: '/seller/product/:id?', name: 'product-form', component: ProductFormView },
+    // продавец — Mini App открыт из hub-бота
+    { path: '/onboarding/welcome', component: WelcomeView },
+    { path: '/onboarding/bot', component: OnboardingBot },
+    { path: '/onboarding/done', component: OnboardingDone },
+    { path: '/shops', component: ShopsView },
+    { path: '/shop/:botId', component: ShopView },
+    { path: '/shop/:botId/product/:id?', component: ProductFormView },
+    { path: '/shop/:botId/orders/:orderId/chat', component: OrderChatView },
+    { path: '/shop/:botId/profile', name: 'shopProfile', component: SellerProfileView },
+    { path: '/shop/:botId/mailings', name: 'shopMailings', component: MailingsView },
   ],
 })
 
-// без bot_id это кабинет продавца
+// Куда отправить продавца при открытии приложения. Прогресс онбординга живёт
+// на бэкенде, поэтому пересоздание webview (уход в @BotFather и обратно)
+// возвращает ровно на тот шаг, где он остановился.
+function entryRouteFor(me) {
+  if (!me.bots.length) {
+    // онбординг не завершён: сперва условия, затем единственный шаг — бот
+    if (!me.terms_accepted) return '/onboarding/welcome'
+    return '/onboarding/bot'
+  }
+  // один активный бот — сразу в магазин; отключён или их несколько — в список:
+  // там видно статусы всех ботов и есть «Добавить магазин»
+  if (me.bots.length === 1 && me.bots[0].is_active) return `/shop/${me.bots[0].id}`
+  return '/shops'
+}
+
+// «Reload Page» в Telegram перезагружает текущий адрес, а bot_id в нём живёт
+// только пока его кто-то переносит: цели переходов пишутся чистым path.
+// Прокидываем параметр в каждый переход, где его нет, — тогда адрес всегда
+// остаётся с bot_id и перезагрузка витрины не уводит покупателя в онбординг.
+router.beforeEach((to, from) => {
+  const botId = to.query.bot_id ?? from.query.bot_id ?? getBotId()
+  if (!botId || to.query.bot_id === botId) return true
+  return { path: to.path, query: { ...to.query, bot_id: botId }, hash: to.hash }
+})
+
+let entryResolved = false
+
+router.beforeEach(async (to) => {
+  // витрина покупателя живёт по bot_id из query — онбординг её не касается
+  if (getBotId()) return true
+  if (entryResolved || to.path !== '/') return true
+  entryResolved = true
+  try {
+    return entryRouteFor(await fetchMe())
+  } catch {
+    return '/onboarding/welcome'
+  }
+})
+
+// Полноэкранный режим — только на витрине покупателя (весь покупательский
+// контекст): кабинет продавца и онбординг остаются в обычном окне. Клиенты
+// старше Bot API 8.0 игнорируют вызовы внутри обёртки.
 router.beforeEach((to) => {
-  if (to.name === 'store' && !getBotId()) return { name: 'seller' }
+  const sellerArea =
+    to.path === '/shops' ||
+    to.path.startsWith('/shop/') ||
+    to.path.startsWith('/onboarding')
+  if (sellerArea) exitFullscreen()
+  else enterFullscreen()
   return true
 })
 

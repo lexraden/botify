@@ -1,0 +1,51 @@
+// Единый источник локали всего Mini App (i18n.js читает отсюда же): начальный
+// язык берём из Telegram-профиля пользователя, дальше выбор живёт вручную.
+import { ref } from 'vue'
+import { tg } from './telegram'
+
+const KEY = 'botify:locale'
+export const LOCALES = ['ru', 'en']
+
+function detect() {
+  // русский, только если так настроен сам Telegram; нет данных или другой
+  // язык — английский всегда (решение владельца: дефолт платформы EN)
+  const raw = tg?.initDataUnsafe?.user?.language_code ?? ''
+  return String(raw).toLowerCase().startsWith('ru') ? 'ru' : 'en'
+}
+
+function stored() {
+  try {
+    const saved = localStorage.getItem(KEY)
+    return LOCALES.includes(saved) ? saved : null
+  } catch {
+    return null // приватный режим / заблокированное хранилище
+  }
+}
+
+export const locale = ref(stored() ?? detect())
+
+// Ручной выбор из профиля (или null): уезжает на бэкенд заголовком X-Locale,
+// чтобы пуши бота приходили на том же языке, что и сам Mini App. Автодетект
+// Telegram сюда не входит — сервер сам видит language_code в initData.
+// Наружу (заголовком X-Locale) уходит только явный выбор: автоопределение
+// отправлять нельзя — сервер запомнил бы его навсегда и перестал реагировать
+// на смену языка в самом Telegram.
+//
+// Цена: выбор хранится на устройстве, а на сервере — насовсем. Очистили кэш
+// Telegram, переустановили, открыли тот же магазин с другого устройства —
+// приложение снова определяет язык само, а пуши идут на прежнем выбранном.
+// Чинится повторным переключением. Симптом «бот пишет не на том языке»
+// диагностируется отсюда и из notify_texts.buyer_locale.
+export function storedLocale() {
+  return stored()
+}
+
+export function setLocale(value) {
+  if (!LOCALES.includes(value)) return
+  locale.value = value
+  try {
+    localStorage.setItem(KEY, value)
+  } catch {
+    /* не критично: при следующем открытии язык определится заново */
+  }
+}
