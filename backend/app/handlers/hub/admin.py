@@ -1,5 +1,6 @@
 """Команды супер-админа платформы в hub-боте."""
 
+import html
 from decimal import Decimal, InvalidOperation
 
 from aiogram import Router, types
@@ -98,6 +99,58 @@ async def _margin_lines() -> list[str]:
         left, rate = margin.next_tier
         lines.append(f"До ставки {rate}% ещё {fmt(left)} USDT оборота")
     return lines
+
+
+@router.message(Command("stats"))
+async def stats(message: types.Message) -> None:
+    """/stats — сводка по всей платформе. Видно только админам."""
+    if message.from_user is None or not await _is_admin(message.from_user.id):
+        return  # для обычных продавцов команды как будто не существует
+
+    from app.services import platform_stats
+
+    async with get_session() as session:
+        totals = await platform_stats.totals(session)
+        funnel = await platform_stats.funnel(session)
+        sales = await platform_stats.sales(session)
+        top = await platform_stats.top_shops(session)
+
+    lines = [
+        "<b>Платформа</b>",
+        f"• Продавцов: <b>{totals.sellers}</b>",
+        f"• Магазинов: <b>{totals.shops_live}</b> живых из {totals.shops}",
+        f"• Покупателей: <b>{totals.customers}</b>",
+        f"• Товаров: {totals.products}",
+        "",
+        "<b>Продажи</b>",
+        f"• Оборот: <b>{fmt(sales.gmv)} USDT</b> за всё время",
+        f"• За 30 дней: {fmt(sales.gmv_30d)} · за 7 дней: {fmt(sales.gmv_7d)}",
+        f"• Заказов: {sales.orders}, средний чек {fmt(sales.avg_check)}",
+        "",
+        # Вложенные шаги: у дошедшего до продажи есть и бот, и товар. Числа
+        # выведены из существующих строк, событий про продавца никто не пишет
+        "<b>Путь продавца</b>",
+        f"• Зарегистрировались: {funnel.registered}",
+        f"• Завели магазин: {funnel.with_shop}",
+        f"• Подключили бота: {funnel.with_bot}",
+        f"• Добавили товар: {funnel.with_product}",
+        f"• Дошли до продажи: <b>{funnel.with_sale}</b>",
+        f"• Вывели деньги: <b>{funnel.with_payout}</b>",
+    ]
+
+    if top:
+        lines += ["", "<b>Топ магазинов по обороту</b>"]
+        for place, shop in enumerate(top, 1):
+            # название пишет продавец — уходит с parse_mode=HTML, экранируем
+            lines.append(
+                f"{place}. {html.escape(shop.name)} — "
+                f"<b>{fmt(shop.gmv)} USDT</b> ({shop.orders} зак.)"
+            )
+    else:
+        lines += ["", "Оплаченных заказов пока нет — топ пустой."]
+
+    lines += await _margin_lines()
+    await message.answer("\n".join(lines))
 
 
 @router.message(Command("payouts"))
