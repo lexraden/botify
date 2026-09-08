@@ -35,6 +35,14 @@ class OrderChat(Base, CreatedAtMixin):
     status: Mapped[str] = mapped_column(String(24), default="active", server_default="active")
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Докуда продавец прочитал переписку. NULL — не открывал ни разу, значит
+    # непрочитано всё, что написал покупатель. Хранится временем, а не флагом:
+    # флаг пришлось бы сбрасывать при каждом новом сообщении, а время само
+    # отвечает и на «сколько новых», и на «есть ли новые».
+    # Отметки покупателя нет намеренно: у него сообщения и так дублируются
+    # в личку от бота, непрочитанных там не бывает.
+    seller_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     messages = relationship(
         "ChatMessage", back_populates="chat", cascade="all, delete-orphan"
     )

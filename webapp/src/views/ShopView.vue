@@ -12,6 +12,7 @@ import {
   fetchShopStats,
   fetchShopSummary,
   fetchSellerReviews,
+  fetchShopChats,
   fulfillOrder,
   rejectReview,
   replyToReview,
@@ -33,6 +34,10 @@ const stats = ref(null)
 const products = ref([])
 const orders = ref([])
 const reviews = ref([])
+// инбокс переписок и подраздел вкладки «Сообщения»: 'chats' | 'reviews'
+const chats = ref([])
+const inboxTab = ref(route.query.tab === 'reviews' ? 'reviews' : 'chats')
+const unreadTotal = computed(() => chats.value.reduce((n, c) => n + (c.unread || 0), 0))
 const error = ref('')
 // форма ответа на отзыв: один ответ на отзыв, повторная отправка правит его
 const replyForm = ref({ reviewId: null, body: '', sending: false })
@@ -75,9 +80,16 @@ async function moderateReview(r, action) {
 // окно тарифов: открывается кнопкой отсюда и само — когда упёрлись в лимит
 const planOpen = ref(false)
 const PLAN_NAME = { pro: 'Pro', plus: 'Plus' }
-const tab = ref(['products', 'orders', 'reviews', 'stats'].includes(route.query.tab)
-  ? route.query.tab
-  : 'products')
+// ?tab=reviews оставлен рабочим псевдонимом: на него ссылаются уведомления
+// об отзывах, и после переезда отзывов внутрь «Сообщений» такая ссылка молча
+// открывала бы «Товары»
+const tab = ref(
+  route.query.tab === 'reviews'
+    ? 'messages'
+    : ['products', 'orders', 'messages', 'stats'].includes(route.query.tab)
+      ? route.query.tab
+      : 'products',
+)
 
 // --- кошелёк магазина ---
 const withdrawing = ref(false)
@@ -206,8 +218,11 @@ async function reload() {
       fetchProducts(id),
       fetchShopOrders(id),
     ])
-  // отзывы — второстепенно: не грузятся, остальной кабинет всё равно работает
-  reviews.value = await fetchSellerReviews(id).catch(() => [])
+  // отзывы и переписки — второстепенно: не грузятся, остальной кабинет работает
+  ;[reviews.value, chats.value] = await Promise.all([
+    fetchSellerReviews(id).catch(() => []),
+    fetchShopChats(id).catch(() => []),
+  ])
 }
 
 onMounted(async () => {
@@ -517,7 +532,9 @@ async function removeLogo() {
       <nav>
         <button :class="{ active: tab === 'products' }" @click="tab = 'products'">{{ t('tab.products') }}</button>
         <button :class="{ active: tab === 'orders' }" @click="tab = 'orders'">{{ t('tab.orders') }}</button>
-        <button :class="{ active: tab === 'reviews' }" @click="tab = 'reviews'">{{ t('tab.reviews') }}</button>
+        <button :class="{ active: tab === 'messages' }" @click="tab = 'messages'">
+          {{ t('tab.messages') }}<span v-if="unreadTotal" class="unread">{{ unreadTotal }}</span>
+        </button>
         <button :class="{ active: tab === 'stats' }" @click="tab = 'stats'">{{ t('tab.stats') }}</button>
       </nav>
 
@@ -638,7 +655,42 @@ async function removeLogo() {
         <p v-if="!orders.length" class="empty">{{ t('seller.noOrders') }}</p>
       </template>
 
-      <template v-else-if="tab === 'reviews'">
+      <template v-else-if="tab === 'messages'">
+        <!-- два источника, одно место: переписки по заказам и отзывы. Данные
+             не смешиваем — у отзыва модерация и один ответ, у чата поток -->
+        <div class="types inbox-tabs">
+          <button
+            :class="{ active: inboxTab === 'chats' }"
+            @click="inboxTab = 'chats'"
+          >{{ t('inbox.chats') }}<span v-if="unreadTotal" class="unread">{{ unreadTotal }}</span></button>
+          <button
+            :class="{ active: inboxTab === 'reviews' }"
+            @click="inboxTab = 'reviews'"
+          >{{ t('inbox.reviews') }}</button>
+        </div>
+
+        <template v-if="inboxTab === 'chats'">
+          <p v-if="!chats.length" class="empty">{{ t('inbox.noChats') }}</p>
+          <div v-else class="card chats-block">
+            <button
+              v-for="c in chats"
+              :key="c.order_id"
+              class="chat-row"
+              @click="router.push(`/shop/${botId}/orders/${c.order_id}/chat`)"
+            >
+              <span class="chat-head">
+                <b>{{ t('reviews.orderLabel', { n: c.order_id }) }}</b>
+                <span v-if="c.unread" class="unread">{{ c.unread }}</span>
+              </span>
+              <span class="chat-last">
+                <!-- отступ стилем, а не пробелом в разметке: Vue его съедает -->
+                <span v-if="c.last_sender === 'seller'" class="me">{{ t('inbox.you') }}</span>{{ c.last_message }}
+              </span>
+            </button>
+          </div>
+        </template>
+
+        <template v-else>
         <!-- что говорят покупатели: личность не раскрывается, только псевдоним.
              Низкие оценки ждут одобрения, скрытые видны только здесь -->
         <p v-if="!reviews.length" class="empty">{{ t('seller.noReviews') }}</p>
@@ -697,6 +749,7 @@ async function removeLogo() {
             </a>
           </div>
         </div>
+        </template>
       </template>
 
       <template v-else>
@@ -849,9 +902,16 @@ h2 { font-size: 18px; margin: 0 0 4px; }
 .stat.green b, .stat.green span { color: var(--green-text); }
 nav { display: flex; gap: 4px; background: var(--surface2); border-radius: 15px; padding: 4px; margin: 14px 0 12px; }
 nav button {
+  /* nowrap и одна высота на все: со счётчиком «Сообщения» переносились на
+     вторую строку и ряд вкладок становился неровным */
   flex: 1; border: 0; border-radius: 11px; height: 37px; background: none; color: var(--text);
   font-size: 13px; font-weight: 700; cursor: pointer;
+  white-space: nowrap; padding: 0 2px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
+/* счётчик на самой вкладке компактнее, чем в списке: места там мало */
+nav button .unread { min-width: 15px; height: 15px; font-size: 10px; margin-left: 4px; padding: 0 3px; }
+nav button.active .unread { background: #fff; color: var(--accent); }
 nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .add { background: var(--accent-soft); color: var(--accent); margin-bottom: 10px; }
 .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -918,6 +978,29 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .reviews-block { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .seller-review { border-top: 1px solid var(--surface2); padding-top: 8px; }
 .items .variant { color: var(--sub); }
+/* счётчик новых: и на вкладке, и на строке диалога */
+.unread {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+  border-radius: 9px; background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 800;
+}
+.inbox-tabs { margin-bottom: 12px; }
+.chats-block { display: flex; flex-direction: column; gap: 2px; }
+.chat-row {
+  display: flex; flex-direction: column; gap: 3px; align-items: stretch;
+  width: 100%; text-align: left; cursor: pointer;
+  border: 0; background: none; color: inherit;
+  padding: 11px 2px; border-top: 1px solid var(--surface2);
+  font: inherit;
+}
+.chat-row:first-child { border-top: 0; }
+.chat-head { display: flex; align-items: center; justify-content: space-between; }
+.chat-last .me { margin-right: 4px; }
+.chat-last {
+  color: var(--sub); font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .sr-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; flex-shrink: 0; }
 .sr-right { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }

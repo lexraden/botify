@@ -5,6 +5,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 // Тест падает без правок — кнопок модерации и вкладки не было.
 const approveReview = vi.fn()
 const rejectReview = vi.fn()
+const fetchShopChats = vi.fn(() => Promise.resolve([]))
 vi.mock('../../api', () => ({
   approveReview: (...args) => approveReview(...args),
   deleteProduct: vi.fn(),
@@ -12,6 +13,7 @@ vi.mock('../../api', () => ({
   fetchMe: vi.fn(() => Promise.resolve({})),
   fetchProducts: vi.fn(() => Promise.resolve([])),
   fetchSellerReviews: vi.fn(() => Promise.resolve(REVIEWS)),
+  fetchShopChats: (...args) => fetchShopChats(...args),
   fetchShopOrders: vi.fn(() => Promise.resolve([])),
   fetchShopStats: vi.fn(() => Promise.resolve({})),
   fetchShopSummary: vi.fn(() => Promise.resolve(SUMMARY)),
@@ -183,7 +185,76 @@ describe('ShopView — вкладка отзывов и модерация', () 
 
     // вкладок четыре, «Рассылки» среди них больше нет
     const navButtons = w.findAll('nav button')
-    expect(navButtons.map((b) => b.text())).toEqual(['Товары', 'Заказы', 'Отзывы', 'Статистика'])
+    expect(navButtons.map((b) => b.text())).toEqual([
+      'Товары',
+      'Заказы',
+      'Сообщения',
+      'Статистика',
+    ])
+    w.unmount()
+  })
+})
+
+describe('ShopView — вкладка «Сообщения»: диалоги и отзывы', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setLocale('ru')
+  })
+
+  async function openInbox(chats) {
+    fetchShopChats.mockResolvedValue(chats)
+    const w = await mountReviews()
+    // из ?tab=reviews попадаем в «Сообщения», подраздел — отзывы
+    await w.findAll('.inbox-tabs button')[0].trigger('click')
+    return w
+  }
+
+  it('диалоги и отзывы — два раздела одной вкладки, данные не смешаны', async () => {
+    const w = await openInbox([
+      { order_id: 12, order_status: 'paid', last_message: 'Когда отправите?', last_message_at: '2026-09-01T10:00:00Z', last_sender: 'customer', unread: 2, can_send: true },
+    ])
+    expect(w.findAll('.inbox-tabs button').map((b) => b.text())).toEqual(['Диалоги2', 'Отзывы'])
+
+    const row = w.find('.chat-row')
+    expect(row.text()).toContain('Заказ #12')
+    expect(row.text()).toContain('Когда отправите?')
+    // отзывы в разделе диалогов не показываются
+    expect(w.find('.seller-review').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('счётчик новых на вкладке — сумма по всем перепискам', async () => {
+    const w = await openInbox([
+      { order_id: 1, order_status: 'paid', last_message: 'а', last_message_at: null, last_sender: 'customer', unread: 2, can_send: true },
+      { order_id: 2, order_status: 'paid', last_message: 'б', last_message_at: null, last_sender: 'customer', unread: 3, can_send: true },
+    ])
+    const tabButton = w.findAll('nav button')[2]
+    expect(tabButton.find('.unread').text()).toBe('5')
+    w.unmount()
+  })
+
+  it('без новых счётчика нет вовсе', async () => {
+    const w = await openInbox([
+      { order_id: 1, order_status: 'paid', last_message: 'а', last_message_at: null, last_sender: 'seller', unread: 0, can_send: true },
+    ])
+    expect(w.findAll('nav button')[2].find('.unread').exists()).toBe(false)
+    // своё последнее сообщение подписано, чтобы не путать с покупательским
+    expect(w.find('.chat-last').text()).toContain('Ты:')
+    w.unmount()
+  })
+
+  it('строка диалога ведёт в переписку этого заказа', async () => {
+    const w = await openInbox([
+      { order_id: 42, order_status: 'paid', last_message: 'x', last_message_at: null, last_sender: 'customer', unread: 1, can_send: true },
+    ])
+    await w.find('.chat-row').trigger('click')
+    expect(routerPush).toHaveBeenCalledWith('/shop/1/orders/42/chat')
+    w.unmount()
+  })
+
+  it('переписок нет — объясняем, откуда они берутся', async () => {
+    const w = await openInbox([])
+    expect(w.text()).toContain('Переписок пока нет')
     w.unmount()
   })
 })

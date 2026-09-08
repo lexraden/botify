@@ -17,6 +17,7 @@ vi.mock('../../api', () => ({
   fetchMe: vi.fn(() => Promise.resolve({})),
   fetchProducts: vi.fn(() => Promise.resolve([])),
   fetchSellerReviews: vi.fn(() => Promise.resolve([])),
+  fetchShopChats: () => Promise.resolve([]),
   fetchShopOrders: vi.fn(() => Promise.resolve([ORDER])),
   fetchShopStats: vi.fn(() => Promise.resolve({})),
   fetchShopSummary: vi.fn(() => Promise.resolve(SUMMARY)),

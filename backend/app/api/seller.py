@@ -12,7 +12,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -1313,6 +1313,103 @@ class ChatMessageIn(BaseModel):
     body: str = Field(min_length=1, max_length=1000)
 
 
+class ChatListItemOut(BaseModel):
+    """Строка инбокса. Личность покупателя не раскрывается — как и в самом
+    чате, наружу идёт только заказ."""
+
+    order_id: int
+    order_status: str
+    last_message: str | None
+    last_message_at: datetime | None
+    last_sender: str | None  # seller | customer
+    unread: int
+    can_send: bool
+
+
+@router.get("/bots/{bot_id}/chats", response_model=list[ChatListItemOut])
+async def list_chats(
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> list[ChatListItemOut]:
+    """Переписки магазина, свежие сверху.
+
+    Считаем только живые chat_messages: заархивированные по определению
+    старше срока блокировки, и непрочитанных среди них быть не может.
+    """
+    from sqlalchemy import case
+
+    from app.models import ChatMessage
+    from app.services.chat import chat_is_open
+
+    last_at = func.max(ChatMessage.created_at).label("last_at")
+    unread = func.count(
+        case(
+            (
+                and_(
+                    ChatMessage.sender == "customer",
+                    or_(
+                        OrderChat.seller_read_at.is_(None),
+                        ChatMessage.created_at > OrderChat.seller_read_at,
+                    ),
+                ),
+                ChatMessage.id,
+            ),
+            else_=None,
+        )
+    ).label("unread")
+
+    rows = (
+        await session.execute(
+            select(OrderChat.id, OrderChat.order_id, last_at, unread)
+            .join(ChatMessage, ChatMessage.chat_id == OrderChat.id)
+            .where(OrderChat.bot_id == shop.id)
+            .group_by(OrderChat.id)
+            .order_by(last_at.desc())
+            .limit(100)
+        )
+    ).all()
+    if not rows:
+        return []
+
+    order_ids = [order_id for _, order_id, _, _ in rows]
+    orders = {
+        order.id: order
+        for order in (
+            await session.execute(select(Order).where(Order.id.in_(order_ids)))
+        ).scalars().all()
+    }
+    # последнее сообщение каждого чата — одним запросом, а не по одному на строку
+    chat_ids = [chat_id for chat_id, _, _, _ in rows]
+    latest = {}
+    for message in (
+        await session.execute(
+            select(ChatMessage)
+            .where(ChatMessage.chat_id.in_(chat_ids))
+            .order_by(ChatMessage.chat_id, ChatMessage.id)
+        )
+    ).scalars().all():
+        latest[message.chat_id] = message  # каждая следующая строка свежее
+
+    out = []
+    for chat_id, order_id, last_message_at, unread_count in rows:
+        order = orders.get(order_id)
+        message = latest.get(chat_id)
+        out.append(
+            ChatListItemOut(
+                order_id=order_id,
+                order_status=order.status if order else "unknown",
+                # фото без подписи приходит с пустым body — показываем пометку,
+                # иначе строка списка выглядит пустой
+                last_message=(message.body or "📷") if message else None,
+                last_message_at=last_message_at,
+                last_sender=message.sender if message else None,
+                unread=unread_count or 0,
+                can_send=chat_is_open(order) if order else False,
+            )
+        )
+    return out
+
+
 async def _order_with_chat(
     shop: SellerBot, order_id: int, session: AsyncSession
 ) -> tuple[Order, OrderChat]:
@@ -1335,11 +1432,21 @@ async def get_order_chat(
     shop: SellerBot = Depends(get_shop),
     session: AsyncSession = Depends(get_api_session),
 ) -> OrderChatOut:
-    """История переписки по заказу + состояние окна активности."""
+    """История переписки по заказу + состояние окна активности.
+
+    Открытие чата и есть прочтение: отдельной кнопки «отметить прочитанным»
+    нет — она бы означала, что список врёт до её нажатия.
+    """
     from app.services.chat import chat_is_open, closes_at, read_history
+
+    opened_at = datetime.now(timezone.utc)
 
     order, chat = await _order_with_chat(shop, order_id, session)
     messages = await read_history(session, chat.id)
+    # Время берём до чтения, а не после: покупатель может написать, пока мы
+    # собираем историю, и now() в конце пометил бы его сообщение прочитанным,
+    # хотя продавец его не видел
+    chat.seller_read_at = opened_at
     await session.commit()  # чат мог создаться этим вызовом
     return OrderChatOut(
         status=chat.status,

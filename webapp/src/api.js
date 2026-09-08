@@ -122,6 +122,11 @@ export const createSubscriptionInvoice = (method, plan) =>
   api.post('/seller/subscription/invoice', { method, plan }).then((r) => r.data)
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
+// Переписки магазина: заказ, превью последнего сообщения и сколько новых.
+// Отдельный адрес, а не поле в summary: инбокс опрашивается чаще кабинета.
+export const fetchShopChats = (botId) =>
+  api.get(`/seller/bots/${botId}/chats`).then((r) => r.data)
+
 // Чат заказа со стороны покупателя. Тот же тред, что видит продавец, только
 // адресуется своим заказом, а не парой «магазин + заказ»: магазин покупателя
 // уже определён bot_id, а чужой заказ бэкенд отдаёт 403.
