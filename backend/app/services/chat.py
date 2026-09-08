@@ -268,20 +268,64 @@ async def notify_customer_photo(
         await bot.session.close()
 
 
+# Сколько слов покупателя показать в пуше. Целиком не шлём: пуш — это повод
+# открыть кабинет, а не второй экземпляр переписки.
+PREVIEW_LEN = 120
+
+
+def _preview(body: str | None) -> str:
+    """Начало сообщения для пуша. Текст пишет покупатель, а пуш уходит с
+    parse_mode=HTML — без экранирования один «<» оставил бы продавца вообще
+    без уведомления (tests/test_html_safety.py)."""
+    text = (body or "").strip()
+    if not text:
+        return ""
+    if len(text) > PREVIEW_LEN:
+        text = text[:PREVIEW_LEN].rstrip() + "…"
+    return html.escape(text)
+
+
 async def notify_seller(
-    seller_tg: int, order_id: int, has_photo: bool = False, locale: str = "ru"
+    seller_tg: int,
+    order_id: int,
+    has_photo: bool = False,
+    locale: str = "ru",
+    bot_id: int | None = None,
+    body: str | None = None,
 ) -> None:
-    """Сообщение покупателя -> пуш продавцу в hub-бот (без деталей личности)."""
+    """Сообщение покупателя -> пуш продавцу в hub-бот (без деталей личности).
+
+    Кнопка ведёт сразу в «Сообщения» нужного магазина: раньше пуш говорил
+    «открой кабинет» словами, и продавец искал его руками. Личность
+    покупателя в пуш не попадает — как и везде в чате, наружу идёт только
+    заказ.
+    """
+    from aiogram import types
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
     from app.bots.hub import hub_bot
+    from app.config import get_settings
 
     photo_mark = " 📷" if has_photo else ""
-    try:
-        await hub_bot.send_message(
-            seller_tg,
-            seller_texts.text(
-                locale, "push.chat_message", id=order_id, photo=photo_mark
+    preview = _preview(body)
+    text = seller_texts.text(locale, "push.chat_message", id=order_id, photo=photo_mark)
+    if preview:
+        text += f"\n\n<i>{preview}</i>"
+
+    markup = None
+    webapp_url = get_settings().effective_webapp_url
+    if webapp_url and bot_id is not None:
+        kb = InlineKeyboardBuilder()
+        kb.button(
+            text=seller_texts.text(locale, "btn.open_chats"),
+            web_app=types.WebAppInfo(
+                url=f"{webapp_url.rstrip('/')}/shop/{bot_id}?tab=messages"
             ),
         )
+        markup = kb.as_markup()
+
+    try:
+        await hub_bot.send_message(seller_tg, text, reply_markup=markup)
     except Exception:
         logger.exception("Не удалось уведомить продавца о сообщении по заказу %s", order_id)
 

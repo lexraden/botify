@@ -663,7 +663,13 @@ async def send_order_chat_message(
     seller_tg = seller.telegram_id
     await ctx.session.commit()
 
-    await notify_seller(seller_tg, order.id, locale=seller_texts.seller_locale(seller))
+    await notify_seller(
+        seller_tg,
+        order.id,
+        locale=seller_texts.seller_locale(seller),
+        bot_id=order.bot_id,
+        body=payload.body,
+    )
     return out
 
 

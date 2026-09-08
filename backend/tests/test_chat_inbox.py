@@ -161,3 +161,84 @@ async def test_closed_window_is_visible_but_not_writable(db):
     row = (await inbox(bot_id))[0]
     assert row["can_send"] is False
     assert row["unread"] == 1  # прочитать всё ещё нужно
+
+
+# --------------------------------------------------------------------------
+# Пуш продавцу: кнопка в нужный магазин и превью сообщения
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_push_carries_button_into_the_right_shop(db):
+    """Раньше пуш говорил «открой кабинет» словами, и продавец искал его
+    руками. Кнопка ведёт прямо в «Сообщения» этого магазина."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.config import get_settings
+    from app.services.chat import notify_seller
+
+    await paid_physical_order(db)
+    bot_id = await bot_id_of(db)
+    settings = get_settings().model_copy(update={"webapp_url": "https://app.example"})
+    with (
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as send,
+        patch("app.config.get_settings", return_value=settings),
+    ):
+        await notify_seller(111, 12, locale="ru", bot_id=bot_id, body="Когда отправите?")
+
+    kwargs = send.await_args.kwargs
+    button = kwargs["reply_markup"].inline_keyboard[0][0]
+    assert button.web_app.url == f"https://app.example/shop/{bot_id}?tab=messages"
+    # первые слова покупателя видно сразу — не открывая кабинет
+    assert "Когда отправите?" in send.await_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_push_escapes_the_buyers_text(db):
+    """Текст пишет покупатель, а пуш уходит с parse_mode=HTML: один «<»
+    оставил бы продавца вообще без уведомления."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.services.chat import notify_seller
+
+    with patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as send:
+        await notify_seller(111, 12, locale="ru", bot_id=1, body="<b>жирный</b> <script>")
+
+    text = send.await_args.args[1]
+    assert "<b>жирный</b>" not in text
+    assert "&lt;script&gt;" in text
+
+
+@pytest.mark.asyncio
+async def test_long_message_is_cut_in_the_push(db):
+    """Пуш — повод открыть кабинет, а не второй экземпляр переписки."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.services.chat import PREVIEW_LEN, notify_seller
+
+    with patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as send:
+        await notify_seller(111, 12, locale="ru", bot_id=1, body="я" * 500)
+
+    text = send.await_args.args[1]
+    assert "…" in text
+    assert text.count("я") <= PREVIEW_LEN
+
+
+@pytest.mark.asyncio
+async def test_push_without_webapp_url_still_goes(db):
+    """Без WEBAPP_URL кнопку строить не из чего — уведомление всё равно
+    должно дойти, а не потеряться."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.config import get_settings
+    from app.services.chat import notify_seller
+
+    settings = get_settings().model_copy(update={"webapp_url": ""})
+    with (
+        patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()) as send,
+        patch("app.config.get_settings", return_value=settings),
+    ):
+        await notify_seller(111, 12, locale="ru", bot_id=1, body="привет")
+
+    assert send.await_count == 1
+    assert send.await_args.kwargs["reply_markup"] is None

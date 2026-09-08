@@ -52,6 +52,31 @@ def test_without_choice_ru_speakers_get_ru_others_en_unknown_ru():
     assert seller_locale(None) == "ru"
 
 
+def test_buyer_texts_present_in_both_locales():
+    """Сторож для покупательской стороны. У продавца такой уже был и ловил
+    забытые переводы; у покупателя его не было вовсе — а тексты чата,
+    подтверждений оплаты и выдачи уходят именно ему."""
+    from app.services import notify_texts
+
+    missing = notify_texts.TEXTS["ru"].keys() ^ notify_texts.TEXTS["en"].keys()
+    assert not missing, f"тексты покупателю разъехались: {missing}"
+
+
+def test_chat_texts_are_translated():
+    """Чат — самое живое место переписки: у обеих сторон он обязан говорить
+    на своём языке, а не на русском по умолчанию."""
+    from app.services import notify_texts
+
+    for key in ("chat.header", "chat.locked", "chat.rate_limited"):
+        ru = notify_texts.TEXTS["ru"][key]
+        en = notify_texts.TEXTS["en"][key]
+        assert ru != en, f"{key} не переведён"
+    assert "closed for new messages" in notify_texts.text("en", "chat.locked")
+    # пуш продавцу о сообщении и кнопка к нему
+    assert "New message" in seller_texts.text("en", "push.chat_message", id=1, photo="")
+    assert "Open the conversation" in seller_texts.text("en", "btn.open_chats")
+
+
 def test_every_key_present_in_both_locales():
     missing = seller_texts.TEXTS["ru"].keys() ^ seller_texts.TEXTS["en"].keys()
     assert not missing, f"ключи текстов разъехались: {missing}"

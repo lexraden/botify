@@ -123,7 +123,9 @@ async def relay_buyer_message(
         order_id = order.id
         await session.commit()
 
-    await chat_service.notify_seller(seller_tg, order_id, locale=seller_locale)
+    await chat_service.notify_seller(
+        seller_tg, order_id, locale=seller_locale, bot_id=bot_record.id, body=text
+    )
 
 
 async def _download_photo(message: types.Message, photo) -> bytes:
@@ -211,4 +213,11 @@ async def relay_buyer_photo(
         order_id = order.id
         await session.commit()
 
-    await chat_service.notify_seller(seller_tg, order_id, has_photo=True, locale=seller_locale)
+    await chat_service.notify_seller(
+        seller_tg,
+        order_id,
+        has_photo=True,
+        locale=seller_locale,
+        bot_id=bot_record.id,
+        body=caption,
+    )
