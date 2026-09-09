@@ -110,6 +110,41 @@ async def latest_draft(seller_id: int) -> SellerBot | None:
         ).scalar_one_or_none()
 
 
+# getMe у Telegram ради одного флага на каждый вход в приложение — лишний
+# рейс на самом частом запросе. Флаг меняется руками в @BotFather и раз в
+# несколько минут перечитать его достаточно.
+_MANAGED_TTL_SEC = 300.0
+# payload диплинка: /start с ним сразу открывает создание магазина
+NEWSHOP_PAYLOAD = "newshop"
+_managed_cache: tuple[float, bool] | None = None
+
+
+async def create_shop_deeplink() -> str | None:
+    """Ссылка, которая открывает в hub-боте создание магазина.
+
+    None — Telegram не разрешает нам создавать ботов: тогда единственный
+    рабочий путь ручной, и звать человека в диалог, где его встретит отказ,
+    нельзя.
+    """
+    from app.bots.hub import hub_bot
+
+    if not await can_create_managed_bots():
+        return None
+    try:
+        me = await hub_bot.get_me()
+    except Exception:
+        logger.exception("Не удалось узнать юзернейм hub-бота")
+        return None
+    return f"https://t.me/{me.username}?start={NEWSHOP_PAYLOAD}" if me.username else None
+
+
+def reset_managed_cache() -> None:
+    """Забыть закэшированный флаг. Нужен тестам: кэш живёт в модуле, и без
+    сброса один тест наследовал бы ответ Telegram, подменённый в другом."""
+    global _managed_cache
+    _managed_cache = None
+
+
 async def can_create_managed_bots() -> bool:
     """Разрешено ли нашему боту создавать боты для пользователей.
 
@@ -121,14 +156,23 @@ async def can_create_managed_bots() -> bool:
     Ошибку связи трактуем как «нельзя»: лучше предложить ручной путь, чем
     отправить человека в тупик.
     """
+    from time import monotonic
+
     from app.bots.hub import hub_bot
+
+    global _managed_cache
+    now = monotonic()
+    if _managed_cache is not None and now - _managed_cache[0] < _MANAGED_TTL_SEC:
+        return _managed_cache[1]
 
     try:
         me = await hub_bot.get_me()
     except Exception:
         logger.exception("Не удалось спросить getMe у hub-бота")
-        return False
-    return bool(me.can_manage_bots)
+        return False  # сбой связи не кэшируем: следующая попытка спросит заново
+    allowed = bool(me.can_manage_bots)
+    _managed_cache = (now, allowed)
+    return allowed
 
 
 async def set_webhook_status(shop_id: int, status: str) -> None:

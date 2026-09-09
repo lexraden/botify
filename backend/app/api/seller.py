@@ -74,6 +74,10 @@ class MeOut(BaseModel):
     commission_pct: Decimal
     plan: str
     is_admin: bool
+    # Куда вести продавца за новым магазином. Ссылка открывает диалог в
+    # hub-боте, где Telegram сам создаёт бота — BotFather не участвует.
+    # None — создавать боты нам сейчас нельзя, остаётся ручной ввод токена.
+    create_shop_link: str | None = None
     bots: list[BotOut]
 
 
@@ -84,8 +88,11 @@ async def _bots_of(session: AsyncSession, seller: Seller) -> list[SellerBot]:
     return list(result.scalars().all())
 
 
-def _me_payload(seller: Seller, bots: list[SellerBot]) -> MeOut:
+def _me_payload(
+    seller: Seller, bots: list[SellerBot], create_shop_link: str | None = None
+) -> MeOut:
     return MeOut(
+        create_shop_link=create_shop_link,
         onboarding_step=seller.onboarding_step,
         terms_accepted=seller.terms_accepted_at is not None,
         cryptobot_connected=seller.cryptobot_connected,
@@ -103,7 +110,13 @@ async def me(
 ) -> MeOut:
     """Первый запрос при открытии Mini App: по onboarding_step фронт понимает,
     какой экран рендерить, и не начинает онбординг заново после пересоздания webview."""
-    return _me_payload(seller, await _bots_of(session, seller))
+    from app.services.shop_draft import create_shop_deeplink
+
+    bots = await _bots_of(session, seller)
+    # ссылку считаем только тому, кому она нужна: у продавца с магазинами это
+    # лишний рейс в Telegram на каждом открытии приложения
+    link = await create_shop_deeplink() if not bots else None
+    return _me_payload(seller, bots, link)
 
 
 class SubscriptionOut(BaseModel):
@@ -190,10 +203,13 @@ async def terms_accept(
 ) -> MeOut:
     """Продавец отметил принятие условий на первом экране онбординга.
     Фиксируем время один раз: повторный вызов не перетирает таймстамп."""
+    from app.services.shop_draft import create_shop_deeplink
+
     if seller.terms_accepted_at is None:
         seller.terms_accepted_at = datetime.now(timezone.utc)
         await session.commit()
-    return _me_payload(seller, await _bots_of(session, seller))
+    # сразу после согласия продавец идёт создавать магазин — ссылка нужна тут же
+    return _me_payload(seller, await _bots_of(session, seller), await create_shop_deeplink())
 
 
 class ConnectBotIn(BaseModel):

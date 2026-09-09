@@ -338,6 +338,16 @@ export const DICT = {
       'Придумай имя и username бота',
       'Скопируй токен и вставь его ниже',
     ],
+    // главный путь: бота создаёт сам Telegram, поп-ап живёт в переписке с hub-ботом
+    'bot.titleCreate': 'Создай магазин',
+    'bot.createLead': 'Бот для магазина создаётся прямо в Telegram — вводить токен вручную не нужно',
+    'bot.createSteps': [
+      'Нажми <b>Создать магазин</b> — откроется чат с нами',
+      'Придумай название магазина',
+      'Telegram спросит имя и username бота и создаст его',
+    ],
+    'bot.createShop': 'Создать магазин',
+    'bot.haveOwn': 'У меня уже есть бот — ввести токен',
     'bot.tokenHint': 'Токен хранится только в зашифрованном виде',
     'bot.alert':
       'Уже есть бот? Отключи его от других конструкторов и вставь его токен — новый создавать не нужно.',
@@ -710,6 +720,16 @@ export const DICT = {
       'Pick a name and a username for the bot',
       'Copy the token and paste it below',
     ],
+    // main path: Telegram creates the bot itself, the popup lives in the hub-bot chat
+    'bot.titleCreate': 'Create your shop',
+    'bot.createLead': 'The shop bot is created right inside Telegram — no token to paste by hand',
+    'bot.createSteps': [
+      'Tap <b>Create shop</b> — a chat with us will open',
+      'Pick a name for your shop',
+      'Telegram will ask for the bot name and username and create it',
+    ],
+    'bot.createShop': 'Create shop',
+    'bot.haveOwn': 'I already have a bot — enter a token',
     'bot.tokenHint': 'The token is stored encrypted only',
     'bot.alert':
       'Already have a bot? Disconnect it from other builders and paste its token — no need to create a new one.',

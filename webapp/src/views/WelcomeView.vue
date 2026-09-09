@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { acceptTerms } from '../api'
 import { t, tList } from '../i18n'
 import { locale } from '../services/locale'
+import { openTelegramLink } from '../services/telegram'
 import { TERMS } from '../content/terms'
 import TermsModal from '../components/TermsModal.vue'
 
@@ -21,8 +22,12 @@ async function start() {
   saving.value = true
   error.value = ''
   try {
-    await acceptTerms()
-    router.replace('/onboarding/bot')
+    const me = await acceptTerms()
+    // Магазин создаёт сам Telegram: диалог с названием и кнопкой живёт в
+    // hub-боте, BotFather в этом пути не участвует. Ссылки нет — создавать
+    // боты нам сейчас не разрешено, остаётся ручной ввод токена.
+    if (me?.create_shop_link) openTelegramLink(me.create_shop_link)
+    else router.replace('/onboarding/bot')
   } catch (e) {
     error.value = e.response?.data?.detail || t('welcome.error')
   } finally {

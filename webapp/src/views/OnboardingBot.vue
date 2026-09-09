@@ -13,13 +13,30 @@ const error = ref('')
 // Повторный вход (уже есть хотя бы один бот): показываем упрощённый экран
 // «ещё одного бота», без поздравления о создании магазина.
 const addingMore = ref(false)
+// Ссылка на создание магазина силами Telegram — главный путь. Её нет, когда
+// создавать боты нам не разрешено: тогда ручной ввод токена единственный
+// рабочий, и прятать его не за что.
+const createLink = ref('')
+const manualOpen = ref(false)
 onMounted(async () => {
   try {
     const me = await fetchMe()
     addingMore.value = Boolean(me.cryptobot_connected && me.bots.length)
+    createLink.value = me.create_shop_link || ''
   } catch {
     /* нет данных — показываем обычный онбординг */
   }
+  manualOpen.value = !createLink.value
+})
+
+// Токен виден либо когда создавать боты нельзя, либо когда продавец сам
+// сказал, что бот у него уже есть
+const showManual = computed(() => manualOpen.value)
+const managed = computed(() => Boolean(createLink.value) && !showManual.value)
+
+const title = computed(() => {
+  if (addingMore.value) return t('bot.titleMore')
+  return managed.value ? t('bot.titleCreate') : t('bot.titleNew')
 })
 
 // словарь ошибок подключения — computed, чтобы переключение языка
@@ -76,15 +93,32 @@ async function submit() {
 
 <template>
   <div class="step" :class="{ 'kb-open': keyboardOpen }">
-    <h2>{{ addingMore ? t('bot.titleMore') : t('bot.titleNew') }}</h2>
-    <p class="lead">{{ t('bot.lead') }}</p>
+    <h2>{{ title }}</h2>
 
-    <!-- строки шагов — наш словарь с <b>-разметкой, поэтому v-html безопасен -->
-    <ol class="steps">
-      <li v-for="(step, i) in tList('bot.steps')" :key="i">
-        <span class="num">{{ i + 1 }}</span><span v-html="step" />
-      </li>
-    </ol>
+    <!-- Главный путь: магазин создаёт сам Telegram. Диалог с названием и
+         кнопкой живёт в hub-боте — reply-клавиатуру Mini App показать не
+         может, поэтому отсюда уходим в переписку. -->
+    <template v-if="managed">
+      <p class="lead">{{ t('bot.createLead') }}</p>
+      <ol class="steps">
+        <li v-for="(step, i) in tList('bot.createSteps')" :key="i">
+          <span class="num">{{ i + 1 }}</span><span v-html="step" />
+        </li>
+      </ol>
+      <p class="have-bot">
+        <a @click="manualOpen = true">{{ t('bot.haveOwn') }}</a>
+      </p>
+    </template>
+
+    <template v-else>
+      <p class="lead">{{ t('bot.lead') }}</p>
+
+      <!-- строки шагов — наш словарь с <b>-разметкой, поэтому v-html безопасен -->
+      <ol class="steps">
+        <li v-for="(step, i) in tList('bot.steps')" :key="i">
+          <span class="num">{{ i + 1 }}</span><span v-html="step" />
+        </li>
+      </ol>
 
     <input
       ref="tokenInput"
@@ -112,14 +146,22 @@ async function submit() {
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>
+    </template>
 
     <div class="actions">
-      <button class="btn btn-soft" @click="openTelegramLink('https://t.me/BotFather')">
-        {{ t('bot.openBotfather') }}
-      </button>
-      <button class="btn btn-primary" :disabled="saving || !token.trim()" @click="submit">
-        {{ saving ? t('bot.checking') : t('bot.connect') }}
-      </button>
+      <template v-if="managed">
+        <button class="btn btn-primary" @click="openTelegramLink(createLink)">
+          {{ t('bot.createShop') }}
+        </button>
+      </template>
+      <template v-else>
+        <button class="btn btn-soft" @click="openTelegramLink('https://t.me/BotFather')">
+          {{ t('bot.openBotfather') }}
+        </button>
+        <button class="btn btn-primary" :disabled="saving || !token.trim()" @click="submit">
+          {{ saving ? t('bot.checking') : t('bot.connect') }}
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -144,6 +186,8 @@ h2 { font-size: 21px; margin: 18px 0 10px; }
 .token { font-family: ui-monospace, 'SF Mono', Menlo, monospace; border-color: var(--accent); }
 .hint { display: flex; gap: 8px; align-items: center; margin-top: 9px; font-size: 12px; color: var(--sub); }
 .error { color: var(--red); }
+.have-bot { margin: 18px 0 0; font-size: 13px; }
+.have-bot a { color: var(--accent); cursor: pointer; }
 .actions {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding: 14px 18px 24px;
   display: flex; flex-direction: column; gap: 10px; background: var(--bg);

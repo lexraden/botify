@@ -748,3 +748,95 @@ async def test_command_instead_of_title_cancels_instead_of_nagging(db):
 
     state.clear.assert_awaited()
     assert await latest_draft(seller.id) is None
+
+
+# --------------------------------------------------------------------------
+# Вход из Mini App: диплинк вместо ручного ввода токена
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_deeplink_registers_seller_and_asks_for_title(db):
+    """Продавец принял условия в приложении и нажал «Создать магазин».
+    Диплинк обязан и завести его как продавца, и сразу спросить название —
+    иначе новичок упрётся в «сначала /start»."""
+    from sqlalchemy import select
+
+    from app.handlers.hub.start import cmd_start_newshop
+    from app.models import Seller
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(
+            id=5150, username="newbie", first_name="Новичок", language_code="ru"
+        ),
+        answer=AsyncMock(),
+    )
+    state = SimpleNamespace(
+        set_state=AsyncMock(), clear=AsyncMock(), update_data=AsyncMock()
+    )
+
+    with patch(
+        "app.bots.hub.hub_bot.get_me",
+        new=AsyncMock(return_value=SimpleNamespace(can_manage_bots=True, username="hub_bot")),
+    ):
+        await cmd_start_newshop(message, state)
+
+    async with db() as session:
+        seller = (
+            await session.execute(select(Seller).where(Seller.telegram_id == 5150))
+        ).scalar_one_or_none()
+    assert seller is not None, "диплинк не зарегистрировал продавца"
+    state.set_state.assert_awaited()
+    assert "назовём магазин" in message.answer.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_deeplink_is_absent_when_creation_is_off(db):
+    """Флаг снят — звать человека в диалог, где его встретит отказ, нельзя."""
+    from app.services.shop_draft import create_shop_deeplink
+
+    with patch(
+        "app.bots.hub.hub_bot.get_me",
+        new=AsyncMock(return_value=SimpleNamespace(can_manage_bots=False, username="hub_bot")),
+    ):
+        assert await create_shop_deeplink() is None
+
+
+@pytest.mark.asyncio
+async def test_deeplink_points_at_the_hub_bot(db):
+    from app.services.shop_draft import NEWSHOP_PAYLOAD, create_shop_deeplink
+
+    with patch(
+        "app.bots.hub.hub_bot.get_me",
+        new=AsyncMock(return_value=SimpleNamespace(can_manage_bots=True, username="hub_bot")),
+    ):
+        link = await create_shop_deeplink()
+    assert link == f"https://t.me/hub_bot?start={NEWSHOP_PAYLOAD}"
+
+
+@pytest.mark.asyncio
+async def test_managed_flag_is_cached_not_asked_every_time(db):
+    """getMe на каждом открытии приложения — лишний рейс на самом частом
+    запросе."""
+    from app.services.shop_draft import can_create_managed_bots
+
+    get_me = AsyncMock(return_value=SimpleNamespace(can_manage_bots=True, username="hub_bot"))
+    with patch("app.bots.hub.hub_bot.get_me", new=get_me):
+        assert await can_create_managed_bots() is True
+        assert await can_create_managed_bots() is True
+    assert get_me.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_connection_failure_is_not_cached(db):
+    """Сбой связи — не ответ «нельзя»: следующая попытка должна спросить снова,
+    иначе одна сетевая ошибка запирает онбординг на пять минут."""
+    from app.services.shop_draft import can_create_managed_bots
+
+    with patch("app.bots.hub.hub_bot.get_me", new=AsyncMock(side_effect=Exception("boom"))):
+        assert await can_create_managed_bots() is False
+
+    ok = AsyncMock(return_value=SimpleNamespace(can_manage_bots=True, username="hub_bot"))
+    with patch("app.bots.hub.hub_bot.get_me", new=ok):
+        assert await can_create_managed_bots() is True
+    assert ok.await_count == 1

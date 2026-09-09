@@ -1,12 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const { acceptTermsMock, replaceMock } = vi.hoisted(() => ({
+const { acceptTermsMock, replaceMock, openLinkMock } = vi.hoisted(() => ({
   acceptTermsMock: vi.fn(),
   replaceMock: vi.fn(),
+  openLinkMock: vi.fn(),
 }))
 
 vi.mock('../../api', () => ({ acceptTerms: acceptTermsMock }))
+// tg нужен транзитивному i18n (детект языка) — оставляем его пустым
+vi.mock('../../services/telegram', () => ({ tg: null, openTelegramLink: openLinkMock }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ replace: replaceMock }) }))
 
 import WelcomeView from '../WelcomeView.vue'
@@ -58,6 +61,18 @@ describe('WelcomeView — согласие с условиями', () => {
 
     expect(acceptTermsMock).toHaveBeenCalledTimes(1)
     expect(replaceMock).toHaveBeenCalledWith('/onboarding/bot')
+  })
+
+  it('если Telegram даёт создать бота, уводит в переписку, а не на ввод токена', async () => {
+    const link = 'https://t.me/botify_bot?start=newshop'
+    acceptTermsMock.mockResolvedValue({ create_shop_link: link })
+    const wrapper = mountView()
+    await wrapper.find('.agree input').setValue(true)
+    await wrapper.find('.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(openLinkMock).toHaveBeenCalledWith(link)
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 
   it('при ошибке сохранения показывает сообщение и никуда не ведёт', async () => {

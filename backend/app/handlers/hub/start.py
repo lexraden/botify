@@ -6,7 +6,7 @@
 без него ru* -> RU, остальным EN.
 """
 
-from aiogram import Router, types
+from aiogram import F, Router, types
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -18,6 +18,7 @@ from app.handlers.hub.mybots import send_shops_menu
 from app.handlers.hub.shop_admins import has_admin_shops
 from app.models import Seller, SellerBot
 from app.services.seller_texts import seller_locale, seller_text, text
+from app.services.shop_draft import NEWSHOP_PAYLOAD
 
 router = Router()
 
@@ -49,6 +50,20 @@ def welcome_back_text(bots: list[SellerBot], locale: str = "ru") -> str:
     else:
         status = text(locale, "start.back_many", n=len(active))
     return text(locale, "start.welcome_back", status=status)
+
+
+@router.message(CommandStart(deep_link=True, magic=F.args == NEWSHOP_PAYLOAD))
+async def cmd_start_newshop(message: types.Message, state: FSMContext) -> None:
+    """Диплинк из Mini App: продавец принял условия и жмёт «Создать магазин».
+
+    Регистрируем его как обычный /start (иначе новичок останется без строки
+    Seller и упрётся в «сначала /start»), а дальше сразу спрашиваем название —
+    диалог создания бота ведёт Telegram, BotFather не участвует.
+    """
+    from app.handlers.hub.newshop import start_newshop
+
+    await cmd_start(message, state)
+    await start_newshop(message, state)
 
 
 @router.message(CommandStart())

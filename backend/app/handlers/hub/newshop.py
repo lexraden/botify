@@ -77,25 +77,32 @@ async def _seller_for(message: types.Message) -> Seller | None:
         ).scalar_one_or_none()
 
 
-@router.message(Command("newshop"))
-async def cmd_newshop(message: types.Message, state: FSMContext) -> None:
+async def start_newshop(message: types.Message, state: FSMContext) -> None:
+    """Спросить название магазина. Общее тело для /newshop и для диплинка из
+    Mini App — расходиться этим двум входам нельзя, за ними один сценарий."""
+    seller = await _seller_for(message)
+    locale = seller_locale(seller) if seller is not None else "ru"
+
     # спрашиваем до вопроса про название: иначе человек введёт его, получит
     # кнопку и упрётся в «this bot doesn't support managing bots»
     if not await can_create_managed_bots():
         await message.answer(
-            text("ru", "newshop.management_off"), reply_markup=types.ReplyKeyboardRemove()
+            text(locale, "newshop.management_off"),
+            reply_markup=types.ReplyKeyboardRemove(),
         )
         return
 
     await state.set_state(NewShop.waiting_title)
     await state.update_data(asked_at=time())
-    # локаль берём у продавца: он мог переключить язык до запуска онбординга
-    seller = await _seller_for(message)
-    locale = seller_locale(seller) if seller is not None else "ru"
     await message.answer(
         text(locale, "newshop.ask_title"),
         reply_markup=types.ReplyKeyboardRemove(),
     )
+
+
+@router.message(Command("newshop"))
+async def cmd_newshop(message: types.Message, state: FSMContext) -> None:
+    await start_newshop(message, state)
 
 
 @router.message(StateFilter(NewShop.waiting_title), F.text)
