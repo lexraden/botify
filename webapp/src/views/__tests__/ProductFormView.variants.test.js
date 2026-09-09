@@ -10,8 +10,8 @@ vi.mock('../../api', () => ({
   uploadProductImage: (...a) => uploadProductImage(...a),
   fetchSubscription: () => Promise.resolve({
     plan: 'free', pro_expires_at: null,
-    price_usdt: '20', price_stars: 1500,
-    plus_price_usdt: '50', plus_price_stars: 3750,
+    plus_price_usdt: '20', plus_price_stars: 1500,
+    pro_price_usdt: '50', pro_price_stars: 3750,
     period_days: 30, crypto_available: true,
   }),
   createSubscriptionInvoice: vi.fn(),

@@ -44,7 +44,7 @@ class Seller(Base, CreatedAtMixin):
     # Монетизация MVP — только комиссия. Поля ниже — задел под месячную Pro-подписку:
     # план становится платным, когда база покупателей продавца превышает 1000
     # (см. docs/AUDIT.md, решение владельца от 2026-08-18).
-    plan: Mapped[str] = mapped_column(String(16), default="free")  # free | pro
+    plan: Mapped[str] = mapped_column(String(16), default="free")  # free | plus | pro
     pro_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # О каком окончании подписки продавцу уже напомнили. Ровно это значение,
     # а не флаг: продлил — метка перестаёт совпадать, и следующий срок

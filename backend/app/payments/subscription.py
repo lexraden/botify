@@ -1,4 +1,4 @@
-"""Pro-подписка продавца: счёт, зачисление, продление.
+"""Платная подписка продавца (Plus и Pro): счёт, зачисление, продление.
 
 Два способа оплаты — Crypto Pay (USDT) и Telegram Stars — приводят к одному
 и тому же: строка в subscription_payments и сдвинутый `pro_expires_at`.
@@ -12,7 +12,7 @@
 не возникает.
 
 Идемпотентность держится уникальностью внешнего идентификатора платежа
-(invoice_id / telegram_charge_id), а не проверкой «уже про или нет»: продлить
+(invoice_id / telegram_charge_id), а не проверкой «уже оплачено или нет»: продлить
 подписку заранее — законная операция, а принять одни деньги дважды — нет.
 """
 
@@ -52,9 +52,9 @@ def parse_payload(payload: str | None) -> tuple[int, str] | None:
 def price_of(plan: str) -> tuple[float, int]:
     """(цена в USDT, цена в звёздах) тарифа."""
     settings = get_settings()
-    if plan == "plus":
-        return settings.plus_price_usdt, settings.plus_price_stars
-    return settings.pro_price_usdt, settings.pro_price_stars
+    if plan == "pro":
+        return settings.pro_price_usdt, settings.pro_price_stars
+    return settings.plus_price_usdt, settings.plus_price_stars
 
 
 def _extended_to(seller: Seller, days: int, now: datetime) -> datetime:
@@ -80,7 +80,7 @@ async def grant_plan(
     amount_usdt: Decimal | None = None,
     amount_stars: int | None = None,
 ) -> bool:
-    """Зачислить оплату и продлить Pro. False — этот платёж уже зачтён.
+    """Зачислить оплату и продлить подписку. False — этот платёж уже зачтён.
 
     Повторная доставка вебхука падает на уникальном индексе внешнего
     идентификатора: подписка не продлевается дважды за одни деньги.
@@ -96,7 +96,7 @@ async def grant_plan(
             return False
 
         # Продлеваем от текущего окончания только в пределах того же тарифа:
-        # переход с Pro на Plus — это другой продукт, и «доплатить остаток
+        # переход с Plus на Pro — это другой продукт, и «доплатить остаток
         # старого» мы не умеем; отсчёт начинается заново.
         same_plan = active_plan(seller) == plan
         expires_at = _extended_to(seller, days, now) if same_plan else now + timedelta(days=days)

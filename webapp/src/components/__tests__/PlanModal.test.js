@@ -19,10 +19,10 @@ const { setLocale } = await import('../../services/locale')
 const INFO = {
   plan: 'free',
   pro_expires_at: null,
-  price_usdt: '20.000000',
-  price_stars: 1500,
-  plus_price_usdt: '50.000000',
-  plus_price_stars: 3750,
+  plus_price_usdt: '20.000000',
+  plus_price_stars: 1500,
+  pro_price_usdt: '50.000000',
+  pro_price_stars: 3750,
   period_days: 30,
   crypto_available: true,
 }
@@ -40,19 +40,20 @@ describe('PlanModal — окно тарифов', () => {
     return w
   }
 
-  it('показывает оба тарифа с обеими ценами', async () => {
+  it('тарифы идут от младшего к старшему, каждый со своей ценой', async () => {
     const w = await open('products')
     const tiers = w.findAll('.tier')
     expect(tiers).toHaveLength(2)
-    expect(tiers[0].text()).toContain('Pro')
+    // Plus — младший за 20, Pro — старший за 50 (названия поменяны 2026-09-09)
+    expect(tiers[0].text()).toContain('Plus')
     expect(tiers[0].text()).toContain('20 USDT')
     expect(tiers[0].text()).toContain('1500')
-    expect(tiers[1].text()).toContain('Plus')
+    expect(tiers[1].text()).toContain('Pro')
     expect(tiers[1].text()).toContain('50 USDT')
     expect(tiers[1].text()).toContain('3750')
   })
 
-  it('p2p-оплата обещана только в Plus', async () => {
+  it('p2p-оплата обещана только в Pro', async () => {
     const w = await open()
     const tiers = w.findAll('.tier')
     expect(tiers[0].text()).not.toContain('реквизит')
@@ -75,7 +76,7 @@ describe('PlanModal — окно тарифов', () => {
     await flushPromises()
 
     // тариф передаётся тот, чью кнопку нажали
-    expect(createSubscriptionInvoice).toHaveBeenCalledWith('crypto', 'plus')
+    expect(createSubscriptionInvoice).toHaveBeenCalledWith('crypto', 'pro')
     expect(openTelegramLink).toHaveBeenCalledWith('https://t.me/CryptoBot?start=x')
     expect(w.emitted('close')).toBeTruthy()
   })

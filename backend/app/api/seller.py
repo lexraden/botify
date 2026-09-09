@@ -38,7 +38,7 @@ from app.models import (
 )
 from app.models.orders import PAID_STATUSES
 from app.payments.payouts import paid_total, pending_total
-from app.plans import SERVICE_TYPES, active_plan, is_pro, limits_for, over_limit
+from app.plans import SERVICE_TYPES, active_plan, limits_for, over_limit
 from app.services import bot_profile
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 from app.services.seller_texts import seller_text
@@ -122,13 +122,15 @@ async def me(
 class SubscriptionOut(BaseModel):
     """Состояние подписки и цена — всё, что нужно окну «лимит исчерпан»."""
 
-    plan: str  # free | pro | plus
+    plan: str  # free | plus | pro
     pro_expires_at: datetime | None
-    # цены обоих платных тарифов: окно «лимит исчерпан» показывает оба сразу
-    price_usdt: Decimal
-    price_stars: int
+    # цены обоих платных тарифов: окно «лимит исчерпан» показывает оба сразу.
+    # Поля названы тарифами, а не «price/plus_price»: названия уже менялись
+    # местами, и безымянная «просто цена» это переживает молча.
     plus_price_usdt: Decimal
     plus_price_stars: int
+    pro_price_usdt: Decimal
+    pro_price_stars: int
     period_days: int
     # оба способа зависят от внешних сервисов: Crypto Pay может быть не
     # настроен, звёзды — недоступны в клиенте. Кнопку без способа не рисуем.
@@ -137,7 +139,7 @@ class SubscriptionOut(BaseModel):
 
 class SubscriptionInvoiceIn(BaseModel):
     method: str  # crypto | stars
-    plan: str = "pro"  # pro | plus
+    plan: str = "plus"  # plus | pro
 
 
 class SubscriptionInvoiceOut(BaseModel):
@@ -154,10 +156,10 @@ async def subscription(seller: Seller = Depends(get_seller)) -> SubscriptionOut:
     return SubscriptionOut(
         plan=active_plan(seller),
         pro_expires_at=seller.pro_expires_at,
-        price_usdt=Decimal(str(settings.pro_price_usdt)),
-        price_stars=settings.pro_price_stars,
         plus_price_usdt=Decimal(str(settings.plus_price_usdt)),
         plus_price_stars=settings.plus_price_stars,
+        pro_price_usdt=Decimal(str(settings.pro_price_usdt)),
+        pro_price_stars=settings.pro_price_stars,
         period_days=settings.pro_period_days,
         crypto_available=get_crypto_pay() is not None,
     )
@@ -167,8 +169,9 @@ async def subscription(seller: Seller = Depends(get_seller)) -> SubscriptionOut:
 async def subscription_invoice(
     payload: SubscriptionInvoiceIn, seller: Seller = Depends(get_seller)
 ) -> SubscriptionInvoiceOut:
-    """Счёт на Pro. Зачисление — не здесь: деньги подтверждает вебхук
-    Crypto Pay или successful_payment от Telegram, и только они выдают Pro."""
+    """Счёт на платный тариф. Зачисление — не здесь: деньги подтверждает
+    вебхук Crypto Pay или successful_payment от Telegram, и только они
+    открывают тариф."""
     from app.payments.subscription import create_crypto_invoice, create_stars_link
     from app.plans import PAID_PLANS
 
@@ -532,7 +535,7 @@ class LimitsOut(BaseModel):
     только показываются; при включении они блокируют рост, но ничего
     не удаляют (см. app/plans.py)."""
 
-    plan: str
+    plan: str  # free | plus | pro — действующий, а не оплаченный когда-то
     enforced: bool
     products_used: int
     products_cap: int | None
@@ -590,7 +593,7 @@ async def _limits_payload(session: AsyncSession, seller: Seller, bot_id: int) ->
     limits = limits_for(seller)
     products_used, services_used = await _catalog_usage(session, bot_id)
     return LimitsOut(
-        plan="pro" if is_pro(seller) else "free",
+        plan=active_plan(seller),
         enforced=get_settings().enforce_plan_limits,
         products_used=products_used,
         products_cap=limits.max_products,

@@ -22,21 +22,23 @@ onMounted(async () => {
   }
 })
 
+// Порядок — от младшего к старшему: Plus даёт безлимит, Pro добавляет к нему
+// оплату по реквизитам в чате. Названия поменялись местами 2026-09-09.
 const plans = computed(() =>
   info.value
     ? [
-        {
-          id: 'pro',
-          title: 'Pro',
-          usdt: Number(info.value.price_usdt),
-          stars: info.value.price_stars,
-          perks: [t('plan.perkUnlimited'), t('plan.perkMailing')],
-        },
         {
           id: 'plus',
           title: 'Plus',
           usdt: Number(info.value.plus_price_usdt),
           stars: info.value.plus_price_stars,
+          perks: [t('plan.perkUnlimited'), t('plan.perkMailing')],
+        },
+        {
+          id: 'pro',
+          title: 'Pro',
+          usdt: Number(info.value.pro_price_usdt),
+          stars: info.value.pro_price_stars,
           perks: [t('plan.perkUnlimited'), t('plan.perkMailing'), t('plan.perkP2P')],
         },
       ]

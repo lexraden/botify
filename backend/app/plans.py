@@ -1,13 +1,18 @@
 """Тарифы продавцов.
 
+Платных два: Plus (безлимитный каталог и рассылки) и Pro (то же плюс приём
+оплаты по реквизитам продавца в чате заказа). Названия менялись местами
+2026-09-09 — в базе они хранятся строками, поэтому смена сопровождалась
+миграцией d5e6f7a8b9c1, а не только правкой словарей.
+
 Сейчас лимиты НЕ применяются (enforce_plan_limits=False) — считается только
-использование, чтобы кабинет мог показывать «8 из 10». Когда Pro будет
-запущен, флаг включается, и лимиты начинают работать:
+использование, чтобы кабинет мог показывать «8 из 10». Когда платные тарифы
+будут запущены, флаг включается, и лимиты начинают работать:
 
   • превышение НИКОГДА ничего не удаляет — ни товары, ни базу покупателей.
     Продавцу просто нельзя добавить новый товар или запустить рассылку по
     базе больше лимита. Всё, что уже накоплено, остаётся на месте;
-  • продавцы, у которых на момент запуска Pro уже больше лимита, продолжают
+  • продавцы, у которых на момент запуска уже больше лимита, продолжают
     работать со своим каталогом и базой — блокируется только рост.
 """
 
@@ -20,7 +25,7 @@ SERVICE_TYPES = ("digital", "service")
 
 
 # Платные тарифы по возрастанию: старший включает всё, что даёт младший
-PAID_PLANS = ("pro", "plus")
+PAID_PLANS = ("plus", "pro")
 
 
 @dataclass(frozen=True)
@@ -35,12 +40,12 @@ class PlanLimits:
 
 
 FREE = PlanLimits(max_products=10, max_services=10, max_mailing_recipients=1000)
-PRO = PlanLimits(max_products=None, max_services=None, max_mailing_recipients=None)
-PLUS = PlanLimits(
+PLUS = PlanLimits(max_products=None, max_services=None, max_mailing_recipients=None)
+PRO = PlanLimits(
     max_products=None, max_services=None, max_mailing_recipients=None, p2p_payments=True
 )
 
-LIMITS_BY_PLAN = {"free": FREE, "pro": PRO, "plus": PLUS}
+LIMITS_BY_PLAN = {"free": FREE, "plus": PLUS, "pro": PRO}
 
 
 def active_plan(seller: Seller) -> str:
@@ -65,8 +70,12 @@ def limits_for(seller: Seller) -> PlanLimits:
     return LIMITS_BY_PLAN[active_plan(seller)]
 
 
-def is_pro(seller: Seller) -> bool:
-    """Есть ли у продавца действующий платный тариф — любой из них."""
+def is_paid(seller: Seller) -> bool:
+    """Есть ли у продавца действующий платный тариф — любой из них.
+
+    Названием тарифа не проверяется намеренно: «Pro» — конкретный старший
+    тариф, а вопрос здесь про любой оплаченный.
+    """
     return active_plan(seller) in PAID_PLANS
 
 

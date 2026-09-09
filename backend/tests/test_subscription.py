@@ -49,8 +49,9 @@ def test_payload_roundtrip():
 
 
 def test_prices_differ_by_plan():
-    assert price_of("pro") == (20.0, 1500)
-    assert price_of("plus") == (50.0, 3750)
+    # Plus — младший (безлимит), Pro — старший (плюс оплата по реквизитам)
+    assert price_of("plus") == (20.0, 1500)
+    assert price_of("pro") == (50.0, 3750)
 
 
 # --------------------------------------------------------------------------
@@ -114,18 +115,35 @@ async def test_paying_again_extends_from_current_end(db):
 
 
 @pytest.mark.asyncio
-async def test_upgrade_to_plus_starts_a_new_period(db):
-    """Plus — другой продукт: остаток Pro в него не переносится."""
+async def test_upgrade_to_pro_starts_a_new_period(db):
+    """Pro — другой продукт: остаток Plus в него не переносится."""
     seller_id = await make_seller(db)
-    await grant_plan(seller_id, "pro", method="crypto", invoice_id=4001)
-    pro_end = (await load(db, seller_id)).pro_expires_at
+    await grant_plan(seller_id, "plus", method="crypto", invoice_id=4001)
+    plus_end = (await load(db, seller_id)).pro_expires_at
 
-    await grant_plan(seller_id, "plus", method="crypto", invoice_id=4002)
+    await grant_plan(seller_id, "pro", method="crypto", invoice_id=4002)
+    seller = await load(db, seller_id)
+
+    assert seller.plan == "pro"
+    assert seller.pro_expires_at < plus_end + timedelta(days=1)
+    # оплата по реквизитам в чате — только у старшего тарифа
+    assert limits_for(seller).p2p_payments is True
+
+
+@pytest.mark.asyncio
+async def test_plus_is_unlimited_but_without_p2p(db):
+    """Разница между тарифами ровно одна — оплата по реквизитам в чате.
+
+    Названия менялись местами (2026-09-09), и без этой проверки перепутанный
+    словарь выглядел бы рабочим: лимиты сняты у обоих.
+    """
+    seller_id = await make_seller(db)
+    await grant_plan(seller_id, "plus", method="crypto", invoice_id=5001)
     seller = await load(db, seller_id)
 
     assert seller.plan == "plus"
-    assert seller.pro_expires_at < pro_end + timedelta(days=1)
-    assert limits_for(seller).p2p_payments is True
+    assert limits_for(seller).max_products is None
+    assert limits_for(seller).p2p_payments is False
 
 
 @pytest.mark.asyncio
@@ -157,9 +175,10 @@ async def test_subscription_endpoint_shows_both_plans(db):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["plan"] == "free"
-    assert body["price_usdt"] == "20.000000" or float(body["price_usdt"]) == 20
-    assert body["price_stars"] == 1500
-    assert body["plus_price_stars"] == 3750
+    assert float(body["plus_price_usdt"]) == 20
+    assert body["plus_price_stars"] == 1500
+    assert float(body["pro_price_usdt"]) == 50
+    assert body["pro_price_stars"] == 3750
     assert body["period_days"] == 30
 
 
