@@ -99,6 +99,20 @@ describe('ProfileView — профиль покупателя', () => {
     expect(prefs[0].text()).toBe('🌙')
   })
 
+  it('в профиле сказано, что чат с продавцом открывается только после оплаты', async () => {
+    fetchMyOrders.mockResolvedValue([])
+    const w = await mountView()
+    await flushPromises()
+
+    const note = w.find('.chat-note')
+    expect(note.exists()).toBe(true)
+    expect(note.text()).toContain('после оплаты')
+
+    setLocale('en')
+    await w.vm.$nextTick()
+    expect(w.find('.chat-note').text()).toContain('after payment')
+  })
+
   it('без настроенной поддержки кнопки нет — лучше никакой, чем не туда', async () => {
     fetchMyOrders.mockResolvedValue([])
     fetchShop.mockResolvedValue({

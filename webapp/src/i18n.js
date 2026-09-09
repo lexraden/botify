@@ -63,6 +63,8 @@ export const DICT = {
     // профиль покупателя
     'profile.fallbackName': 'Покупатель',
     'profile.role': 'покупатель',
+    'profile.chatNote':
+      'Чат с продавцом открывается после оплаты: кнопка «Написать продавцу» появляется у самого заказа.',
     'profile.support': '💬 Поддержка',
     'profile.write': 'написать',
     'profile.themeToggle': 'Сменить тему',
@@ -442,6 +444,8 @@ export const DICT = {
     // buyer profile
     'profile.fallbackName': 'Buyer',
     'profile.role': 'buyer',
+    'profile.chatNote':
+      'The chat with the seller opens after payment: the “Message the seller” button appears on the order itself.',
     'profile.support': '💬 Support',
     'profile.write': 'write',
     'profile.themeToggle': 'Toggle theme',

@@ -85,6 +85,15 @@ async function toggleLang() {
     <!-- покупки открыты прямо в профиле, отдельного пункта меню больше нет -->
     <BuyerOrders />
 
+    <!-- До оплаты писать продавцу некуда (services/chat.py: чат заводится у
+         оплаченного заказа). Без этой строки отсутствие кнопки выглядит багом. -->
+    <p class="chat-note">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--sub)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.6-.7L3 21l1.9-5a8.3 8.3 0 0 1-.9-3.8 8.4 8.4 0 0 1 8.5-8.2 8.4 8.4 0 0 1 8.5 8z" />
+      </svg>
+      <span>{{ t('profile.chatNote') }}</span>
+    </p>
+
     <button v-if="supportUrl" class="menu-item" @click="openTelegramLink(supportUrl)">
       <span>{{ t('profile.support') }}</span>
       <span class="muted">{{ t('profile.write') }}</span>
@@ -164,6 +173,16 @@ async function toggleLang() {
   }
 }
 .muted { font-size: 13px; color: var(--sub); }
+.chat-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--sub);
+  svg { flex-shrink: 0; margin-top: 1px; }
+}
 .menu-item {
   width: 100%; box-sizing: border-box; border: 1px solid var(--border); background: var(--surface);
   border-radius: 13px; padding: 15px 14px; margin-bottom: 10px; color: var(--text);
