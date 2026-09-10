@@ -34,6 +34,7 @@ from app.models import (
     SellerBot,
     ShopEvent,
     ShopLogo,
+    ShopPaymentMethod,
     StoreAdmin,
 )
 from app.models.orders import PAID_STATUSES
@@ -42,6 +43,7 @@ from app.plans import SERVICE_TYPES, active_plan, limits_for, over_limit
 from app.services import bot_profile
 from app.services.feedback import FeedbackIn, rate_limited, send_feedback
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
+from app.services.p2p import MAX_METHODS, MethodError, clean_method_fields, list_methods, reject_paid
 from app.services.seller_texts import seller_text
 from app.services.variants import apply_variants, line_title
 
@@ -433,6 +435,181 @@ async def submit_shop_feedback(
     if not sent:
         raise HTTPException(status_code=502, detail="send_failed")
     return {"status": "sent"}
+
+
+# --------------------------------------------------------------------------
+# Реквизиты магазина для оплаты переводом (p2p) — функция тарифа Pro
+# --------------------------------------------------------------------------
+
+
+class PaymentMethodIn(BaseModel):
+    kind: str = "card"  # card | sbp | crypto | other
+    label: str = Field(max_length=64)  # «Сбербанк», «USDT TRC20»
+    account: str = Field(max_length=128)  # номер карты / телефон / адрес
+    holder: str | None = Field(default=None, max_length=64)
+    note: str | None = Field(default=None, max_length=200)
+    is_active: bool = True
+
+
+class PaymentMethodOut(BaseModel):
+    id: int
+    kind: str
+    label: str
+    account: str
+    holder: str | None
+    note: str | None
+    is_active: bool
+
+
+def _method_out(m: ShopPaymentMethod) -> PaymentMethodOut:
+    return PaymentMethodOut(
+        id=m.id,
+        kind=m.kind,
+        label=m.label,
+        account=m.account,
+        holder=m.holder,
+        note=m.note,
+        is_active=m.is_active,
+    )
+
+
+def _require_p2p(seller: Seller) -> None:
+    """Приём переводов на свои реквизиты — то, за что берут деньги на Pro."""
+    if not limits_for(seller).p2p_payments:
+        raise HTTPException(status_code=403, detail="pro_required")
+
+
+@router.get("/bots/{bot_id}/payment-methods", response_model=list[PaymentMethodOut])
+async def payment_methods(
+    shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> list[PaymentMethodOut]:
+    """Реквизиты — деньги, поэтому только владельцу: приглашённый админ ведёт
+    магазин, но переводы идут не на его счёт (та же логика, что у кассы)."""
+    _require_owner(shop, seller)
+    return [_method_out(m) for m in await list_methods(session, shop.id)]
+
+
+@router.post("/bots/{bot_id}/payment-methods", response_model=PaymentMethodOut)
+async def create_payment_method(
+    payload: PaymentMethodIn,
+    shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> PaymentMethodOut:
+    _require_owner(shop, seller)
+    _require_p2p(seller)
+    existing = await list_methods(session, shop.id)
+    if len(existing) >= MAX_METHODS:
+        raise HTTPException(status_code=400, detail="too many methods")
+    try:
+        kind, label, account, holder, note = clean_method_fields(
+            payload.kind, payload.label, payload.account, payload.holder, payload.note
+        )
+    except MethodError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    method = ShopPaymentMethod(
+        bot_id=shop.id, kind=kind, label=label, note=note, is_active=payload.is_active
+    )
+    method.account = account
+    method.holder = holder
+    session.add(method)
+    await session.commit()
+    await session.refresh(method)
+    return _method_out(method)
+
+
+@router.put("/bots/{bot_id}/payment-methods/{method_id}", response_model=PaymentMethodOut)
+async def update_payment_method(
+    method_id: int,
+    payload: PaymentMethodIn,
+    shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> PaymentMethodOut:
+    _require_owner(shop, seller)
+    _require_p2p(seller)
+    method = await session.get(ShopPaymentMethod, method_id)
+    if method is None or method.bot_id != shop.id:
+        raise HTTPException(status_code=404, detail="method not found")
+    try:
+        kind, label, account, holder, note = clean_method_fields(
+            payload.kind, payload.label, payload.account, payload.holder, payload.note
+        )
+    except MethodError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    method.kind, method.label, method.note = kind, label, note
+    method.account = account
+    method.holder = holder
+    method.is_active = payload.is_active
+    await session.commit()
+    return _method_out(method)
+
+
+@router.delete("/bots/{bot_id}/payment-methods/{method_id}")
+async def delete_payment_method(
+    method_id: int,
+    shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
+    session: AsyncSession = Depends(get_api_session),
+) -> dict:
+    """Удаление не трогает уже оформленные заказы: там лежит снимок реквизитов
+    (orders.payment_details), а не ссылка на эту строку."""
+    _require_owner(shop, seller)
+    method = await session.get(ShopPaymentMethod, method_id)
+    if method is None or method.bot_id != shop.id:
+        raise HTTPException(status_code=404, detail="method not found")
+    await session.delete(method)
+    await session.commit()
+    return {"status": "ok"}
+
+
+@router.post("/bots/{bot_id}/orders/{order_id}/confirm-payment")
+async def confirm_payment(
+    order_id: int,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> dict:
+    """«Деньги пришли» — единственный способ оплатить p2p-заказ.
+
+    Доступ как у отправки заказа (владелец или админ магазина): подтверждение
+    ведёт заказ дальше по конвейеру, а не распоряжается кассой платформы.
+    Списание стока, выдача цифрового товара и подтверждение покупателю —
+    тот же путь, что и при оплате счётом (payments/service.py).
+    """
+    from app.payments.service import confirm_p2p_payment
+
+    order = await session.get(Order, order_id)
+    if order is None or order.bot_id != shop.id:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.payment_method != "p2p":
+        raise HTTPException(status_code=400, detail="not a transfer order")
+    # сессия эндпоинта закрывается до подтверждения: внутри берётся FOR UPDATE
+    # на тот же заказ, и держать здесь свою копию незачем
+    await session.rollback()
+    if not await confirm_p2p_payment(order_id):
+        raise HTTPException(status_code=409, detail="already handled")
+    return {"status": "paid"}
+
+
+@router.post("/bots/{bot_id}/orders/{order_id}/reject-payment")
+async def reject_payment(
+    order_id: int,
+    shop: SellerBot = Depends(get_shop),
+    session: AsyncSession = Depends(get_api_session),
+) -> dict:
+    """«Перевода не было»: отметка покупателя снимается, заказ снова ждёт
+    оплату и снова живёт по таймеру."""
+    order = await session.get(Order, order_id)
+    if order is None or order.bot_id != shop.id:
+        raise HTTPException(status_code=404, detail="order not found")
+    if not await reject_paid(session, order):
+        raise HTTPException(status_code=400, detail="nothing to reject")
+    await session.commit()
+    return {"status": "pending_payment"}
 
 
 # --------------------------------------------------------------------------

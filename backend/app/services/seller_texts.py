@@ -282,6 +282,16 @@ TEXTS: dict[str, dict[str, str]] = {
             "Чтобы починить: возьми в @BotFather свежий токен этого бота и подключи "
             "магазин заново — каталог, заказы и касса останутся на месте."
         ),
+        # Оплата переводом: покупатель сказал, что перевёл, продавец молчит
+        "push.p2p_claimed": (
+            "💸 Заказ #{id} на {amount} {currency} (@{shop}): покупатель отметил перевод.\n"
+            "Проверь поступление и подтверди в кабинете — товар уйдёт после этого."
+        ),
+        "push.p2p_waiting": (
+            "⏳ Заказ #{id} на {amount} {currency} (@{shop}) ждёт твоего подтверждения.\n"
+            "Покупатель сказал, что перевёл. Пока не подтвердишь, заказ висит "
+            "неоплаченным — проверь счёт и ответь в кабинете."
+        ),
         "push.stuck.one": "📦 Заказ оплачен больше {hours} ч назад, но ещё не отправлен:",
         "push.stuck.many": "📦 Заказы оплачены больше {hours} ч назад, но ещё не отправлены:",
         "push.stuck.item": "• Заказ #{id} на {amount} {currency} (@{shop})",
@@ -693,6 +703,16 @@ TEXTS: dict[str, dict[str, str]] = {
         "push.revoked.unmanaged": (
             "To fix it: grab a fresh token for this bot in @BotFather and reconnect "
             "the shop — the catalog, orders and till stay in place."
+        ),
+        # Bank-transfer payment: the buyer says they sent it, the seller is silent
+        "push.p2p_claimed": (
+            "💸 Order #{id} for {amount} {currency} (@{shop}): the buyer marked it as transferred.\n"
+            "Check that the money arrived and confirm in the dashboard — the goods go out after that."
+        ),
+        "push.p2p_waiting": (
+            "⏳ Order #{id} for {amount} {currency} (@{shop}) is waiting for your confirmation.\n"
+            "The buyer says they sent the transfer. Until you confirm, the order stays "
+            "unpaid — check your account and answer in the dashboard."
         ),
         "push.stuck.one": "📦 An order was paid more than {hours} h ago but hasn't been shipped:",
         "push.stuck.many": "📦 Orders were paid more than {hours} h ago but haven't been shipped:",

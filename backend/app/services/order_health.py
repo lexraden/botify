@@ -61,6 +61,10 @@ async def expire_unpaid_orders() -> int:
                         Order.status == "pending_payment",
                         Order.expires_at.is_not(None),
                         Order.expires_at < func.now(),
+                        # Покупатель сказал «я оплатил» — таймер снят: деньги,
+                        # возможно, уже ушли, и решает только продавец
+                        # (решение владельца от 2026-09-10).
+                        Order.paid_claimed_at.is_(None),
                     )
                     .with_for_update()
                 )

@@ -3,6 +3,7 @@
 
 import html
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import func, or_, select, update
@@ -117,6 +118,27 @@ def _provider_fee(total: Decimal, fee_amount: Decimal | None) -> Decimal:
     return (total * rate / 100).quantize(Decimal("0.000001"))
 
 
+@dataclass
+class _PaidOutcome:
+    """Что рассылается после того, как оплата уже записана в базу.
+
+    И Telegram, и Crypto Pay — сеть; держать на ней открытую сессию к БД
+    незачем. Поэтому всё, что нужно пушам, собирается до выхода из сессии
+    и уезжает сюда.
+    """
+
+    order_id: int
+    order_total: Decimal
+    customer_tg: int
+    seller_tg: int
+    seller_locale: str
+    seller_bot_token: str
+    buyer_message: str
+    # заказ доставлен прямо на оплате (вся корзина цифровая с выдачей)
+    delivered_now: bool
+    sold_out: list[str]
+
+
 async def handle_invoice_paid(
     invoice_id: int, payload: str | None, fee_amount: Decimal | None = None
 ) -> bool:
@@ -147,151 +169,214 @@ async def handle_invoice_paid(
         if order.status != "pending_payment":
             return False  # уже обработан (ретрай вебхука)
 
-        order.status = "paid"
-        order.paid_at = func.now()
+        outcome = await _apply_payment(session, order, create_payout=True, fee_amount=fee_amount)
 
-        seller = await session.get(Seller, order.seller_id)
-        customer = await session.get(Customer, order.customer_id)
+    await _notify_paid(outcome)
+    # Доля продавца остаётся в кассе магазина: перевод запускает только
+    # сам продавец кнопкой «Вывести» (авто-выплат нет по решению владельца).
+    return True
 
+
+async def confirm_p2p_payment(order_id: int) -> bool:
+    """Продавец подтвердил перевод по реквизитам. Идемпотентно: второе нажатие
+    ничего не меняет и возвращает False.
+
+    Выплата не создаётся: деньги пришли продавцу напрямую, платформа их не
+    держала и комиссию с таких заказов не берёт (решение владельца
+    от 2026-09-10). Всё остальное — списание стока, выдача цифрового товара,
+    подтверждение покупателю — то же самое, что и при оплате счётом.
+    """
+    async with get_session() as session:
+        # FOR UPDATE по тем же соображениям, что и в вебхуке: два нажатия
+        # подряд не должны дважды списать сток и дважды отправить материалы
+        order = (
+            await session.execute(select(Order).where(Order.id == order_id).with_for_update())
+        ).scalar_one_or_none()
+        if order is None or order.payment_method != "p2p":
+            return False
+        if order.status != "pending_payment":
+            return False
+
+        outcome = await _apply_payment(session, order, create_payout=False)
+
+    await _notify_paid(outcome)
+    return True
+
+
+async def _apply_payment(
+    session,
+    order: Order,
+    *,
+    create_payout: bool,
+    fee_amount: Decimal | None = None,
+) -> _PaidOutcome:
+    """Заказ становится оплаченным: статус, выплата, сток, выдача цифры.
+
+    Вызывается под уже взятой блокировкой заказа и после гарда статуса —
+    войти сюда дважды по одному заказу нельзя. Коммитит сам; рассылку
+    подтверждений делает вызывающий (см. _notify_paid), уже без сессии.
+    """
+    order.status = "paid"
+    order.paid_at = func.now()
+
+    seller = await session.get(Seller, order.seller_id)
+    customer = await session.get(Customer, order.customer_id)
+
+    # Выплата заводится только там, где деньги реально прошли через платформу.
+    # У p2p-заказа перевод ушёл прямо продавцу: выплачивать нечего, и строка
+    # с нулевой суммой только запутала бы кассу магазина.
+    if create_payout:
         # С продавца берём только нашу комиссию. Комиссию Crypto Pay платформа
         # платит из неё же, поэтому доля продавца от неё не зависит; сама
         # комиссия сервиса пишется в provider_fee, чтобы видеть реальную маржу.
         commission = (order.total * seller.commission_pct / 100).quantize(Decimal("0.000001"))
-        provider_fee = _provider_fee(order.total, fee_amount)
-        payout = Payout(
-            order_id=order.id,
-            seller_id=seller.id,
-            bot_id=order.bot_id,
-            amount=order.total - commission,
-            commission=commission,
-            provider_fee=provider_fee,
+        session.add(
+            Payout(
+                order_id=order.id,
+                seller_id=seller.id,
+                bot_id=order.bot_id,
+                amount=order.total - commission,
+                commission=commission,
+                provider_fee=_provider_fee(order.total, fee_amount),
+            )
         )
-        session.add(payout)
 
-        items = (
-            await session.execute(
-                select(OrderItem, Product)
-                .join(Product, Product.id == OrderItem.product_id)
-                .where(OrderItem.order_id == order.id)
+    items = (
+        await session.execute(
+            select(OrderItem, Product)
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(OrderItem.order_id == order.id)
+        )
+    ).all()
+
+    # Списание стока живёт в этой же секции (после гарда статуса): ретрай
+    # вебхука сюда не доходит, поэтому дважды списать невозможно. Условный
+    # UPDATE атомарен — два заказа на последнюю штуку не уведут сток в минус.
+    # Товары со стоком NULL учёту штук не подлежат.
+    # Ключ — (модель, id): у товара с вариациями остаток живёт на вариации,
+    # и списывать его с товара значило бы не тронуть тот размер, который
+    # реально купили. products.stock у таких товаров — витринная сумма,
+    # её пересчитывает сохранение товара (services/variants.py)
+    qty_by_row: dict[tuple[str, int], int] = {}
+    titles: dict[tuple[str, int], str] = {}
+    for item, product in items:
+        if item.variant_id is not None:
+            key = ("variant", item.variant_id)
+            name = line_title(product.title, item.variant_title)
+            label = item.variant_label or ""
+            titles[key] = f"{name} ({label})" if label else name
+        else:
+            if product.stock is None:
+                continue
+            key = ("product", item.product_id)
+            titles[key] = product.title
+        qty_by_row[key] = qty_by_row.get(key, 0) + item.qty
+    # Товары, которых не хватило: деньги уже приняты, отправить их нечем.
+    # Молча это оставлять нельзя — возврата в MVP нет, разбираться сторонам
+    # придётся вручную, и узнать о проблеме они должны сразу.
+    sold_out: list[str] = []
+    for (kind, row_id), qty in qty_by_row.items():
+        model = ProductVariant if kind == "variant" else Product
+        spent = await session.execute(
+            update(model)
+            .where(
+                model.id == row_id,
+                or_(model.stock.is_(None), model.stock >= qty),
             )
-        ).all()
-
-        # Списание стока живёт в этой же секции (после гарда статуса): ретрай
-        # вебхука сюда не доходит, поэтому дважды списать невозможно. Условный
-        # UPDATE атомарен — два заказа на последнюю штуку не уведут сток в минус.
-        # Товары со стоком NULL учёту штук не подлежат.
-        # Ключ — (модель, id): у товара с вариациями остаток живёт на вариации,
-        # и списывать его с товара значило бы не тронуть тот размер, который
-        # реально купили. products.stock у таких товаров — витринная сумма,
-        # её пересчитывает сохранение товара (services/variants.py)
-        qty_by_row: dict[tuple[str, int], int] = {}
-        titles: dict[tuple[str, int], str] = {}
-        for item, product in items:
-            if item.variant_id is not None:
-                key = ("variant", item.variant_id)
-                name = line_title(product.title, item.variant_title)
-                label = item.variant_label or ""
-                titles[key] = f"{name} ({label})" if label else name
-            else:
-                if product.stock is None:
-                    continue
-                key = ("product", item.product_id)
-                titles[key] = product.title
-            qty_by_row[key] = qty_by_row.get(key, 0) + item.qty
-        # Товары, которых не хватило: деньги уже приняты, отправить их нечем.
-        # Молча это оставлять нельзя — возврата в MVP нет, разбираться сторонам
-        # придётся вручную, и узнать о проблеме они должны сразу.
-        sold_out: list[str] = []
-        for (kind, row_id), qty in qty_by_row.items():
-            model = ProductVariant if kind == "variant" else Product
-            spent = await session.execute(
-                update(model)
-                .where(
-                    model.id == row_id,
-                    or_(model.stock.is_(None), model.stock >= qty),
-                )
-                .values(stock=model.stock - qty)
-                .execution_options(synchronize_session=False)
+            .values(stock=model.stock - qty)
+            .execution_options(synchronize_session=False)
+        )
+        if spent.rowcount == 0:
+            # гонка «чекнулись, пока сток кончился»: деньги уже приняты,
+            # заказ не разворачиваем, но и отрицательный сток не пишем
+            sold_out.append(titles.get((kind, row_id), str(row_id)))
+            logger.error(
+                "Недостаточно стока %s id=%s для заказа %s (нужно %s) — сток не списан",
+                kind,
+                row_id,
+                order.id,
+                qty,
             )
-            if spent.rowcount == 0:
-                # гонка «чекнулись, пока сток кончился»: деньги уже приняты,
-                # заказ не разворачиваем, но и отрицательный сток не пишем
-                sold_out.append(titles.get((kind, row_id), str(row_id)))
-                logger.error(
-                    "Недостаточно стока %s id=%s для заказа %s (нужно %s) — сток не списан",
-                    kind,
-                    row_id,
-                    order.id,
-                    qty,
-                )
 
-        # Digital/услуги с настроенной выдачей доставляются сразу
-        digital_lines = [
-            product
-            for _, product in items
-            if product.type in ("digital", "service")
-            and product.digital_content
-            and product.digital_content.get("url")
-        ]
-        all_digital = all(product.type in ("digital", "service") for _, product in items)
-        if digital_lines and all_digital:
-            order.status = "delivered"
-            # метка доставки: с неё считается окно чата заказа (72 часа)
-            order.delivered_at = func.now()
+    # Digital/услуги с настроенной выдачей доставляются сразу
+    digital_lines = [
+        product
+        for _, product in items
+        if product.type in ("digital", "service")
+        and product.digital_content
+        and product.digital_content.get("url")
+    ]
+    all_digital = all(product.type in ("digital", "service") for _, product in items)
+    if digital_lines and all_digital:
+        order.status = "delivered"
+        # метка доставки: с неё считается окно чата заказа (72 часа)
+        order.delivered_at = func.now()
 
-        buyer_message = buyer_paid_message(customer, order.id, items, sold_out)
-        await session.commit()
+    buyer_message = buyer_paid_message(customer, order.id, items, sold_out)
+    await session.commit()
 
-        order_id, order_total = order.id, order.total
-        customer_tg = customer.telegram_id
-        seller_tg = seller.telegram_id
-        # язык пуши продавцу фиксируем до коммита: дальше сессия закрыта
-        seller_locale = seller_texts.seller_locale(seller)
+    order_id, order_total = order.id, order.total
+    customer_tg = customer.telegram_id
+    seller_tg = seller.telegram_id
+    # язык пуши продавцу фиксируем до коммита: дальше сессия закрыта
+    seller_locale = seller_texts.seller_locale(seller)
 
-        # Токен бота покупателя — для уведомления в ЛС
-        await session.refresh(customer, ["bot"])
-        seller_bot_token = decrypt_bot_token(customer.bot.bot_token_encrypted)
+    # Токен бота покупателя — для уведомления в ЛС
+    await session.refresh(customer, ["bot"])
+    seller_bot_token = decrypt_bot_token(customer.bot.bot_token_encrypted)
+
+    return _PaidOutcome(
+        order_id=order_id,
+        order_total=order_total,
+        customer_tg=customer_tg,
+        seller_tg=seller_tg,
+        seller_locale=seller_locale,
+        seller_bot_token=seller_bot_token,
+        buyer_message=buyer_message,
+        delivered_now=bool(digital_lines and all_digital),
+        sold_out=sold_out,
+    )
+
+
+async def _notify_paid(o: _PaidOutcome) -> None:
+    """Разослать подтверждения по уже записанной оплате. Сессия к этому моменту
+    закрыта: сетевые вызовы не должны держать соединение к базе."""
 
     # Отметку ставим по факту отправки, а не заодно с коммитом выше: упади
     # процесс между ними — заказ числился бы доставленным, а материалы не
     # ушли бы никогда (ретрай вебхука упирается в гард статуса). Пустая
     # отметка — сигнал добивке (resend_undelivered) доделать работу.
-    if await _notify(seller_bot_token, customer_tg, buyer_message):
-        await _mark_content_sent(order_id)
+    if await _notify(o.seller_bot_token, o.customer_tg, o.buyer_message):
+        await _mark_content_sent(o.order_id)
 
     from app.bots.hub import hub_bot
 
     try:
         await hub_bot.send_message(
-            seller_tg,
+            o.seller_tg,
             seller_texts.text(
-                seller_locale,
+                o.seller_locale,
                 "push.paid",
-                id=order_id,
-                total=fmt(order_total),
+                id=o.order_id,
+                total=fmt(o.order_total),
                 next=(
-                    seller_texts.text(seller_locale, "push.paid_digital")
-                    if digital_lines and all_digital
-                    else seller_texts.text(seller_locale, "push.paid_fulfill")
+                    seller_texts.text(o.seller_locale, "push.paid_digital")
+                    if o.delivered_now
+                    else seller_texts.text(o.seller_locale, "push.paid_fulfill")
                 ),
             )
             + (
                 seller_texts.text(
-                    seller_locale,
+                    o.seller_locale,
                     "push.paid_sold_out",
-                    items=", ".join(html.escape(t) for t in sold_out),
+                    items=", ".join(html.escape(t) for t in o.sold_out),
                 )
-                if sold_out
+                if o.sold_out
                 else ""
             ),
         )
     except Exception:
-        logger.exception("Не удалось уведомить продавца о заказе %s", order_id)
-
-    # Доля продавца остаётся в кассе магазина: перевод запускает только
-    # сам продавец кнопкой «Вывести» (авто-выплат нет по решению владельца).
-    return True
-
+        logger.exception("Не удалось уведомить продавца о заказе %s", o.order_id)
 
 def buyer_paid_message(customer, order_id: int, items, sold_out=()) -> str:
     """Подтверждение оплаты покупателю — вместе с цифровым контентом, если он есть.

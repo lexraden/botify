@@ -2,7 +2,8 @@
 
 Правила:
 - чат появляется у заказа, как только тот оплачен (PAID_STATUSES), и привязан
-  к одному order_id;
+  к одному order_id; исключение — заказ с оплатой по реквизитам (p2p): там
+  чат открыт с оформления, потому что сам перевод и есть предмет разговора;
 - писать можно, пока заказ не доставлен либо с доставки прошло <= 72 часов;
   после — только чтение (история не удаляется никогда);
 - отменённый заказ закрывает чат навсегда;
@@ -104,6 +105,10 @@ def _aware(dt: datetime) -> datetime:
 def chat_is_open(order: Order) -> bool:
     """Писать в чат можно, пока заказ оплачен и (не доставлен либо с доставки
     не прошло окно). Считается на каждом вызове — джоб на решение не влияет."""
+    # Пока p2p-заказ ждёт перевода, чат открыт: в нём и договариваются об
+    # оплате. Отменённый закрывается, как и любой другой.
+    if order.payment_method == "p2p" and order.status == "pending_payment":
+        return True
     if order.status not in PAID_STATUSES:
         return False
     if order.status != "delivered" or order.delivered_at is None:
@@ -127,7 +132,11 @@ async def get_or_create_chat(session, order: Order) -> OrderChat | None:
     chat = result.scalar_one_or_none()
     if chat is not None:
         return chat
-    if order.status not in PAID_STATUSES and order.paid_at is None:
+    # p2p-заказ — исключение: перевод по реквизитам и есть предмет разговора,
+    # и обсуждать его надо до оплаты, а не после. У остальных заказов чат
+    # по-прежнему появляется только с деньгами.
+    unpaid_p2p = order.payment_method == "p2p" and order.status == "pending_payment"
+    if order.status not in PAID_STATUSES and order.paid_at is None and not unpaid_p2p:
         return None
     chat = OrderChat(
         order_id=order.id,

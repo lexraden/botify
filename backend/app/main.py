@@ -78,6 +78,7 @@ async def maintenance_loop() -> None:
         remind_stuck_orders,
     )
     from app.payments.subscription import remind_expiring
+    from app.services.p2p import remind_unconfirmed
     from app.services.reviews import auto_publish_stale_reviews
 
     settings = get_settings()
@@ -93,6 +94,7 @@ async def maintenance_loop() -> None:
             ("напоминания по заказам", remind_stuck_orders),
             ("авто-подтверждение получения", auto_confirm_delivery),
             ("истечение неоплаченных заказов", expire_unpaid_orders),
+            ("неподтверждённые переводы", remind_unconfirmed),
             ("автопубликация отзывов", auto_publish_stale_reviews),
             ("напоминания о подписке", remind_expiring),
             ("чистка осиротевших фото", purge_orphan_images),

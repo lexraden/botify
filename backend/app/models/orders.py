@@ -38,6 +38,18 @@ class Order(Base, CreatedAtMixin):
     currency: Mapped[str] = mapped_column(String(8), default="USDT")
     comment: Mapped[str | None] = mapped_column(Text)  # «Add Comment...» с экрана checkout
 
+    # Чем платят: crypto — счёт в Crypto Pay, p2p — перевод на реквизиты
+    # продавца (тариф Pro, app/models/payment_methods.py). У p2p-заказа деньги
+    # идут мимо платформы: Payout не создаётся, оплату подтверждает продавец.
+    payment_method: Mapped[str] = mapped_column(String(16), default="crypto")
+    # Снимок выбранных реквизитов: {kind, label, account, holder, note}.
+    # Именно снимок — продавец переименует или удалит способ, а в заказе
+    # должно остаться то, куда покупателя реально просили перевести.
+    payment_details: Mapped[dict | None] = mapped_column(JsonB)
+    # Когда покупатель сказал «я оплатил». С этого момента заказ не истекает
+    # по таймеру: деньги, возможно, уже ушли, и решает только продавец.
+    paid_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     invoice_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)  # Crypto Pay invoice
     # Когда неоплаченный заказ перестаёт ждать оплату (app/services/order_health.py).
     # Живёт столько же, сколько счёт в Crypto Pay: выписали новый счёт — счётчик

@@ -23,9 +23,13 @@ from app.models import (
     ShopEvent,
     ShopLogo,
 )
+from app.money import fmt
 from app.models.orders import PAID_STATUSES
+from app.models.payment_methods import ShopPaymentMethod
+from app.plans import limits_for
 from app.services import seller_texts
 from app.services.feedback import FeedbackIn, rate_limited, send_feedback
+from app.services.p2p import claim_paid, list_methods
 from app.services.reviews import notify_new_review, random_author_name
 from app.services.variants import line_title, variant_label
 
@@ -75,6 +79,18 @@ class ProductOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PaymentOptionOut(BaseModel):
+    """Способ перевода, как его видит покупатель на чекауте. Номер здесь уже
+    открытый: показать реквизиты — и есть смысл этого способа."""
+
+    id: int
+    kind: str
+    label: str
+    account: str
+    holder: str | None
+    note: str | None
+
+
 class ShopOut(BaseModel):
     shop_name: str
     products: list[ProductOut]
@@ -87,6 +103,9 @@ class ShopOut(BaseModel):
     rating: float | None = None
     # состоявшиеся продажи — оплаченные заказы (PAID_STATUSES)
     sales_count: int = 0
+    # Реквизиты для перевода: пусто — на чекауте только Crypto Pay. Список
+    # непустой, только если у продавца действует Pro и способы включены.
+    payment_options: list[PaymentOptionOut] = []
 
 
 class CartItemIn(BaseModel):
@@ -112,6 +131,10 @@ class OrderIn(BaseModel):
     items: list[CartItemIn] = Field(min_length=1)
     comment: str | None = Field(default=None, max_length=1000)
     delivery: DeliveryIn | None = None
+    # crypto — счёт в Crypto Pay (по умолчанию), p2p — перевод на реквизиты
+    # продавца; во втором случае обязателен payment_method_id
+    payment_method: str = "crypto"
+    payment_method_id: int | None = None
 
 
 class BuyerOwnReviewOut(BaseModel):
@@ -147,6 +170,11 @@ class OrderOut(BaseModel):
     payment_url: str | None = None  # ссылка на оплату в @CryptoBot
     # когда заказ перестанет ждать оплату; None — не истекает (оплачен/старый)
     expires_at: datetime | None = None
+    # crypto | p2p — чем платят. У p2p едут реквизиты (снимок на момент
+    # заказа) и отметка «покупатель сказал, что перевёл»
+    payment_method: str = "crypto"
+    payment_details: dict | None = None
+    paid_claimed_at: datetime | None = None
 
 
 @router.get("", response_model=ShopOut)
@@ -206,6 +234,24 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
         )
     ).scalar_one()
 
+    # Перевод по реквизитам предлагается, только пока у продавца действует
+    # Pro: тариф кончился — заказы идут через Crypto Pay, уже оформленные
+    # свои реквизиты сохраняют (у них снимок в самом заказе).
+    seller = await ctx.session.get(Seller, ctx.bot.seller_id)
+    options: list[PaymentOptionOut] = []
+    if seller is not None and limits_for(seller).p2p_payments:
+        options = [
+            PaymentOptionOut(
+                id=m.id,
+                kind=m.kind,
+                label=m.label,
+                account=m.account,
+                holder=m.holder,
+                note=m.note,
+            )
+            for m in await list_methods(ctx.session, ctx.bot.id, active_only=True)
+        ]
+
     return ShopOut(
         shop_name=ctx.bot.shop_name or f"@{ctx.bot.bot_username}",
         products=out,
@@ -213,6 +259,7 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
         logo_url=f"/api/shop-logos/{logo.token}" if logo else None,
         rating=float(avg_rating) if total_reviews else None,
         sales_count=sales_count,
+        payment_options=options,
     )
 
 
@@ -394,10 +441,31 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         for i in payload.items
     )
 
+    # Оплата переводом: способ должен принадлежать этому магазину и быть
+    # включён, а у продавца — действовать Pro. Проверяем до создания заказа,
+    # иначе покупатель получил бы заказ, платить по которому нечем.
+    settings = get_settings()
+    p2p = payload.payment_method == "p2p"
+    method_snapshot = None
+    if p2p:
+        seller = await ctx.session.get(Seller, ctx.bot.seller_id)
+        if seller is None or not limits_for(seller).p2p_payments:
+            raise HTTPException(status_code=400, detail="transfer_unavailable")
+        method = (
+            await ctx.session.get(ShopPaymentMethod, payload.payment_method_id)
+            if payload.payment_method_id
+            else None
+        )
+        if method is None or method.bot_id != ctx.bot.id or not method.is_active:
+            raise HTTPException(status_code=400, detail="payment_method_not_found")
+        method_snapshot = method.snapshot()
+
     # Жизнь заказа = жизнь счёта в Crypto Pay: неоплаченная корзина не должна
     # висеть в «Моих покупках» вечно. По кнопке «Оплатить» счётчик пойдёт заново.
+    # У перевода окно своё и длиннее: человек делает его руками, часто из
+    # другого приложения.
     expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=get_settings().unpaid_order_ttl_minutes
+        minutes=settings.p2p_order_ttl_minutes if p2p else settings.unpaid_order_ttl_minutes
     )
 
     order = Order(
@@ -408,6 +476,8 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         currency="USDT",
         comment=payload.comment,
         expires_at=expires_at,
+        payment_method="p2p" if p2p else "crypto",
+        payment_details=method_snapshot,
         delivery=(
             payload.delivery.model_dump(exclude_none=True)
             if needs_delivery and payload.delivery
@@ -435,6 +505,12 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
 
     from app.payments.service import create_invoice_for_order
 
+    if p2p:
+        # Счёта нет вовсе: покупатель переводит по реквизитам сам, а чат заказа
+        # открыт с этой минуты (services/chat.py) — договариваться о переводе
+        # больше негде.
+        return _new_order_out(order, payload, products, chosen, total, payment_url=None)
+
     try:
         issued = await create_invoice_for_order(order.id, Decimal(total), ctx.bot)
         if issued is not None:
@@ -448,6 +524,12 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         logger.exception("Не удалось создать инвойс для заказа %s", order.id)
         payment_url = None
 
+    return _new_order_out(order, payload, products, chosen, total, payment_url=payment_url)
+
+
+def _new_order_out(order, payload, products, chosen, total, *, payment_url) -> OrderOut:
+    """Ответ чекаута. Отдельной функцией, потому что у заказа два выхода:
+    со ссылкой на счёт и без неё (перевод по реквизитам)."""
     return OrderOut(
         id=order.id,
         status=order.status,
@@ -455,6 +537,9 @@ async def create_order(payload: OrderIn, ctx: BuyerContext = Depends(get_buyer))
         currency=order.currency,
         payment_url=payment_url,
         expires_at=order.expires_at,
+        payment_method=order.payment_method,
+        payment_details=order.payment_details,
+        paid_claimed_at=order.paid_claimed_at,
         items=[
             OrderItemOut(
                 product_id=i.product_id,
@@ -484,6 +569,75 @@ async def _own_order(ctx: BuyerContext, order_id: int) -> Order:
     if order is None or order.bot_id != ctx.bot.id or order.customer_id != ctx.customer.id:
         raise HTTPException(status_code=403, detail="foreign order")
     return order
+
+
+@router.post("/orders/{order_id}/paid-claim", response_model=OrderOut)
+async def claim_paid_order(
+    order_id: int, ctx: BuyerContext = Depends(get_buyer_any_shop)
+) -> OrderOut:
+    """«Я оплатил» по заказу с переводом на реквизиты.
+
+    Заказ от этого оплаченным НЕ становится: платформа перевода не видела.
+    Отметка снимает заказ с таймера автоотмены и зовёт продавца проверить
+    поступление — подтвердить может только он.
+    """
+    order = await _own_order(ctx, order_id)
+    if not await claim_paid(ctx.session, order):
+        raise HTTPException(status_code=400, detail="not awaiting transfer")
+    await ctx.session.commit()
+    await ctx.session.refresh(order)
+
+    seller = await ctx.session.get(Seller, order.seller_id)
+    if seller is not None:
+        from app.bots.hub import hub_bot
+
+        try:
+            await hub_bot.send_message(
+                seller.telegram_id,
+                seller_texts.text(
+                    seller_texts.seller_locale(seller),
+                    "push.p2p_claimed",
+                    id=order.id,
+                    amount=fmt(order.total),
+                    currency=order.currency,
+                    shop=ctx.bot.bot_username or "",
+                ),
+            )
+        except Exception:
+            logger.exception("Не удалось позвать продавца к заказу %s", order.id)
+
+    return await _order_out_for_buyer(ctx, order)
+
+
+async def _order_out_for_buyer(ctx: BuyerContext, order: Order) -> OrderOut:
+    """Один заказ в форме «Моих покупок» — ответ на действия покупателя."""
+    rows = (
+        await ctx.session.execute(
+            select(OrderItem, Product.title)
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(OrderItem.order_id == order.id)
+        )
+    ).all()
+    return OrderOut(
+        id=order.id,
+        status=order.status,
+        total=order.total,
+        currency=order.currency,
+        expires_at=order.expires_at,
+        payment_method=order.payment_method,
+        payment_details=order.payment_details,
+        paid_claimed_at=order.paid_claimed_at,
+        items=[
+            OrderItemOut(
+                product_id=i.product_id,
+                title=line_title(title, i.variant_title),
+                variant_label=i.variant_label,
+                qty=i.qty,
+                price=i.price,
+            )
+            for i, title in rows
+        ],
+    )
 
 
 @router.post("/orders/{order_id}/pay")
@@ -630,6 +784,9 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> list[Ord
                 total=order.total,
                 currency=order.currency,
                 expires_at=order.expires_at,
+                payment_method=order.payment_method,
+                payment_details=order.payment_details,
+                paid_claimed_at=order.paid_claimed_at,
                 items=[
                     OrderItemOut(
                         product_id=i.product_id,
