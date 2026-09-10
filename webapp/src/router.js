@@ -7,6 +7,7 @@ import ProductDetailView from './views/ProductDetailView.vue'
 import CheckoutView from './views/CheckoutView.vue'
 import ProfileView from './views/ProfileView.vue'
 import MyOrdersView from './views/MyOrdersView.vue'
+import PayOrderView from './views/PayOrderView.vue'
 import WelcomeView from './views/WelcomeView.vue'
 import OnboardingBot from './views/OnboardingBot.vue'
 import OnboardingDone from './views/OnboardingDone.vue'
@@ -16,6 +17,7 @@ import SellerProfileView from './views/SellerProfileView.vue'
 import ProductFormView from './views/ProductFormView.vue'
 import OrderChatView from './views/OrderChatView.vue'
 import MailingsView from './views/MailingsView.vue'
+import RequisitesView from './views/RequisitesView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -26,6 +28,8 @@ const router = createRouter({
     { path: '/checkout', component: CheckoutView },
     { path: '/profile', name: 'profile', component: ProfileView },
     { path: '/my-orders', name: 'my-orders', component: MyOrdersView },
+    // оплата переводом: реквизиты, «я оплатил» и чат с продавцом
+    { path: '/pay/:orderId', name: 'pay-order', component: PayOrderView },
     // продавец — Mini App открыт из hub-бота
     { path: '/onboarding/welcome', component: WelcomeView },
     { path: '/onboarding/bot', component: OnboardingBot },
@@ -36,6 +40,7 @@ const router = createRouter({
     { path: '/shop/:botId/orders/:orderId/chat', component: OrderChatView },
     { path: '/shop/:botId/profile', name: 'shopProfile', component: SellerProfileView },
     { path: '/shop/:botId/mailings', name: 'shopMailings', component: MailingsView },
+    { path: '/shop/:botId/requisites', name: 'shopRequisites', component: RequisitesView },
   ],
 })
 

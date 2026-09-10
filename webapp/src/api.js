@@ -34,8 +34,21 @@ api.interceptors.response.use(
 
 // --- витрина покупателя (контекст seller-бота из query-параметра) ---
 export const fetchShop = () => api.get(`/store/${getBotId()}`).then((r) => r.data)
-export const createOrder = (items, comment, delivery = null) =>
-  api.post(`/store/${getBotId()}/orders`, { items, comment, delivery }).then((r) => r.data)
+// payment: { method: 'crypto' | 'p2p', methodId } — способ выбирают на чекауте,
+// у перевода счёт не выписывается вовсе, вместо ссылки едут реквизиты
+export const createOrder = (items, comment, delivery = null, payment = null) =>
+  api
+    .post(`/store/${getBotId()}/orders`, {
+      items,
+      comment,
+      delivery,
+      payment_method: payment?.method || 'crypto',
+      payment_method_id: payment?.methodId ?? null,
+    })
+    .then((r) => r.data)
+// «Я оплатил» по переводу: заявка, а не оплата — подтверждает продавец
+export const claimOrderPaid = (orderId) =>
+  api.post(`/store/${getBotId()}/orders/${orderId}/paid-claim`).then((r) => r.data)
 export const fetchMyOrders = (silent = false) =>
   api.get(`/store/${getBotId()}/orders/my`, silent ? SILENT : {}).then((r) => r.data)
 // неоплаченный заказ: свежая ссылка на оплату или отмена покупателем
@@ -137,6 +150,22 @@ export const fetchSubscription = () =>
   api.get('/seller/subscription').then((r) => r.data)
 export const createSubscriptionInvoice = (method, plan) =>
   api.post('/seller/subscription/invoice', { method, plan }).then((r) => r.data)
+// Реквизиты магазина для приёма переводов (тариф Pro). Только владелец:
+// переводы идут на его счёт, а не на счёт приглашённого админа.
+export const fetchPaymentMethods = (botId) =>
+  api.get(`/seller/bots/${botId}/payment-methods`).then((r) => r.data)
+export const savePaymentMethod = (botId, method) =>
+  (method.id
+    ? api.put(`/seller/bots/${botId}/payment-methods/${method.id}`, method)
+    : api.post(`/seller/bots/${botId}/payment-methods`, method)
+  ).then((r) => r.data)
+export const deletePaymentMethod = (botId, id) =>
+  api.delete(`/seller/bots/${botId}/payment-methods/${id}`).then((r) => r.data)
+// Подтверждение перевода продавцом — единственный способ оплатить p2p-заказ
+export const confirmOrderPayment = (botId, orderId) =>
+  api.post(`/seller/bots/${botId}/orders/${orderId}/confirm-payment`).then((r) => r.data)
+export const rejectOrderPayment = (botId, orderId) =>
+  api.post(`/seller/bots/${botId}/orders/${orderId}/reject-payment`).then((r) => r.data)
 export const fulfillOrder = (botId, id, data) =>
   api.post(`/seller/bots/${botId}/orders/${id}/fulfill`, data).then((r) => r.data)
 // Переписки магазина: заказ, превью последнего сообщения и сколько новых.

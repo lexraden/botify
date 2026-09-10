@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { createOrder, trackEvent } from '../api'
+import { createOrder, fetchShop, trackEvent } from '../api'
 import { t } from '../i18n'
 import { useCartStore } from '../stores/cart'
 import { apiError } from '../services/apiError'
@@ -32,7 +32,24 @@ function variantLabel(variant) {
     .join(' · ')
 }
 
-onMounted(() => trackEvent('checkout_start'))
+// Способы перевода приходят с витриной: пусто — платить можно только
+// криптой, и выбор не показываем вовсе (лишний экран ради одной кнопки).
+const options = ref([])
+const method = ref('crypto')
+const methodId = ref(null)
+onMounted(async () => {
+  trackEvent('checkout_start')
+  try {
+    options.value = (await fetchShop()).payment_options || []
+    if (options.value.length) methodId.value = options.value[0].id
+  } catch {
+    /* витрину уже показывали — чекаут не роняем, останется крипта */
+  }
+})
+
+function kindLabel(option) {
+  return t(`pay.kind.${option.kind}`)
+}
 
 async function pay() {
   if (!cart.count || submitting.value) return
@@ -47,8 +64,15 @@ async function pay() {
       cart.asOrderItems,
       comment.value || null,
       needsDelivery.value ? { address: address.value.trim() } : null,
+      { method: method.value, methodId: methodId.value },
     )
     cart.clear()
+    if (order.payment_method === 'p2p') {
+      // Счёта нет: покупателя ведём на страницу перевода — там реквизиты,
+      // таймер, «я оплатил» и чат с продавцом.
+      router.push(`/pay/${order.id}`)
+      return
+    }
     if (!order.payment_url) {
       // Счёт не создался (Crypto Pay недоступен), но заказ уже есть: бэкенд
       // намеренно его сохраняет. Молча вернуть покупателя в каталог нельзя —
@@ -108,6 +132,37 @@ async function pay() {
       />
     </section>
 
+    <!-- выбор способа: только когда у магазина есть куда переводить -->
+    <section v-if="options.length" class="pay-method">
+      <h3>{{ t('checkout.methodTitle') }}</h3>
+      <label class="opt" :class="{ on: method === 'crypto' }">
+        <input v-model="method" type="radio" value="crypto" />
+        <span>
+          <b>{{ t('pay.crypto') }}</b>
+          <i>{{ t('pay.cryptoHint') }}</i>
+        </span>
+      </label>
+      <label class="opt" :class="{ on: method === 'p2p' }">
+        <input v-model="method" type="radio" value="p2p" />
+        <span>
+          <b>{{ t('pay.transfer') }}</b>
+          <i>{{ t('pay.transferHint') }}</i>
+        </span>
+      </label>
+
+      <!-- какой именно счёт: список появляется, только если выбран перевод -->
+      <div v-if="method === 'p2p'" class="requisites">
+        <p class="hint">{{ t('pay.chooseRequisites') }}</p>
+        <label v-for="o in options" :key="o.id" class="opt sub" :class="{ on: methodId === o.id }">
+          <input v-model="methodId" type="radio" :value="o.id" />
+          <span>
+            <b>{{ o.label }}</b>
+            <i>{{ kindLabel(o) }}</i>
+          </span>
+        </label>
+      </div>
+    </section>
+
     <textarea v-model="comment" :placeholder="t('checkout.commentPh')" rows="3" />
 
     <p v-if="error" class="error">{{ error }}</p>
@@ -156,6 +211,30 @@ textarea {
   font: inherit;
   resize: none;
 }
+.pay-method {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  h3 { margin: 0 0 2px; font-size: 15px; }
+  .hint { margin: 6px 0 2px; font-size: 13px; color: var(--sub); }
+}
+.opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 11px 12px;
+  cursor: pointer;
+  &.on { border-color: var(--accent); }
+  &.sub { padding: 9px 12px; }
+  input { accent-color: var(--accent); flex-shrink: 0; }
+  span { display: flex; flex-direction: column; gap: 2px; }
+  b { font-size: 14px; }
+  i { font-style: normal; font-size: 12px; color: var(--sub); }
+}
+.requisites { display: flex; flex-direction: column; gap: 8px; }
 .empty { text-align: center; opacity: 0.7; a { color: var(--accent); cursor: pointer; } }
 .error { color: var(--red); }
 .pay {

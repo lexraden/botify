@@ -125,11 +125,11 @@ describe('ProfileView — профиль покупателя', () => {
 
     const note = w.find('.chat-note')
     expect(note.exists()).toBe(true)
-    expect(note.text()).toContain('после оплаты')
+    expect(note.text()).toContain('вместе с покупкой')
 
     setLocale('en')
     await w.vm.$nextTick()
-    expect(w.find('.chat-note').text()).toContain('after payment')
+    expect(w.find('.chat-note').text()).toContain('together with your order')
   })
 
   it('без настроенной доставки фидбека пункта нет — лучше никакой, чем не туда', async () => {

@@ -2,6 +2,7 @@
 // Список покупок покупателя: живые статусы, форма оценки, удаление отзыва.
 // Живёт и на отдельном экране /my-orders, и внутри профиля.
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   cancelOrder,
   confirmReceived,
@@ -15,6 +16,7 @@ import OrderChat from './OrderChat.vue'
 import { openTelegramLink } from '../services/telegram'
 import { apiError } from '../services/apiError'
 
+const router = useRouter()
 const orders = ref(null)
 
 // класс для цвета статуса: ok — зелёный, bad — красный, wait — нейтральный
@@ -241,7 +243,16 @@ onBeforeUnmount(() => {
            неоплаченный: покупатель может доплатить заново или передумать -->
       <template v-if="o.status === 'pending_payment'">
         <div class="pay-actions">
-          <button class="pay-btn" :disabled="busyId === o.id" @click="retryPay(o)">
+          <!-- перевод по реквизитам живёт на своей странице: там счёт продавца,
+               отсчёт и «я оплатил». Счёта в @CryptoBot у такого заказа нет. -->
+          <button
+            v-if="o.payment_method === 'p2p'"
+            class="pay-btn"
+            @click="router.push(`/pay/${o.id}`)"
+          >
+            {{ o.paid_claimed_at ? t('orders.transferStatus') : t('orders.payTransfer') }}
+          </button>
+          <button v-else class="pay-btn" :disabled="busyId === o.id" @click="retryPay(o)">
             {{ t('orders.payNow') }}
           </button>
           <button class="cancel-btn" :disabled="busyId === o.id" @click="doCancel(o)">

@@ -4,6 +4,8 @@ import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('../../api', () => ({
   createOrder: vi.fn(() => Promise.resolve({ id: 1, payment_url: null })),
+  // способы перевода приходят с витриной; по умолчанию их нет
+  fetchShop: vi.fn(() => Promise.resolve({ payment_options: [] })),
   trackEvent: vi.fn(),
 }))
 vi.mock('../../services/telegram', () => ({
@@ -14,7 +16,7 @@ vi.mock('../../services/telegram', () => ({
   openTelegramLink: () => {},
 }))
 
-import { createOrder } from '../../api'
+import { createOrder, fetchShop } from '../../api'
 import CheckoutView from '../CheckoutView.vue'
 import { useCartStore } from '../../stores/cart'
 
@@ -56,6 +58,7 @@ describe('CheckoutView — доставка', () => {
       [{ product_id: 1, variant_id: null, qty: 1 }],
       null,
       { address: 'Тверская 1' },
+      { method: 'crypto', methodId: null },
     )
   })
 
@@ -66,7 +69,12 @@ describe('CheckoutView — доставка', () => {
 
     await w.find('button.pay').trigger('click')
     await flushPromises()
-    expect(createOrder).toHaveBeenCalledWith([{ product_id: 1, variant_id: null, qty: 1 }], null, null)
+    expect(createOrder).toHaveBeenCalledWith(
+      [{ product_id: 1, variant_id: null, qty: 1 }],
+      null,
+      null,
+      { method: 'crypto', methodId: null },
+    )
   })
 
   it('после Pay открывается окно оплаты, а покупатель — в «Моих покупках»', async () => {
@@ -157,5 +165,43 @@ describe('CheckoutView — счёт не создался', () => {
       path: '/my-orders',
       query: { created: 43, pay: '1' },
     })
+  })
+
+  it('без реквизитов магазина выбора способа нет — платить можно только криптой', async () => {
+    const w = mountWith('digital')
+    await flushPromises()
+    expect(w.find('.pay-method').exists()).toBe(false)
+  })
+
+  it('перевод уходит вместе с выбранным способом, а покупатель — на страницу оплаты', async () => {
+    fetchShop.mockResolvedValueOnce({
+      payment_options: [
+        { id: 7, kind: 'card', label: 'Сбербанк', account: '2202', holder: null, note: null },
+        { id: 8, kind: 'sbp', label: 'СБП', account: '+7999', holder: null, note: null },
+      ],
+    })
+    createOrder.mockResolvedValueOnce({ id: 42, payment_method: 'p2p', payment_url: null })
+    const w = mountWith('digital')
+    await flushPromises()
+
+    // по умолчанию крипта, реквизиты скрыты
+    expect(w.find('.pay-method').exists()).toBe(true)
+    expect(w.find('.requisites').exists()).toBe(false)
+
+    await w.findAll('.opt input')[1].setValue()
+    await flushPromises()
+    // первый способ выбран заранее — лишнего касания не требуется
+    expect(w.findAll('.requisites .opt')).toHaveLength(2)
+
+    await w.find('button.pay').trigger('click')
+    await flushPromises()
+
+    expect(createOrder).toHaveBeenCalledWith(
+      [{ product_id: 1, variant_id: null, qty: 1 }],
+      null,
+      null,
+      { method: 'p2p', methodId: 7 },
+    )
+    expect(router.push).toHaveBeenCalledWith('/pay/42')
   })
 })

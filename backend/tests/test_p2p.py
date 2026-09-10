@@ -467,3 +467,40 @@ async def test_chat_opens_before_payment_for_transfer_orders(db):
 
         r = await c.get(f"/api/store/{bot_id}/orders/{crypto_id}/chat", headers=buyer_headers())
         assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_transfer_order_has_no_crypto_invoice_route(db):
+    """У p2p-заказа не должно быть второй дороги к оплате: счёт в Crypto Pay
+    по нему не выписывается даже кнопкой «Оплатить»."""
+    bot_id = await setup_shop(db)
+    await make_pro(db, bot_id)
+    async with client() as c:
+        order_id, _ = await make_transfer_order(db, c, bot_id)
+        r = await c.post(f"/api/store/{bot_id}/orders/{order_id}/pay", headers=buyer_headers())
+    assert r.status_code == 400
+    assert r.json()["detail"] == "order is paid by transfer"
+
+
+@pytest.mark.asyncio
+async def test_seller_sees_claimed_transfer_but_not_abandoned_cart(db):
+    """Подтвердить перевод может только продавец — значит он обязан увидеть
+    такой заказ, хотя формально тот ещё не оплачен. Брошенные корзины при
+    этом в список не лезут."""
+    bot_id = await setup_shop(db)
+    await make_pro(db, bot_id)
+    async with client() as c:
+        claimed_id, _ = await make_transfer_order(db, c, bot_id)
+        quiet_id, _ = await make_transfer_order(db, c, bot_id)
+        with patch("app.bots.hub.hub_bot.send_message", new=AsyncMock()):
+            await c.post(
+                f"/api/store/{bot_id}/orders/{claimed_id}/paid-claim", headers=buyer_headers()
+            )
+        r = await c.get(f"/api/seller/bots/{bot_id}/orders", headers=seller_headers())
+
+    ids = {o["id"] for o in r.json()}
+    assert claimed_id in ids
+    assert quiet_id not in ids
+    row = next(o for o in r.json() if o["id"] == claimed_id)
+    assert row["payment_method"] == "p2p"
+    assert row["paid_claimed_at"] is not None

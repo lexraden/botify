@@ -1228,6 +1228,10 @@ class SellerOrderOut(BaseModel):
     comment: str | None
     created_at: datetime
     items: list[SellerOrderItemOut]
+    # crypto | p2p — чем платили. У перевода продавец сам подтверждает
+    # поступление, поэтому заказ попадает в список ещё до оплаты
+    payment_method: str = "crypto"
+    paid_claimed_at: datetime | None = None
     # то, что продавец отправил покупателю при выполнении (трек/ссылка/note)
     fulfillment: dict | None = None
     # куда везти: {name, phone, address}. Единственные данные покупателя,
@@ -1245,10 +1249,22 @@ async def list_orders(
         select(Order)
         .where(
             Order.bot_id == shop.id,
-            # рабочий список начинается с момента оплаты: неоплаченные корзины
-            # и заказы, отменённые покупателем до оплаты, не показываются.
-            # Отменённым может стать только неоплаченный — «lost» статусов нет
-            Order.status.notin_(("pending_payment", "cancelled")),
+            or_(
+                # рабочий список начинается с момента оплаты: неоплаченные
+                # корзины и заказы, отменённые покупателем до оплаты, не
+                # показываются. Отменённым может стать только неоплаченный —
+                # «lost» статусов нет
+                Order.status.notin_(("pending_payment", "cancelled")),
+                # исключение — перевод, по которому покупатель уже отметил
+                # оплату: подтвердить его может только продавец, а значит он
+                # обязан этот заказ увидеть. Неотмеченные переводы остаются
+                # за бортом наравне с брошенными корзинами.
+                and_(
+                    Order.status == "pending_payment",
+                    Order.payment_method == "p2p",
+                    Order.paid_claimed_at.is_not(None),
+                ),
+            ),
         )
         .order_by(Order.id.desc())
         .limit(100)
@@ -1281,6 +1297,8 @@ async def list_orders(
             comment=order.comment,
             created_at=order.created_at,
             items=items_by_order.get(order.id, []),
+            payment_method=order.payment_method,
+            paid_claimed_at=order.paid_claimed_at,
             fulfillment=order.fulfillment,
             delivery=order.delivery,
         )

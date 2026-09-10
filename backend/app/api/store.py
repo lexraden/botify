@@ -667,6 +667,10 @@ async def pay_order(order_id: int, ctx: BuyerContext = Depends(get_buyer)) -> Pa
         raise HTTPException(
             status_code=409, detail=f"order is {order.status}, not awaiting payment"
         )
+    # У заказа с переводом счёта нет и быть не должно: выписать его здесь
+    # значило бы дать вторую, чужую, дорогу к оплате того же заказа.
+    if order.payment_method == "p2p":
+        raise HTTPException(status_code=400, detail="order is paid by transfer")
     await discard_invoice(order.invoice_id)
     try:
         issued = await create_invoice_for_order(order.id, Decimal(order.total), ctx.bot)

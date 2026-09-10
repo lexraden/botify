@@ -4,6 +4,7 @@ import PlanModal from '../components/PlanModal.vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   approveReview,
+  confirmOrderPayment,
   deleteProduct,
   deleteShopLogo,
   fetchMe,
@@ -14,6 +15,7 @@ import {
   fetchSellerReviews,
   fetchShopChats,
   fulfillOrder,
+  rejectOrderPayment,
   rejectReview,
   replyToReview,
   sendOrderChatPhoto,
@@ -24,6 +26,7 @@ import {
 import { t, intlLocale } from '../i18n'
 import { openTelegramLink } from '../services/telegram'
 import { MAX_PICK_MB } from '../services/imageCompress'
+import { apiError } from '../services/apiError'
 
 const route = useRoute()
 const router = useRouter()
@@ -175,6 +178,42 @@ const CHAT_STATUSES = ['paid', 'fulfilled', 'delivered']
 // Отправить можно оплаченный заказ; после отправки кнопка исчезает —
 // остаётся чат с покупателем (трек и фото уже в истории чата).
 const FULFILLABLE = ['paid']
+
+// Заказ с переводом, по которому покупатель отметил оплату: единственное
+// состояние, где продавцу нужно решение «пришли деньги или нет».
+const awaitingTransfer = (o) =>
+  o.payment_method === 'p2p' && o.status === 'pending_payment' && Boolean(o.paid_claimed_at)
+
+const payBusy = ref(null)
+const payError = ref({ id: null, text: '' })
+
+async function confirmTransfer(o) {
+  if (payBusy.value) return
+  payBusy.value = o.id
+  payError.value = { id: null, text: '' }
+  try {
+    await confirmOrderPayment(botId.value, o.id)
+    await reload()
+  } catch (e) {
+    payError.value = { id: o.id, text: apiError(e, 'order.confirmError') }
+  } finally {
+    payBusy.value = null
+  }
+}
+
+async function rejectTransfer(o) {
+  if (payBusy.value) return
+  payBusy.value = o.id
+  payError.value = { id: null, text: '' }
+  try {
+    await rejectOrderPayment(botId.value, o.id)
+    await reload()
+  } catch (e) {
+    payError.value = { id: o.id, text: apiError(e, 'order.confirmError') }
+  } finally {
+    payBusy.value = null
+  }
+}
 const TYPE_LABEL = computed(() => ({
   physical: t('type.physical'),
   digital: t('type.digital'),
@@ -458,6 +497,13 @@ async function removeLogo() {
               <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
             </svg>
           </button>
+          <!-- реквизиты для переводов: приём денег напрямую, тариф Pro -->
+          <button class="icon-btn" :aria-label="t('req.title')" @click="router.push(`/shop/${botId}/requisites`)">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+              <path d="M2.5 10h19" />
+            </svg>
+          </button>
           <button class="icon-btn" :aria-label="t('seller.profileTitle')" @click="router.push(`/shop/${botId}/profile`)">
             <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="8" r="4" />
@@ -568,7 +614,9 @@ async function removeLogo() {
         <div v-for="o in orders" :key="o.id" class="card order">
           <div class="order-head">
             <b>#{{ o.id }} · {{ Number(o.total).toFixed(2) }} {{ o.currency }}</b>
-            <span class="badge">{{ STATUS[o.status] || o.status }}</span>
+            <span class="badge">
+              {{ awaitingTransfer(o) ? t('order.awaitingConfirm') : STATUS[o.status] || o.status }}
+            </span>
           </div>
           <span class="muted">
             {{ fmtDateTime(o.created_at) }}
@@ -597,8 +645,27 @@ async function removeLogo() {
           <div v-if="o.comment" class="comment">💬 {{ o.comment }}</div>
           <div v-if="o.fulfillment" class="comment">📤 {{ fulfillmentLine(o.fulfillment) }}</div>
 
+          <!-- перевод, отмеченный покупателем: подтвердить поступление может
+               только продавец — платформа перевода не видела -->
+          <div v-if="awaitingTransfer(o)" class="transfer">
+            <b>{{ t('order.transferClaimed') }}</b>
+            <div class="transfer-actions">
+              <button
+                class="btn btn-green"
+                :disabled="payBusy === o.id"
+                @click="confirmTransfer(o)"
+              >
+                {{ t('order.confirmPayment') }}
+              </button>
+              <button class="btn btn-soft" :disabled="payBusy === o.id" @click="rejectTransfer(o)">
+                {{ t('order.rejectPayment') }}
+              </button>
+            </div>
+            <p v-if="payError.id === o.id" class="pay-error">{{ payError.text }}</p>
+          </div>
+
           <button
-            v-if="CHAT_STATUSES.includes(o.status)"
+            v-if="CHAT_STATUSES.includes(o.status) || awaitingTransfer(o)"
             class="btn btn-soft chat-btn"
             @click="router.push(`/shop/${botId}/orders/${o.id}/chat`)"
           >
@@ -949,6 +1016,13 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .item { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
 .item span:first-child { min-width: 0; }
 .fulfill-btn { height: 42px; }
+.transfer {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
+  border: 1px solid var(--orange); border-radius: 13px; padding: 11px 12px;
+}
+.transfer b { font-size: 14px; }
+.transfer-actions { display: flex; flex-direction: column; gap: 8px; }
+.pay-error { color: var(--red); font-size: 12px; margin: 0; }
 .chat-btn { height: 42px; margin-top: 2px; }
 .fulfill-form { display: flex; flex-direction: column; gap: 8px; }
 .photo-tiles { display: flex; gap: 8px; }
