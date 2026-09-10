@@ -216,6 +216,8 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
 
 
 class EventIn(BaseModel):
+    # product_view шлёт только страница товара: показ карточки в сетке
+    # просмотром не считается (webapp/src/components/ProductCard.vue)
     type: str  # shop_open | product_view | checkout_start
     product_id: int | None = None
 

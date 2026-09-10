@@ -21,4 +21,7 @@ class ShopEvent(Base, CreatedAtMixin):
     )
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"))
 
-    type: Mapped[str] = mapped_column(String(32))  # shop_open | product_view | checkout_start
+    # shop_open — вход в витрину; product_view — открытая карточка товара
+    # (именно открытая: прокрутка мимо карточки в сетке событием не считается);
+    # checkout_start — открытое оформление заказа
+    type: Mapped[str] = mapped_column(String(32))

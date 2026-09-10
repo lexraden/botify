@@ -1,34 +1,16 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { useCartStore } from '../stores/cart'
 
+// Появление карточки в сетке событием не считается: просмотр товара — это
+// открытая карточка (ProductDetailView), а не прокрутка мимо. Пока сетка
+// слала product_view по IntersectionObserver, вход в магазин с десятью
+// товарами сразу давал десять «просмотров», и метрика ничего не значила.
 const props = defineProps({ product: { type: Object, required: true } })
-const emit = defineEmits(['seen'])
 const router = useRouter()
 
-// Просмотром считаем первое реальное появление карточки на экране,
-// а не отрисовку списка — иначе метрика раздувается
-const root = ref(null)
-let observer = null
-
-onMounted(() => {
-  if (!root.value || typeof IntersectionObserver === 'undefined') return
-  observer = new IntersectionObserver(
-    (entries) => {
-      if (entries.some((e) => e.isIntersecting)) {
-        emit('seen')
-        observer?.disconnect()
-        observer = null
-      }
-    },
-    { threshold: 0.5 },
-  )
-  observer.observe(root.value)
-})
-
-onUnmounted(() => observer?.disconnect())
 const cart = useCartStore()
 // В сетке товар с вариациями ведёт себя как обычный: «+» и «−», без выбора.
 // Конкретную вариацию всё равно надо положить в корзину — за неё платят и с
@@ -90,7 +72,7 @@ const maxed = computed(() =>
 </script>
 
 <template>
-  <div ref="root" class="card product" @click="router.push(`/product/${product.id}`)">
+  <div class="card product" @click="router.push(`/product/${product.id}`)">
     <div v-if="qty" class="badge">{{ qty }}</div>
     <div class="image">
       <img v-if="product.image_url" :src="product.image_url" :alt="product.title" />

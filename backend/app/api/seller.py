@@ -718,7 +718,7 @@ async def withdraw(
 
 class ShopStatsOut(BaseModel):
     telegram_users: int      # покупателей в базе этого бота
-    product_views: int       # просмотры карточек товара
+    product_views: int       # сколько раз открывали карточку товара
     checkout_starts: int     # открытий оформления заказа
     purchases: int           # оплаченные заказы
     total_sales: Decimal     # сумма оплаченных заказов

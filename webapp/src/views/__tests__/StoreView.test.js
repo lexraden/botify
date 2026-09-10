@@ -46,6 +46,13 @@ describe('StoreView — шапка магазина и поиск', () => {
     })
   }
 
+  // то же самое, но с настоящей карточкой: заглушка не показала бы, шлёт ли
+  // сетка события сама по себе
+  async function mountWithRealCards() {
+    await router.isReady()
+    return mount(StoreView, { global: { plugins: [router, createPinia()] } })
+  }
+
   it('без показного имени в кружке буква адреса, а не «@»', async () => {
     // бэкенд подставляет @username, когда продавец не задал имя магазина —
     // это состояние по умолчанию у всех существующих магазинов
@@ -175,5 +182,39 @@ describe('StoreView — шапка магазина и поиск', () => {
     await wrapper.find('.search-row .clear').trigger('click')
     expect(wrapper.findAll('.stub-card')).toHaveLength(2)
     expect(wrapper.find('.search-row input').element.value).toBe('')
+  })
+
+  it('прокрутка сетки не считается просмотром товара', async () => {
+    // jsdom своего IntersectionObserver не имеет; подставляем такой, который
+    // сразу сообщает о появлении на экране — на нём и держалась старая метрика
+    const seen = []
+    class ObserverStub {
+      constructor(cb) {
+        this.cb = cb
+      }
+      observe(el) {
+        seen.push(el)
+        this.cb([{ isIntersecting: true, target: el }])
+      }
+      disconnect() {}
+    }
+    vi.stubGlobal('IntersectionObserver', ObserverStub)
+
+    fetchShop.mockResolvedValue({
+      shop_name: 'Pet Shop',
+      logo_url: null,
+      rating: null,
+      sales_count: 0,
+      products: PRODUCTS,
+    })
+    await mountWithRealCards()
+    await flushPromises()
+
+    const types = trackEvent.mock.calls.map((c) => c[0])
+    expect(types).toContain('shop_open')
+    // просмотр товара — это открытая карточка, а не показ в сетке
+    expect(types).not.toContain('product_view')
+
+    vi.unstubAllGlobals()
   })
 })

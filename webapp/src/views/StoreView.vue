@@ -117,7 +117,7 @@ onMounted(async () => {
       <p v-if="!shop.products.length" class="empty">{{ t('store.empty') }}</p>
       <p v-else-if="!filtered.length" class="empty">{{ t('store.nothingFound') }}</p>
       <div class="grid">
-        <ProductCard v-for="p in filtered" :key="p.id" :product="p" @seen="trackEvent('product_view', p.id)" />
+        <ProductCard v-for="p in filtered" :key="p.id" :product="p" />
       </div>
       <!-- при открытой корзине прячем плашку: низ экрана занят панелью корзины -->
       <div v-if="!cart.count" class="badge-spacer"><BrandBadge /></div>
