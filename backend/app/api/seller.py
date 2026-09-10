@@ -40,6 +40,7 @@ from app.models.orders import PAID_STATUSES
 from app.payments.payouts import paid_total, pending_total
 from app.plans import SERVICE_TYPES, active_plan, limits_for, over_limit
 from app.services import bot_profile
+from app.services.feedback import FeedbackIn, rate_limited, send_feedback
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 from app.services.seller_texts import seller_text
 from app.services.variants import apply_variants, line_title
@@ -74,6 +75,9 @@ class MeOut(BaseModel):
     commission_pct: Decimal
     plan: str
     is_admin: bool
+    # Канал «Связаться с нами» собран (есть кому доставлять) — кабинет не
+    # показывает пункт, если доставлять фидбек некому.
+    feedback_enabled: bool = False
     # Куда вести продавца за новым магазином. Ссылка открывает диалог в
     # hub-боте, где Telegram сам создаёт бота — BotFather не участвует.
     # None — создавать боты нам сейчас нельзя, остаётся ручной ввод токена.
@@ -99,6 +103,7 @@ def _me_payload(
         commission_pct=seller.commission_pct,
         plan=seller.plan,
         is_admin=seller.is_admin,
+        feedback_enabled=bool(get_settings().admin_ids),
         bots=[BotOut.model_validate(b) for b in bots],
     )
 
@@ -396,6 +401,38 @@ async def delete_shop(
         )
         return {"status": "has_orders"}
     raise HTTPException(status_code=404, detail="shop not found")
+
+
+@router.post("/bots/{bot_id}/feedback")
+async def submit_shop_feedback(
+    payload: FeedbackIn,
+    shop: SellerBot = Depends(get_shop),
+    seller: Seller = Depends(get_seller),
+) -> dict:
+    """Обращение продавца платформе из кабинета («Связаться с нами»).
+
+    Магазин из адреса — контекст пуша владельцу платформы; доступ — как у всех
+    действий кабинета: владелец или приглашённый админ (get_shop). Доставку и
+    лимиты касается services/feedback.py.
+    """
+    if rate_limited("seller", seller.telegram_id):
+        raise HTTPException(status_code=429, detail="too many messages")
+    if not get_settings().admin_ids:
+        raise HTTPException(status_code=503, detail="feedback_disabled")
+    sent = await send_feedback(
+        kind="seller",
+        feedback_type=payload.type,
+        sender_id=seller.telegram_id,
+        sender_name=seller.first_name,
+        sender_username=seller.username,
+        bot=shop,
+        message=payload.message,
+        screen=payload.screen,
+        app_version=payload.app_version,
+    )
+    if not sent:
+        raise HTTPException(status_code=502, detail="send_failed")
+    return {"status": "sent"}
 
 
 # --------------------------------------------------------------------------

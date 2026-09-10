@@ -1,16 +1,17 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchShop } from '../api'
+import { fetchShop, sendBuyerFeedback } from '../api'
 import { t } from '../i18n'
 import BrandBadge from '../components/BrandBadge.vue'
 import BuyerOrders from '../components/BuyerOrders.vue'
+import FeedbackModal from '../components/FeedbackModal.vue'
 import LegalModal from '../components/LegalModal.vue'
 import { PRIVACY } from '../content/privacy'
 import { TOS } from '../content/tos'
 import { locale, setLocale } from '../services/locale'
 import { setTheme, themePref } from '../services/theme'
-import { openTelegramLink, tg } from '../services/telegram'
+import { tg } from '../services/telegram'
 
 const router = useRouter()
 
@@ -18,17 +19,27 @@ const router = useRouter()
 // него не берёт, авторизация — по подписанному initData на каждом запросе.
 const me = tg?.initDataUnsafe?.user ?? null
 
-// Адрес поддержки приходит с сервера (SUPPORT_URL в окружении). Не задан —
-// пункта нет вовсе: раньше он вёл в hub-бот, и покупатель с проблемой по
-// заказу оказывался зарегистрирован продавцом и читал рекламу конструктора.
-const supportUrl = ref('')
+// Пункт «Связаться с нами» показывается, только если есть кому доставлять
+// обращение (ADMIN_TELEGRAM_IDS на бэкенде). Сбой запроса не роняет профиль.
+const feedbackEnabled = ref(false)
+const showFeedback = ref(false)
 onMounted(async () => {
   try {
-    supportUrl.value = (await fetchShop()).support_url || ''
+    feedbackEnabled.value = Boolean((await fetchShop()).feedback_enabled)
   } catch {
-    /* поддержка — не повод ронять профиль */
+    /* канал связи — не повод ронять профиль */
   }
 })
+
+// Обращение уходит платформе, а не продавцу магазина. Отдельный текст для
+// 429: модалка понимает Error('feedback.…') как ключ перевода.
+async function submitFeedback(type, message, screen) {
+  try {
+    await sendBuyerFeedback(type, message, screen)
+  } catch (e) {
+    throw new Error(e?.response?.status === 429 ? 'feedback.tooMany' : 'feedback.error')
+  }
+}
 
 // юридические документы платформы: модалка как в онбординге, 'tos' | 'privacy' | null
 const legalDoc = ref(null)
@@ -94,9 +105,10 @@ async function toggleLang() {
       <span>{{ t('profile.chatNote') }}</span>
     </p>
 
-    <button v-if="supportUrl" class="menu-item" @click="openTelegramLink(supportUrl)">
-      <span>{{ t('profile.support') }}</span>
-      <span class="muted">{{ t('profile.write') }}</span>
+    <!-- «Связаться с нами» — канал платформы: обращение уходит в Botify
+         (пушится владельцу), а не продавцу магазина -->
+    <button v-if="feedbackEnabled" class="menu-item" @click="showFeedback = true">
+      <span>{{ t('profile.contactUs') }}</span>
     </button>
 
     <!-- плашка прижимается к низу экрана, а не липнет к блоку сверху -->
@@ -112,6 +124,7 @@ async function toggleLang() {
     </div>
 
     <LegalModal v-if="legalDoc" :docs="legalDoc === 'tos' ? TOS : PRIVACY" @close="legalDoc = null" />
+    <FeedbackModal v-if="showFeedback" :submit="submitFeedback" @close="showFeedback = false" />
   </div>
 </template>
 

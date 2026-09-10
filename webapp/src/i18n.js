@@ -65,12 +65,25 @@ export const DICT = {
     'profile.role': 'покупатель',
     'profile.chatNote':
       'Чат с продавцом открывается после оплаты: кнопка «Написать продавцу» появляется у самого заказа.',
-    'profile.support': '💬 Поддержка',
-    'profile.write': 'написать',
+    'profile.contactUs': '💬 Связаться с нами',
     'profile.themeToggle': 'Сменить тему',
     'profile.langToggle': 'Сменить язык',
     'profile.termsOfService': 'Условия',
     'profile.privacyPolicy': 'Конфиденциальность',
+
+    // канал «Связаться с нами»: обращение уходит платформе (не продавцу)
+    'feedback.title': 'Связаться с нами',
+    'feedback.subtitle': 'Пиши о проблемах, идеях и вопросах по самому Botify.',
+    'feedback.typeBug': 'Сообщить о проблеме',
+    'feedback.typeIdea': 'Предложить идею',
+    'feedback.typeSupport': 'Написать в поддержку',
+    'feedback.placeholder': 'Опиши, что случилось или чего не хватает…',
+    'feedback.back': 'Назад',
+    'feedback.send': 'Отправить',
+    'feedback.sending': 'Отправляем…',
+    'feedback.thanks': 'Сообщение отправлено. Спасибо!',
+    'feedback.error': 'Не удалось отправить — попробуй ещё раз позже.',
+    'feedback.tooMany': 'Слишком много сообщений подряд — попробуй позже.',
 
     // карточка товара и товарная страница
     'card.addToCart': 'В корзину',
@@ -446,12 +459,25 @@ export const DICT = {
     'profile.role': 'buyer',
     'profile.chatNote':
       'The chat with the seller opens after payment: the “Message the seller” button appears on the order itself.',
-    'profile.support': '💬 Support',
-    'profile.write': 'write',
+    'profile.contactUs': '💬 Contact us',
     'profile.themeToggle': 'Toggle theme',
     'profile.langToggle': 'Toggle language',
     'profile.termsOfService': 'Terms of Service',
     'profile.privacyPolicy': 'Privacy Policy',
+
+    // «Contact us» channel: the message goes to the platform (not the seller)
+    'feedback.title': 'Contact us',
+    'feedback.subtitle': 'Report problems, share ideas and ask about Botify itself.',
+    'feedback.typeBug': 'Report a problem',
+    'feedback.typeIdea': 'Suggest a feature',
+    'feedback.typeSupport': 'Contact support',
+    'feedback.placeholder': 'Describe what happened or what is missing…',
+    'feedback.back': 'Back',
+    'feedback.send': 'Send',
+    'feedback.sending': 'Sending…',
+    'feedback.thanks': 'Message sent. Thank you!',
+    'feedback.error': 'Couldn’t send — please try again later.',
+    'feedback.tooMany': 'Too many messages in a row — please try again later.',
 
     // product card and product page
     'card.addToCart': 'Add',

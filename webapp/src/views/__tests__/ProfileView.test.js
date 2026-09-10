@@ -4,9 +4,11 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 const fetchMyOrders = vi.fn()
 const fetchShop = vi.fn()
+const sendBuyerFeedback = vi.fn()
 vi.mock('../../api', () => ({
   fetchMyOrders: (...args) => fetchMyOrders(...args),
   fetchShop: (...args) => fetchShop(...args),
+  sendBuyerFeedback: (...args) => sendBuyerFeedback(...args),
   submitOrderReviews: vi.fn(),
   deleteOrderReview: vi.fn(),
 }))
@@ -26,9 +28,10 @@ describe('ProfileView — профиль покупателя', () => {
   beforeEach(() => {
     fetchMyOrders.mockReset()
     fetchShop.mockReset()
+    sendBuyerFeedback.mockReset()
     // форма ответа честная: поля шапки витрины, добавленные для trust-строки
     fetchShop.mockResolvedValue({
-      support_url: 'https://t.me/botify_support',
+      feedback_enabled: true,
       shop_name: '@petshop_bot',
       logo_url: null,
       rating: null,
@@ -56,15 +59,15 @@ describe('ProfileView — профиль покупателя', () => {
     expect(wrapper.text()).toContain('Заказ #2')
     // старый пункт меню с счётчиком ушёл
     expect(wrapper.find('.count').exists()).toBe(false)
-    // поддержка на месте
-    expect(wrapper.text()).toContain('Поддержка')
+    // канал связи с платформой на месте
+    expect(wrapper.text()).toContain('Связаться с нами')
   })
 
   it('без ответа API профиль остаётся рабочим, списка просто нет', async () => {
     fetchMyOrders.mockRejectedValue(new Error('offline'))
     const wrapper = await mountView()
     await flushPromises()
-    expect(wrapper.text()).toContain('Поддержка')
+    expect(wrapper.text()).toContain('Связаться с нами')
     expect(wrapper.text()).not.toContain('Заказ #')
   })
 
@@ -113,10 +116,10 @@ describe('ProfileView — профиль покупателя', () => {
     expect(w.find('.chat-note').text()).toContain('after payment')
   })
 
-  it('без настроенной поддержки кнопки нет — лучше никакой, чем не туда', async () => {
+  it('без настроенной доставки фидбека пункта нет — лучше никакой, чем не туда', async () => {
     fetchMyOrders.mockResolvedValue([])
     fetchShop.mockResolvedValue({
-      support_url: null,
+      feedback_enabled: false,
       shop_name: '@petshop_bot',
       logo_url: null,
       rating: null,
@@ -124,14 +127,30 @@ describe('ProfileView — профиль покупателя', () => {
     })
     const w = await mountView()
     await flushPromises()
-    expect(w.text()).not.toContain('Поддержка')
+    expect(w.text()).not.toContain('Связаться с нами')
   })
 
-  it('настроенная поддержка показывается пунктом меню', async () => {
+  it('пункт открывает модалку, обращение уходит платформе с экраном', async () => {
     fetchMyOrders.mockResolvedValue([])
+    sendBuyerFeedback.mockResolvedValue({ status: 'sent' })
     const w = await mountView()
     await flushPromises()
-    expect(w.text()).toContain('Поддержка')
+
+    await w.findAll('.menu-item')[0].trigger('click')
+    const dialog = w.find('[role="dialog"]')
+    expect(dialog.exists()).toBe(true)
+    // три типа обращения
+    expect(dialog.text()).toContain('Сообщить о проблеме')
+    expect(dialog.text()).toContain('Предложить идею')
+    expect(dialog.text()).toContain('Написать в поддержку')
+
+    await dialog.findAll('.type-item')[0].trigger('click')
+    await dialog.find('textarea').setValue('Сломалась корзина')
+    await dialog.find('.btn.send').trigger('click')
+    await flushPromises()
+
+    expect(sendBuyerFeedback).toHaveBeenCalledWith('bug', 'Сломалась корзина', '/profile')
+    expect(dialog.text()).toContain('Сообщение отправлено')
   })
 
   it('под плашкой — ссылки на ToS и Privacy: одна строка с точкой, в RU и EN', async () => {

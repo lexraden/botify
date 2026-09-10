@@ -1,12 +1,13 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { fetchMe, disableShop, enableShop, deleteShop } from '../api'
+import { fetchMe, disableShop, enableShop, deleteShop, sendSellerFeedback } from '../api'
 import { t } from '../i18n'
 import { shopInitial, shopLabel } from '../services/shopName'
 import { locale, setLocale } from '../services/locale'
 import { setTheme, themePref } from '../services/theme'
 import { openTelegramLink, tg } from '../services/telegram'
+import FeedbackModal from '../components/FeedbackModal.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -15,6 +16,10 @@ const bots = ref([])
 const note = ref('')
 const menuBotId = ref(null)
 const confirmDeleteId = ref(null)
+// Пункт «Связаться с нами» показывается, только если есть кому доставлять
+// обращение (ADMIN_TELEGRAM_IDS на бэкенде).
+const feedbackEnabled = ref(false)
+const showFeedback = ref(false)
 
 onMounted(reload)
 
@@ -22,8 +27,19 @@ async function reload() {
   try {
     const me = await fetchMe()
     bots.value = me.bots ?? []
+    feedbackEnabled.value = Boolean(me.feedback_enabled)
   } catch {
     bots.value = []
+  }
+}
+
+// Обращение уходит платформе с магазином из адреса как контекстом. Отдельный
+// текст для 429: модалка понимает Error('feedback.…') как ключ перевода.
+async function submitFeedback(type, message, screen) {
+  try {
+    await sendSellerFeedback(route.params.botId, type, message, screen)
+  } catch (e) {
+    throw new Error(e?.response?.status === 429 ? 'feedback.tooMany' : 'feedback.error')
   }
 }
 
@@ -154,6 +170,14 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
       </svg>
       {{ t('shops.add') }}
     </button>
+
+    <!-- «Связаться с нами» — канал платформы: обращение уходит в Botify, а не
+         в чат владельца конкретного магазина; магазин из адреса — контекст -->
+    <button v-if="feedbackEnabled" class="menu-item contact" @click="showFeedback = true">
+      <span>{{ t('profile.contactUs') }}</span>
+    </button>
+
+    <FeedbackModal v-if="showFeedback" :submit="submitFeedback" @close="showFeedback = false" />
   </div>
 </template>
 
@@ -209,5 +233,12 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
 .empty { text-align: center; color: var(--sub); margin: 16px 0; }
 .add {
   margin-top: 6px; background: var(--accent-soft); color: var(--accent);
+}
+/* тот же вид пункта, что в профиле покупателя: одна строка-кнопка во всю ширину */
+.menu-item {
+  width: 100%; box-sizing: border-box; border: 1px solid var(--border); background: var(--surface);
+  border-radius: 13px; padding: 15px 14px; margin-top: 10px; color: var(--text);
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 15px; font-weight: 700; cursor: pointer;
 }
 </style>

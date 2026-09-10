@@ -3,6 +3,7 @@ import { getBotId, getInitData } from './services/telegram'
 import { compressImage } from './services/imageCompress'
 import { storedLocale } from './services/locale'
 import { startLoading, stopLoading } from './services/loading'
+import { APP_VERSION } from './services/version'
 
 const api = axios.create({ baseURL: '/api' })
 
@@ -56,12 +57,24 @@ export const deleteOrderReview = (orderId, productId) =>
 // Статистика витрины: ошибки глотаем — аналитика не должна ломать покупку
 export const trackEvent = (type, productId = null) =>
   api.post(`/store/${getBotId()}/events`, { type, product_id: productId }, SILENT).catch(() => {})
+// «Связаться с нами»: обращение платформе, а не продавцу. Контекст (кто,
+// какой магазин) бэкенд добавит сам; отсюда — тип, текст, экран и версия.
+export const sendBuyerFeedback = (type, message, screen) =>
+  api
+    .post(`/store/${getBotId()}/feedback`, { type, message, screen, app_version: APP_VERSION })
+    .then((r) => r.data)
 
 // --- кабинет продавца (контекст hub-бота) ---
 export const fetchMe = () => api.get('/seller/me').then((r) => r.data)
 export const acceptTerms = () =>
   api.post('/seller/onboarding/terms-accept').then((r) => r.data)
 export const connectBot = (token) => api.post('/seller/bots', { token }).then((r) => r.data)
+// «Связаться с нами» из кабинета: тот же канал, что у покупателей, но от
+// продавца и с магазином из адреса
+export const sendSellerFeedback = (botId, type, message, screen) =>
+  api
+    .post(`/seller/bots/${botId}/feedback`, { type, message, screen, app_version: APP_VERSION })
+    .then((r) => r.data)
 // управление магазином прямо из кабинета; каждое действие дублируется в hub-бот
 export const disableShop = (botId) =>
   api.post(`/seller/bots/${botId}/disable`).then((r) => r.data)

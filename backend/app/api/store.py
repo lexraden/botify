@@ -25,6 +25,7 @@ from app.models import (
 )
 from app.models.orders import PAID_STATUSES
 from app.services import seller_texts
+from app.services.feedback import FeedbackIn, rate_limited, send_feedback
 from app.services.reviews import notify_new_review, random_author_name
 from app.services.variants import line_title, variant_label
 
@@ -77,9 +78,9 @@ class ProductOut(BaseModel):
 class ShopOut(BaseModel):
     shop_name: str
     products: list[ProductOut]
-    # Куда писать, если проблема с заказом. Пусто — в профиле нет кнопки:
-    # лучше её отсутствие, чем ссылка не туда.
-    support_url: str | None = None
+    # Канал «Связаться с нами» собран (есть кому доставлять). False — в профиле
+    # нет пункта: лучше его отсутствие, чем форма, которая не отправляет.
+    feedback_enabled: bool = False
     # логотип из кабинета; None — в шапке первая буква имени вместо кружка
     logo_url: str | None = None
     # средний рейтинг по всем отзывам магазина; нет отзывов — None
@@ -208,7 +209,7 @@ async def get_shop(ctx: BuyerContext = Depends(get_buyer)) -> ShopOut:
     return ShopOut(
         shop_name=ctx.bot.shop_name or f"@{ctx.bot.bot_username}",
         products=out,
-        support_url=get_settings().support_url or None,
+        feedback_enabled=bool(get_settings().admin_ids),
         logo_url=f"/api/shop-logos/{logo.token}" if logo else None,
         rating=float(avg_rating) if total_reviews else None,
         sales_count=sales_count,
@@ -248,6 +249,36 @@ async def track_event(payload: EventIn, ctx: BuyerContext = Depends(get_buyer)) 
     )
     await ctx.session.commit()
     return {"status": "ok"}
+
+
+@router.post("/feedback")
+async def submit_feedback(
+    payload: FeedbackIn, ctx: BuyerContext = Depends(get_buyer_any_shop)
+) -> dict:
+    """Обращение покупателя платформе из профиля («Связаться с нами»).
+
+    Зависимость — get_buyer_any_shop: покупатель отключённого магазина (деньги
+    уже у продавца) как раз тот, кому нужна поддержка. Доставки и лимитов
+    касается services/feedback.py.
+    """
+    if rate_limited("buyer", ctx.customer.telegram_id):
+        raise HTTPException(status_code=429, detail="too many messages")
+    if not get_settings().admin_ids:
+        raise HTTPException(status_code=503, detail="feedback_disabled")
+    sent = await send_feedback(
+        kind="buyer",
+        feedback_type=payload.type,
+        sender_id=ctx.customer.telegram_id,
+        sender_name=ctx.customer.first_name,
+        sender_username=ctx.customer.username,
+        bot=ctx.bot,
+        message=payload.message,
+        screen=payload.screen,
+        app_version=payload.app_version,
+    )
+    if not sent:
+        raise HTTPException(status_code=502, detail="send_failed")
+    return {"status": "sent"}
 
 
 @router.post("/orders", response_model=OrderOut)
