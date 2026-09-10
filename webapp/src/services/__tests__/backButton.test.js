@@ -14,7 +14,9 @@ window.Telegram = {
     },
   },
 }
-const { backTarget, attachBackButton } = await import('../backButton')
+const { backTarget, attachBackButton, pushBackInterceptor, popBackInterceptor } = await import(
+  '../backButton',
+)
 const { createRouter, createMemoryHistory } = await import('vue-router')
 
 describe('backTarget — куда ведёт системная «Назад»', () => {
@@ -85,5 +87,24 @@ describe('attachBackButton — показ и реакция на клик', () =
     handlers[0]() // ветка BACK вызывает router.back() без промиса
     await new Promise((r) => setTimeout(r, 0))
     expect(router.currentRoute.value.path).toBe('/profile')
+  })
+
+  it('открытый лист забирает «Назад» себе: закрывается он, а не экран', async () => {
+    await router.push('/product/3')
+    let closed = 0
+    const closeSheet = () => (closed += 1)
+    pushBackInterceptor(closeSheet)
+
+    handlers[0]()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(closed).toBe(1)
+    expect(router.currentRoute.value.path).toBe('/product/3') // с экрана не ушли
+
+    // лист закрылся — «Назад» снова работает по-обычному
+    popBackInterceptor(closeSheet)
+    handlers[0]()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(closed).toBe(1)
+    expect(router.currentRoute.value.path).not.toBe('/product/3')
   })
 })

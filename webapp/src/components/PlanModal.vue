@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { createSubscriptionInvoice, fetchSubscription } from '../api'
 import { t } from '../i18n'
 import { apiError } from '../services/apiError'
+import { popBackInterceptor, pushBackInterceptor } from '../services/backButton'
 import { openTelegramLink, tg } from '../services/telegram'
 
 // reason: 'products' | 'services' | 'mailing' | null — что именно упёрлось;
@@ -13,6 +14,14 @@ const emit = defineEmits(['close', 'paid'])
 const info = ref(null)
 const error = ref('')
 const busy = ref('')
+
+function close() {
+  emit('close')
+}
+
+// «Назад» с телефона закрывает лист, а не уводит с кабинета под ним
+onMounted(() => pushBackInterceptor(close))
+onBeforeUnmount(() => popBackInterceptor(close))
 
 onMounted(async () => {
   try {
@@ -72,9 +81,14 @@ async function pay(plan, method) {
 </script>
 
 <template>
-  <div class="backdrop" @click.self="emit('close')">
+  <div class="backdrop" @click.self="close">
     <div class="sheet" role="dialog" aria-modal="true">
-      <h3>{{ reason ? t(`plan.limit.${reason}`) : t('plan.upgradeTitle') }}</h3>
+      <!-- закрытие: крестик, тап мимо листа и системная «Назад» — кнопки внизу
+           нет намеренно, она отъедала экран у самих тарифов -->
+      <header class="head">
+        <h3>{{ reason ? t(`plan.limit.${reason}`) : t('plan.upgradeTitle') }}</h3>
+        <button class="close" type="button" :aria-label="t('common.close')" @click="close">✕</button>
+      </header>
       <!-- ничего не пропадает: лимит останавливает рост, а не отбирает
            накопленное — об этом говорим прямо, иначе окно пугает -->
       <p class="lead">{{ t('plan.nothingLost') }}</p>
@@ -100,7 +114,6 @@ async function pay(plan, method) {
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
-      <button class="btn btn-soft close" @click="emit('close')">{{ t('common.close') }}</button>
     </div>
   </div>
 </template>
@@ -116,7 +129,12 @@ async function pay(plan, method) {
   background: var(--bg); border-radius: 20px 20px 0 0; padding: 20px 16px 24px;
   display: flex; flex-direction: column; gap: 12px;
 }
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 h3 { margin: 0; font-size: 18px; }
+.close {
+  width: 32px; height: 32px; flex-shrink: 0; border: 0; border-radius: 11px;
+  background: var(--surface2); color: var(--text); font-size: 14px; cursor: pointer;
+}
 .lead { margin: 0; font-size: 13.5px; color: var(--sub); }
 .tier {
   border: 1px solid var(--border); border-radius: 15px;
@@ -128,5 +146,4 @@ h3 { margin: 0; font-size: 18px; }
 ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
 .stars { border: 1px solid var(--border); }
 .error { color: var(--red); font-size: 13px; margin: 0; }
-.close { margin-top: 2px; }
 </style>

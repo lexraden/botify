@@ -13,6 +13,21 @@ export function backTarget(path, backPath) {
   return backPath ? 'BACK' : '/'
 }
 
+// Листы поверх экрана (например, окно тарифов) забирают «Назад» себе: пока
+// лист открыт, назад обязан закрывать его, а не уводить с экрана под ним.
+// Стек, а не одна ссылка: лист может открыться поверх листа, и закрываться
+// они должны в обратном порядке.
+const interceptors = []
+
+export function pushBackInterceptor(fn) {
+  interceptors.push(fn)
+}
+
+export function popBackInterceptor(fn) {
+  const i = interceptors.lastIndexOf(fn)
+  if (i !== -1) interceptors.splice(i, 1)
+}
+
 // Вешается один раз при старте приложения (main.js)
 export function attachBackButton(router) {
   const bb = tg?.BackButton
@@ -21,6 +36,11 @@ export function attachBackButton(router) {
   let currentPath = '/'
 
   bb.onClick(() => {
+    const top = interceptors[interceptors.length - 1]
+    if (top) {
+      top()
+      return
+    }
     const target = backTarget(currentPath, window.history.state?.back ?? null)
     // промис возвращаем для тестов; Telegram его игнорирует
     return target === 'BACK' ? router.back() : router.push(target)

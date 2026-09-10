@@ -12,6 +12,13 @@ vi.mock('../../services/telegram', () => ({
   tg: null,
   openTelegramLink: (...a) => openTelegramLink(...a),
 }))
+// перехватчик системной «Назад»: проверяем, что лист берёт её себе и отдаёт
+const pushBackInterceptor = vi.fn()
+const popBackInterceptor = vi.fn()
+vi.mock('../../services/backButton', () => ({
+  pushBackInterceptor: (...a) => pushBackInterceptor(...a),
+  popBackInterceptor: (...a) => popBackInterceptor(...a),
+}))
 
 const { default: PlanModal } = await import('../PlanModal.vue')
 const { setLocale } = await import('../../services/locale')
@@ -87,6 +94,30 @@ describe('PlanModal — окно тарифов', () => {
     const tier = w.findAll('.tier')[0]
     expect(tier.find('.btn-primary').attributes('disabled')).toBeDefined()
     expect(tier.find('.stars').attributes('disabled')).toBeUndefined()
+  })
+
+  it('закрывается крестиком в шапке, кнопки внизу нет', async () => {
+    const w = await open()
+    // единственная кнопка закрытия — в шапке
+    expect(w.findAll('.close')).toHaveLength(1)
+    expect(w.find('.head .close').exists()).toBe(true)
+
+    await w.find('.head .close').trigger('click')
+    expect(w.emitted('close')).toBeTruthy()
+  })
+
+  it('системная «Назад» закрывает лист и отпускается вместе с ним', async () => {
+    const w = await open()
+    expect(pushBackInterceptor).toHaveBeenCalledTimes(1)
+
+    // именно это backButton.js вызовет вместо перехода назад
+    const back = pushBackInterceptor.mock.calls[0][0]
+    back()
+    expect(w.emitted('close')).toBeTruthy()
+
+    // закрылись — «Назад» снова уводит с экрана, а не висит мёртвым хендлером
+    w.unmount()
+    expect(popBackInterceptor).toHaveBeenCalledWith(back)
   })
 
   it('сбой счёта показывается, окно не закрывается', async () => {
