@@ -269,7 +269,7 @@ async def submit_feedback(
         kind="buyer",
         feedback_type=payload.type,
         sender_id=ctx.customer.telegram_id,
-        sender_name=ctx.customer.first_name,
+        sender_name=ctx.customer.display_name,
         sender_username=ctx.customer.username,
         bot=ctx.bot,
         message=payload.message,
@@ -279,6 +279,48 @@ async def submit_feedback(
     if not sent:
         raise HTTPException(status_code=502, detail="send_failed")
     return {"status": "sent"}
+
+
+# --------------------------------------------------------------------------
+# Профиль покупателя: чтение и правка собственного имени. Telegram-имя живёт
+# в first_name и перезаписывается при каждом визите (upsert_customer), своё
+# — в custom_name и до первого сброса главнее.
+# --------------------------------------------------------------------------
+
+
+class BuyerMeOut(BaseModel):
+    # Имя для шапки профиля: своё, иначе из Telegram; None — показываем фолбэк
+    name: str | None
+    # Telegram-имя: плейсхолдер формы правки и то, что вернётся после сброса
+    telegram_name: str | None
+
+
+class BuyerNameIn(BaseModel):
+    name: str = Field(default="", max_length=64)
+
+
+def _buyer_me(ctx: BuyerContext) -> BuyerMeOut:
+    return BuyerMeOut(name=ctx.customer.display_name, telegram_name=ctx.customer.first_name)
+
+
+@router.get("/me", response_model=BuyerMeOut)
+async def buyer_me(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> BuyerMeOut:
+    return _buyer_me(ctx)
+
+
+@router.patch("/me", response_model=BuyerMeOut)
+async def update_buyer_me(
+    payload: BuyerNameIn, ctx: BuyerContext = Depends(get_buyer_any_shop)
+) -> BuyerMeOut:
+    """Правка имени. Пустая строка — легальный сброс: покупатель возвращается
+    к имени из Telegram без отдельной кнопки."""
+    name = payload.name.strip()
+    # покупатель загружен в upsert_customer собственным сеансом и остался
+    # detached: без возврата в сессию запроса UPDATE не дойдёт до базы
+    ctx.session.add(ctx.customer)
+    ctx.customer.custom_name = name or None
+    await ctx.session.commit()
+    return _buyer_me(ctx)
 
 
 @router.post("/orders", response_model=OrderOut)
@@ -709,15 +751,16 @@ async def send_order_chat_message(
 # --------------------------------------------------------------------------
 # Отзывы: оценка товара доступна только покупателю его доставленного заказа.
 # Наружу идут оценка, текст, имя автора и ответ продавца. Имя — настоящее,
-# из профиля Telegram (без юзернейма): живые подписи вызывают больше доверия
-# к отзывам. Покупателя об этом предупреждают в форме оценки.
+# из профиля приложения или Telegram (без юзернейма): живые подписи вызывают
+# больше доверия к отзывам. Это снимок на момент публикации: правка имени
+# задним числом старые отзывы не переписывает.
 # --------------------------------------------------------------------------
 
 
 class PublicReviewOut(BaseModel):
     rating: int
     body: str | None
-    # имя автора: first_name из Telegram, у безымянных — псевдоним «Анна К.»
+    # имя автора: своё из Mini App, иначе из Telegram; у безымянных — псевдоним
     author_name: str | None
     reply_body: str | None
     reply_at: datetime | None
@@ -819,9 +862,10 @@ async def leave_review(
     for item in payload.items:
         review = by_product.get(item.product_id)
         if review is None:
-            # автор — Telegram-имя покупателя (не юзернейм); у тех, у кого имени
+            # автор — имя покупателя (своё из профиля приложения, иначе
+            # Telegram-имя; не юзернейм); у тех, у кого имени
             # в профиле нет, подпись остаётся псевдонимом
-            display_name = (ctx.customer.first_name or "").strip()[:64]
+            display_name = (ctx.customer.display_name or "")[:64]
             review = ProductReview(
                 bot_id=ctx.bot.id,
                 product_id=item.product_id,

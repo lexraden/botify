@@ -63,6 +63,7 @@ export const DICT = {
     // профиль покупателя
     'profile.fallbackName': 'Покупатель',
     'profile.role': 'покупатель',
+    'profile.editName': 'Изменить имя',
     'profile.chatNote':
       'Чат с продавцом открывается после оплаты: кнопка «Написать продавцу» появляется у самого заказа.',
     'profile.contactUs': '💬 Связаться с нами',
@@ -70,6 +71,14 @@ export const DICT = {
     'profile.langToggle': 'Сменить язык',
     'profile.termsOfService': 'Условия',
     'profile.privacyPolicy': 'Конфиденциальность',
+
+    // правка имени покупателя: пустое поле — возврат к имени из Telegram
+    'nameEdit.title': 'Твоё имя',
+    'nameEdit.placeholder': 'Как к тебе обращаться',
+    'nameEdit.hint': 'Это имя увидят в отзывах, которые ты оставишь. Пустое поле вернёт имя из Telegram.',
+    'nameEdit.save': 'Сохранить',
+    'nameEdit.sending': 'Сохраняем…',
+    'nameEdit.error': 'Не удалось сохранить. Попробуй ещё раз',
 
     // канал «Связаться с нами»: обращение уходит платформе (не продавцу)
     'feedback.title': 'Связаться с нами',
@@ -457,6 +466,7 @@ export const DICT = {
     // buyer profile
     'profile.fallbackName': 'Buyer',
     'profile.role': 'buyer',
+    'profile.editName': 'Edit name',
     'profile.chatNote':
       'The chat with the seller opens after payment: the “Message the seller” button appears on the order itself.',
     'profile.contactUs': '💬 Contact us',
@@ -464,6 +474,14 @@ export const DICT = {
     'profile.langToggle': 'Toggle language',
     'profile.termsOfService': 'Terms of Service',
     'profile.privacyPolicy': 'Privacy Policy',
+
+    // editing the buyer's name: an empty field falls back to the Telegram name
+    'nameEdit.title': 'Your name',
+    'nameEdit.placeholder': 'What should we call you',
+    'nameEdit.hint': 'Reviews you post will show this name. An empty field brings back your Telegram name.',
+    'nameEdit.save': 'Save',
+    'nameEdit.sending': 'Saving…',
+    'nameEdit.error': 'Could not save. Try again',
 
     // «Contact us» channel: the message goes to the platform (not the seller)
     'feedback.title': 'Contact us',

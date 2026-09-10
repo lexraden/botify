@@ -1,12 +1,13 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchShop, sendBuyerFeedback } from '../api'
+import { fetchBuyerMe, fetchShop, sendBuyerFeedback, updateBuyerName } from '../api'
 import { t } from '../i18n'
 import BrandBadge from '../components/BrandBadge.vue'
 import BuyerOrders from '../components/BuyerOrders.vue'
 import FeedbackModal from '../components/FeedbackModal.vue'
 import LegalModal from '../components/LegalModal.vue'
+import NameEditModal from '../components/NameEditModal.vue'
 import { PRIVACY } from '../content/privacy'
 import { TOS } from '../content/tos'
 import { locale, setLocale } from '../services/locale'
@@ -15,21 +16,39 @@ import { tg } from '../services/telegram'
 
 const router = useRouter()
 
-// initDataUnsafe используем только чтобы поздороваться: сервер личность из
-// него не берёт, авторизация — по подписанному initData на каждом запросе.
+// initDataUnsafe даёт имя для первой отрисовки, пока запрос к серверу идёт.
+// Личность сервер подтверждает подписанным initData на каждом запросе; аватар
+// фото не использует вовсе — только буква имени.
 const me = tg?.initDataUnsafe?.user ?? null
+
+// Имя с сервера: своё (покупатель мог его поменять в этом окне), иначе
+// актуальное из Telegram. initData здесь стартовое значение.
+const name = ref(me?.first_name || '')
 
 // Пункт «Связаться с нами» показывается, только если есть кому доставлять
 // обращение (ADMIN_TELEGRAM_IDS на бэкенде). Сбой запроса не роняет профиль.
 const feedbackEnabled = ref(false)
 const showFeedback = ref(false)
+const showNameEdit = ref(false)
 onMounted(async () => {
   try {
     feedbackEnabled.value = Boolean((await fetchShop()).feedback_enabled)
   } catch {
     /* канал связи — не повод ронять профиль */
   }
+  try {
+    const meResp = await fetchBuyerMe()
+    name.value = meResp.name || me?.first_name || ''
+  } catch {
+    /* оффлайн — остаётся имя из initData */
+  }
 })
+
+// Правка имени: ответ /me несёт действующее имя (после сброса — из Telegram).
+async function saveName(value) {
+  const meResp = await updateBuyerName(value)
+  name.value = meResp.name || me?.first_name || ''
+}
 
 // Обращение уходит платформе, а не продавцу магазина. Отдельный текст для
 // 429: модалка понимает Error('feedback.…') как ключ перевода.
@@ -83,12 +102,23 @@ async function toggleLang() {
     </div>
 
     <div class="who">
-      <img v-if="me?.photo_url" class="avatar" :src="me.photo_url" :alt="me.first_name" />
-      <div v-else class="avatar letter">
-        {{ (me?.first_name || '?').charAt(0).toUpperCase() }}
-      </div>
+      <!-- аватар всегда буква: фото профиля не разбираем -->
+      <div class="avatar letter">{{ (name || '?').charAt(0).toUpperCase() }}</div>
       <div>
-        <h2>{{ me?.first_name || t('profile.fallbackName') }}</h2>
+        <h2>
+          {{ name || t('profile.fallbackName') }}
+          <!-- правка имени рядом с именем, не в меню: это персональное -->
+          <button
+            class="edit-name"
+            type="button"
+            :aria-label="t('profile.editName')"
+            @click="showNameEdit = true"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+            </svg>
+          </button>
+        </h2>
         <span class="muted">{{ t('profile.role') }}</span>
       </div>
     </div>
@@ -125,6 +155,12 @@ async function toggleLang() {
 
     <LegalModal v-if="legalDoc" :docs="legalDoc === 'tos' ? TOS : PRIVACY" @close="legalDoc = null" />
     <FeedbackModal v-if="showFeedback" :submit="submitFeedback" @close="showFeedback = false" />
+    <NameEditModal
+      v-if="showNameEdit"
+      :initial="name"
+      :save="saveName"
+      @close="showNameEdit = false"
+    />
   </div>
 </template>
 
@@ -177,6 +213,11 @@ async function toggleLang() {
 .who {
   display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
   h2 { font-size: 18px; margin: 0; }
+}
+.edit-name {
+  border: 0; background: none; color: var(--sub); cursor: pointer;
+  padding: 3px; margin-left: 4px; vertical-align: baseline;
+  display: inline-flex; align-items: center;
 }
 .avatar {
   width: 52px; height: 52px; border-radius: 17px; object-fit: cover; flex-shrink: 0;

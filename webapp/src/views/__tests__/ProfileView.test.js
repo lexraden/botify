@@ -5,12 +5,24 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 const fetchMyOrders = vi.fn()
 const fetchShop = vi.fn()
 const sendBuyerFeedback = vi.fn()
+const fetchBuyerMe = vi.fn()
+const updateBuyerName = vi.fn()
 vi.mock('../../api', () => ({
   fetchMyOrders: (...args) => fetchMyOrders(...args),
   fetchShop: (...args) => fetchShop(...args),
   sendBuyerFeedback: (...args) => sendBuyerFeedback(...args),
+  fetchBuyerMe: (...args) => fetchBuyerMe(...args),
+  updateBuyerName: (...args) => updateBuyerName(...args),
   submitOrderReviews: vi.fn(),
   deleteOrderReview: vi.fn(),
+}))
+// initDataUnsafe даёт стартовое имя для отрисовки; фото профиля приложение
+// не использует вовсе — тест следит, чтобы аватар оставался буквой
+vi.mock('../../services/telegram', () => ({
+  tg: {
+    colorScheme: 'light',
+    initDataUnsafe: { user: { first_name: 'Телегеша', photo_url: 'https://t.me/pic.jpg' } },
+  },
 }))
 const { default: ProfileView } = await import('../ProfileView.vue')
 const { locale, setLocale } = await import('../../services/locale')
@@ -29,6 +41,10 @@ describe('ProfileView — профиль покупателя', () => {
     fetchMyOrders.mockReset()
     fetchShop.mockReset()
     sendBuyerFeedback.mockReset()
+    fetchBuyerMe.mockReset()
+    updateBuyerName.mockReset()
+    // по умолчанию своего имени нет: показывается Telegram-имя
+    fetchBuyerMe.mockResolvedValue({ name: null, telegram_name: null })
     // форма ответа честная: поля шапки витрины, добавленные для trust-строки
     fetchShop.mockResolvedValue({
       feedback_enabled: true,
@@ -151,6 +167,47 @@ describe('ProfileView — профиль покупателя', () => {
 
     expect(sendBuyerFeedback).toHaveBeenCalledWith('bug', 'Сломалась корзина', '/profile')
     expect(dialog.text()).toContain('Сообщение отправлено')
+  })
+
+  it('имя приходит с сервера и замещает стартовое из initData', async () => {
+    fetchMyOrders.mockResolvedValue([])
+    fetchBuyerMe.mockResolvedValue({ name: 'Алиса', telegram_name: 'Телегеша' })
+    const w = await mountView()
+    await flushPromises()
+
+    expect(w.find('h2').text()).toContain('Алиса')
+    // буква аватара — от действующего имени
+    expect(w.find('.avatar.letter').text()).toBe('А')
+  })
+
+  it('аватар всегда буква: фото профиля не разбираем', async () => {
+    fetchMyOrders.mockResolvedValue([])
+    const w = await mountView()
+    await flushPromises()
+
+    expect(w.find('img.avatar').exists()).toBe(false)
+    expect(w.find('.avatar.letter').exists()).toBe(true)
+  })
+
+  it('карандаш открывает правку, сохранение переименовывает и закрывает', async () => {
+    fetchMyOrders.mockResolvedValue([])
+    updateBuyerName.mockResolvedValue({ name: 'Маша', telegram_name: 'Телегеша' })
+    const w = await mountView()
+    await flushPromises()
+
+    await w.find('.edit-name').trigger('click')
+    const dialog = w.find('[role="dialog"]')
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.find('input').element.value).toBe('Телегеша')
+
+    await dialog.find('input').setValue('Маша')
+    await dialog.find('.btn.send').trigger('click')
+    await flushPromises()
+
+    expect(updateBuyerName).toHaveBeenCalledWith('Маша')
+    // шапка показала новое имя, модалка закрылась
+    expect(w.find('h2').text()).toContain('Маша')
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
   })
 
   it('под плашкой — ссылки на ToS и Privacy: одна строка с точкой, в RU и EN', async () => {

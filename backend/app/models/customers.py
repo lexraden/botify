@@ -18,6 +18,10 @@ class Customer(Base, CreatedAtMixin):
 
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str | None] = mapped_column(String(128))
+    # Имя, которое покупатель задал сам в Mini App. Отдельно от first_name:
+    # последний перезаписывается из initData на каждом запросе
+    # (services/channels.py upsert_customer) и затёр бы правку.
+    custom_name: Mapped[str | None] = mapped_column(String(64))
     language_code: Mapped[str | None] = mapped_column(String(8))
     # Ручной выбор языка в профиле Mini App; None = человек не выбирал — тогда
     # язык уведомлений берётся из language_code (ru* -> RU, остальные -> EN).
@@ -33,3 +37,8 @@ class Customer(Base, CreatedAtMixin):
     )
 
     bot = relationship("SellerBot", back_populates="customers")
+
+    @property
+    def display_name(self) -> str | None:
+        """Имя для показа: своё из Mini App, иначе из Telegram."""
+        return (self.custom_name or "").strip() or self.first_name

@@ -224,3 +224,72 @@ async def test_purge_removes_orphans_and_keeps_referenced(db):
         assert (await c.get(orphan_url)).status_code == 404
         assert (await c.get(referenced_url)).status_code == 200
         assert (await c.get(fresh_url)).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_purge_keeps_variant_photos(db):
+    """Фото вариаций — тоже живая ссылка на товар.
+
+    Чистка раньше знала только products.image_url, а туда при сохранении
+    попадает фото первой вариации: байты второй и следующих удалялись через
+    сутки, и покупатель на странице товара вместо фото выбранной вариации
+    видел пустую рамку."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.models import ProductImage
+    from app.services.images import purge_orphan_images
+
+    bot_id = await setup_shop(db)
+    first = (await _upload(bot_id, PNG_BYTES)).json()["url"]
+    second = (await _upload(bot_id, PNG_BYTES)).json()["url"]
+    orphan = (await _upload(bot_id, PNG_BYTES)).json()["url"]
+
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={
+                "type": "physical",
+                "title": "Футболка",
+                "price": "10",
+                "variants": [
+                    {"price": "5", "stock": 3, "attributes": {"Цвет": "Красный"}, "images": [first]},
+                    {"price": "7", "stock": 2, "attributes": {"Цвет": "Синий"}, "images": [second]},
+                ],
+            },
+        )
+        assert r.status_code == 200, r.text
+        product_id = r.json()["id"]
+
+    async with db() as session:
+        for image in (await session.execute(select(ProductImage))).scalars():
+            image.created_at = datetime.now(timezone.utc) - timedelta(hours=25)
+        await session.commit()
+
+    # обе вариации ссылаются на свои фото — удаляется только настоящий сирота
+    assert await purge_orphan_images() == 1
+    async with client() as c:
+        assert (await c.get(orphan)).status_code == 404
+        assert (await c.get(first)).status_code == 200
+        assert (await c.get(second)).status_code == 200
+
+    # вариацию убрали при редактировании — её фото стало сиротой
+    async with client() as c:
+        r = await c.put(
+            f"/api/seller/bots/{bot_id}/products/{product_id}",
+            headers=seller_headers(),
+            json={
+                "type": "physical",
+                "title": "Футболка",
+                "price": "10",
+                "variants": [
+                    {"price": "5", "stock": 3, "attributes": {"Цвет": "Красный"}, "images": [first]},
+                ],
+            },
+        )
+        assert r.status_code == 200, r.text
+
+    assert await purge_orphan_images() == 1
+    async with client() as c:
+        assert (await c.get(second)).status_code == 404
+        assert (await c.get(first)).status_code == 200

@@ -63,6 +63,10 @@ export const sendBuyerFeedback = (type, message, screen) =>
   api
     .post(`/store/${getBotId()}/feedback`, { type, message, screen, app_version: APP_VERSION })
     .then((r) => r.data)
+// Профиль покупателя: своё имя. Пустая строка — сброс к имени из Telegram.
+export const fetchBuyerMe = () => api.get(`/store/${getBotId()}/me`).then((r) => r.data)
+export const updateBuyerName = (name) =>
+  api.patch(`/store/${getBotId()}/me`, { name }).then((r) => r.data)
 
 // --- кабинет продавца (контекст hub-бота) ---
 export const fetchMe = () => api.get('/seller/me').then((r) => r.data)
