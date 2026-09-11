@@ -184,6 +184,18 @@ export const sendMyOrderChatMessage = (orderId, body) =>
   api
     .post(`/store/${getBotId()}/orders/${orderId}/chat/messages`, { body })
     .then((r) => r.data)
+// Фото покупателя в чат заказа — тот же приём сырых байтов, что и у продавца.
+// Понадобилось для оплаты переводом: чек показывают здесь, а не «куда-нибудь».
+export const sendMyOrderChatPhoto = async (orderId, file, caption) =>
+  api
+    .post(
+      `/store/${getBotId()}/orders/${orderId}/chat/photo${
+        caption ? `?caption=${encodeURIComponent(caption)}` : ''
+      }`,
+      await compressImage(file),
+      { headers: { 'Content-Type': 'application/octet-stream' } },
+    )
+    .then((r) => r.data)
 
 // чат заказа: история читается всегда, писать можно в открытом окне
 export const fetchOrderChat = (botId, orderId, silent = false) =>

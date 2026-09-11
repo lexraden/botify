@@ -725,7 +725,7 @@ async function removeLogo() {
       <template v-else-if="tab === 'messages'">
         <!-- два источника, одно место: переписки по заказам и отзывы. Данные
              не смешиваем — у отзыва модерация и один ответ, у чата поток -->
-        <div class="types inbox-tabs">
+        <div class="inbox-tabs">
           <button
             :class="{ active: inboxTab === 'chats' }"
             @click="inboxTab = 'chats'"
@@ -1059,7 +1059,20 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
   border-radius: 9px; background: var(--accent); color: #fff;
   font-size: 11px; font-weight: 800;
 }
-.inbox-tabs { margin-bottom: 12px; }
+/* Подвкладки инбокса. Раньше здесь стоял класс .types, а его стили живут
+   в ProductFormView и scoped — сюда они не доезжали, и кнопки оставались
+   системными: белый фон и прямые углы поверх тёмной темы. */
+.inbox-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.inbox-tabs button {
+  border: 1px solid var(--border); border-radius: 11px; padding: 7px 13px;
+  background: var(--surface); color: var(--text);
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center;
+}
+.inbox-tabs button.active {
+  border-color: var(--accent); background: var(--accent-soft); color: var(--accent);
+}
+.inbox-tabs button.active .unread { background: var(--accent); color: #fff; }
 .chats-block { display: flex; flex-direction: column; gap: 2px; }
 .chat-row {
   display: flex; flex-direction: column; gap: 3px; align-items: stretch;

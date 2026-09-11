@@ -5,6 +5,7 @@ import {
   fetchOrderChat,
   sendMyOrderChatMessage,
   sendOrderChatMessage,
+  sendMyOrderChatPhoto,
   sendOrderChatPhoto,
 } from '../api'
 import { t, intlLocale } from '../i18n'
@@ -24,9 +25,6 @@ const isBuyer = computed(() => props.mode === 'buyer')
 // 'seller' | 'buyer'. Совпадают они только у продавца, поэтому «своё»
 // сравниваем с этим, а не с mode напрямую.
 const mySender = computed(() => (isBuyer.value ? 'customer' : 'seller'))
-// Фото покупатель пока не шлёт: эндпоинта /store/.../chat/photo нет, и
-// показывать скрепку, которая гарантированно упадёт, нельзя
-const canAttach = computed(() => !isBuyer.value)
 
 const chat = ref(null)
 const error = ref('')
@@ -93,7 +91,9 @@ async function send() {
   }
 }
 
-// фото отправляется сразу после выбора файла; текст из поля ввода уезжает подписью
+// Фото отправляется сразу после выбора файла; текст из поля ввода уезжает
+// подписью. Шлют обе стороны — продавец посылку и трек, покупатель чек по
+// переводу, — но адреса у них разные, как и у текстовых сообщений.
 function pickPhoto() {
   fileInput.value?.click()
 }
@@ -104,7 +104,9 @@ async function onFileChange(e) {
   if (!file || sending.value) return
   sending.value = true
   try {
-    await sendOrderChatPhoto(props.botId, props.orderId, file, draft.value.trim())
+    await (isBuyer.value
+      ? sendMyOrderChatPhoto(props.orderId, file, draft.value.trim())
+      : sendOrderChatPhoto(props.botId, props.orderId, file, draft.value.trim()))
     draft.value = ''
     error.value = ''
     await reload()
@@ -152,14 +154,12 @@ const fmtTime = (iso) =>
       </div>
       <div v-else class="composer">
         <button
-          v-if="canAttach"
           class="plus"
           :disabled="sending"
           :title="t('chat.attachPhoto')"
           @click="pickPhoto"
         >+</button>
         <input
-          v-if="canAttach"
           ref="fileInput"
           type="file"
           accept="image/*"

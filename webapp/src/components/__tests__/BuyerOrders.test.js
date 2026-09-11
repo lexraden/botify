@@ -6,6 +6,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 const fetchMyOrders = vi.fn()
 const fetchMyOrderChat = vi.fn()
 const sendMyOrderChatMessage = vi.fn()
+const sendMyOrderChatPhoto = vi.fn()
+const sendOrderChatPhoto = vi.fn()
 const submitOrderReviews = vi.fn()
 const deleteOrderReview = vi.fn()
 const payOrder = vi.fn()
@@ -20,6 +22,8 @@ vi.mock('../../api', () => ({
   confirmReceived: (...args) => confirmReceived(...args),
   fetchMyOrderChat: (...args) => fetchMyOrderChat(...args),
   sendMyOrderChatMessage: (...args) => sendMyOrderChatMessage(...args),
+  sendMyOrderChatPhoto: (...args) => sendMyOrderChatPhoto(...args),
+  sendOrderChatPhoto: (...args) => sendOrderChatPhoto(...args),
 }))
 const openTelegramLink = vi.fn()
 vi.mock('../../services/telegram', () => ({
@@ -435,6 +439,8 @@ describe('BuyerOrders — переписка по покупке', () => {
     fetchMyOrders.mockReset()
     fetchMyOrderChat.mockReset()
     sendMyOrderChatMessage.mockReset()
+    sendMyOrderChatPhoto.mockReset()
+    sendOrderChatPhoto.mockReset()
     setLocale('ru')
     router.push('/')
   })
@@ -493,7 +499,7 @@ describe('BuyerOrders — переписка по покупке', () => {
     expect(w.find('.msg.seller').classes()).toContain('theirs')
   })
 
-  it('скрепки у покупателя нет — фото из приложения он пока не шлёт', async () => {
+  it('покупателю доступна скрепка: чек по переводу показывают в чате заказа', async () => {
     fetchMyOrderChat.mockResolvedValue({
       status: 'active', can_send: true, closes_at: null, messages: [],
     })
@@ -502,6 +508,26 @@ describe('BuyerOrders — переписка по покупке', () => {
     await flushPromises()
 
     expect(w.find('.chat-box .composer').exists()).toBe(true)
-    expect(w.find('.chat-box .plus').exists()).toBe(false)
+    expect(w.find('.chat-box .plus').exists()).toBe(true)
+  })
+
+  it('фото покупателя уходит своим адресом, а не продавцовым', async () => {
+    fetchMyOrderChat.mockResolvedValue({
+      status: 'active', can_send: true, closes_at: null, messages: [],
+    })
+    const w = await show('delivered')
+    await w.find('.chat-btn').trigger('click')
+    await flushPromises()
+
+    const file = new File(['x'], 'check.png', { type: 'image/png' })
+    const input = w.find('.chat-box input[type="file"]')
+    Object.defineProperty(input.element, 'files', { value: [file] })
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(sendMyOrderChatPhoto).toHaveBeenCalledTimes(1)
+    // первым аргументом — id заказа покупателя, магазин берётся из bot_id
+    expect(sendMyOrderChatPhoto.mock.calls[0][0]).toBe(5)
+    expect(sendOrderChatPhoto).not.toHaveBeenCalled()
   })
 })

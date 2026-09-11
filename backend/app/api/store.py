@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import BuyerContext, get_buyer, get_buyer_any_shop
 from app.config import get_settings
 from app.models import (
+    ChatImage,
     Customer,
     Order,
     OrderChat,
@@ -905,6 +906,76 @@ async def send_order_chat_message(
         locale=seller_texts.seller_locale(seller),
         bot_id=order.bot_id,
         body=payload.body,
+    )
+    return out
+
+
+@router.post("/orders/{order_id}/chat/photo", response_model=BuyerChatMessageOut)
+async def send_order_chat_photo(
+    order_id: int,
+    request: Request,
+    caption: str | None = None,
+    ctx: BuyerContext = Depends(get_buyer_any_shop),
+) -> BuyerChatMessageOut:
+    """Фото покупателя в чат заказа: сырые байты, подпись — query-параметром.
+
+    Зеркало продавцового эндпоинта, с одним отличием: продавцу в hub-бот
+    уходит пуш с пометкой 📷, а не само фото. Так же, как с текстом —
+    переписка живёт в кабинете, пуш только зовёт её открыть.
+
+    Понадобилось это для оплаты переводом: чек — главное, что покупателю
+    нужно показать продавцу, и просить его пересылать картинку куда-то
+    мимо заказа было бы издевательством.
+    """
+    from app.services.chat import (
+        ChatLockedError,
+        RateLimitedError,
+        notify_seller,
+        send_message,
+    )
+    from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
+
+    # Длину проверяем дважды: по заголовку — чтобы отбить большой файл до
+    # чтения тела, по факту — потому что заголовку верить нельзя
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="photo is over 5 MB")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty file")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="photo is over 5 MB")
+    mime = sniff_image_mime(data)
+    if mime is None:
+        raise HTTPException(status_code=400, detail="only JPEG, PNG, WebP or GIF")
+
+    order, chat = await _own_order_with_chat(ctx, order_id)
+    image = ChatImage(bot_id=ctx.bot.id, chat_id=chat.id, mime=mime, size=len(data), data=data)
+    ctx.session.add(image)
+    await ctx.session.flush()
+
+    try:
+        message = await send_message(
+            ctx.session, chat, order, "customer", caption or "", image_token=image.token
+        )
+    except ChatLockedError:
+        raise HTTPException(status_code=403, detail="chat_locked")
+    except RateLimitedError:
+        raise HTTPException(status_code=429, detail="too_many_messages")
+
+    out = BuyerChatMessageOut.model_validate(message)
+    seller = await ctx.session.get(Seller, order.seller_id)
+    seller_tg = seller.telegram_id
+    seller_locale = seller_texts.seller_locale(seller)
+    await ctx.session.commit()
+
+    await notify_seller(
+        seller_tg,
+        order.id,
+        has_photo=True,
+        locale=seller_locale,
+        bot_id=order.bot_id,
+        body=caption,
     )
     return out
 

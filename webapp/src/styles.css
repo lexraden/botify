@@ -1,5 +1,9 @@
 /* Единые токены оформления — совпадают с дизайн-канвасом (docs/design/miniapp) */
 :root {
+  /* Системные части интерфейса — скроллбары, каретка, выпадающий список
+     select — красятся по color-scheme, а не по нашим переменным. Без него
+     на тёмной теме они оставались светлыми. */
+  color-scheme: light;
   --bg: #f6f7f9;
   --surface: #ffffff;
   --surface2: #eff1f5;
@@ -21,6 +25,7 @@
 
 /* Тёмная тема — по теме Telegram-клиента */
 body.tg-dark {
+  color-scheme: dark;
   --bg: #0e0f13;
   --surface: #171921;
   --surface2: #20232e;
@@ -68,12 +73,15 @@ a {
   text-decoration: none;
 }
 
-input, textarea, button {
+input, textarea, select, button {
   font-family: inherit;
   font-weight: 600;
 }
 
-input, textarea {
+/* select здесь же, что и поля ввода: без него системный список рисуется
+   светлым поверх тёмной темы. appearance снимает родную стрелку, иначе
+   на iOS она остаётся системного цвета. */
+input, textarea, select {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 13px;
@@ -83,7 +91,23 @@ input, textarea {
   width: 100%;
 }
 
-input:focus, textarea:focus {
+select {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Флажки и переключатели — не поля ввода: width: 100% выше растягивал их
+   бокс на всю строку (радиокнопка на чекауте занимала 332px вместо 13),
+   и подпись рядом уезжала, а тап попадал мимо. Цвет — акцентом темы,
+   иначе системная галочка остаётся синей. */
+input[type='checkbox'], input[type='radio'] {
+  width: auto;
+  padding: 0;
+  border-radius: 0;
+  accent-color: var(--accent);
+}
+
+input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--accent);
 }

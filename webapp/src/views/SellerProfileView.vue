@@ -117,7 +117,7 @@ const toggleLang = () => setLocale(locale.value === 'ru' ? 'en' : 'ru')
     </div>
 
     <div class="who">
-      <div class="avatar letter">
+      <div class="avatar">
         {{ t('seller.profileIcon') }}
       </div>
       <div>

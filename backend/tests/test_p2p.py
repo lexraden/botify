@@ -504,3 +504,96 @@ async def test_seller_sees_claimed_transfer_but_not_abandoned_cart(db):
     row = next(o for o in r.json() if o["id"] == claimed_id)
     assert row["payment_method"] == "p2p"
     assert row["paid_claimed_at"] is not None
+
+
+# --------------------------------------------------------------------------
+# Чек в чат: фото со стороны покупателя
+# --------------------------------------------------------------------------
+
+# однопиксельный PNG — настоящие байты, чтобы сработал sniff по сигнатуре
+PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "890000000a49444154789c6360000002000100ffff03000006000557bfabd400"
+    "00000049454e44ae426082"
+)
+
+
+@pytest.mark.asyncio
+async def test_buyer_sends_receipt_photo(db):
+    """Чек — главное, что покупатель показывает продавцу по переводу."""
+    bot_id = await setup_shop(db)
+    await make_pro(db, bot_id)
+    async with client() as c:
+        order_id, _ = await make_transfer_order(db, c, bot_id)
+        with patch("app.services.chat.notify_seller", new=AsyncMock()) as push:
+            r = await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/chat/photo",
+                params={"caption": "чек"},
+                headers=buyer_headers(),
+                content=PNG,
+            )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["sender"] == "customer"
+    assert body["image_url"]
+    assert body["body"] == "чек"
+    # продавцу уходит пуш с пометкой фото, а не само изображение
+    assert push.await_count == 1
+    assert push.await_args.kwargs["has_photo"] is True
+
+    # картинка отдаётся по своему адресу и это те же байты
+    async with client() as c:
+        img = await c.get(body["image_url"])
+    assert img.status_code == 200
+    assert img.content == PNG
+
+
+@pytest.mark.asyncio
+async def test_buyer_photo_is_checked_and_lands_in_history(db):
+    bot_id = await setup_shop(db)
+    await make_pro(db, bot_id)
+    async with client() as c:
+        order_id, _ = await make_transfer_order(db, c, bot_id)
+        # не картинка
+        r = await c.post(
+            f"/api/store/{bot_id}/orders/{order_id}/chat/photo",
+            headers=buyer_headers(),
+            content=b"not a photo at all",
+        )
+        assert r.status_code == 400
+        # пустое тело
+        r = await c.post(
+            f"/api/store/{bot_id}/orders/{order_id}/chat/photo",
+            headers=buyer_headers(),
+            content=b"",
+        )
+        assert r.status_code == 400
+
+        with patch("app.services.chat.notify_seller", new=AsyncMock()):
+            await c.post(
+                f"/api/store/{bot_id}/orders/{order_id}/chat/photo",
+                headers=buyer_headers(),
+                content=PNG,
+            )
+        # продавец видит фото в истории чата заказа
+        r = await c.get(
+            f"/api/seller/bots/{bot_id}/orders/{order_id}/chat", headers=seller_headers()
+        )
+    assert r.status_code == 200, r.text
+    messages = r.json()["messages"]
+    assert len(messages) == 1
+    assert messages[0]["sender"] == "customer"
+    assert messages[0]["image_url"]
+
+
+@pytest.mark.asyncio
+async def test_buyer_cannot_send_photo_to_foreign_order(db):
+    bot_id = await setup_shop(db)
+    await make_pro(db, bot_id)
+    async with client() as c:
+        r = await c.post(
+            f"/api/store/{bot_id}/orders/999999/chat/photo",
+            headers=buyer_headers(),
+            content=PNG,
+        )
+    assert r.status_code == 403
