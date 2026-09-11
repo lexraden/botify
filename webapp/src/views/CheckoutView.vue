@@ -135,27 +135,33 @@ async function pay() {
     <!-- выбор способа: только когда у магазина есть куда переводить -->
     <section v-if="options.length" class="pay-method">
       <h3>{{ t('checkout.methodTitle') }}</h3>
+      <!-- сумма стоит у каждого способа намеренно: она одинаковая, и увидеть
+           это глазами надёжнее, чем прочитать. Комиссии платформы платит
+           продавец со своей доли, покупателя они не касаются вовсе. -->
       <label class="opt" :class="{ on: method === 'crypto' }">
         <input v-model="method" type="radio" value="crypto" />
-        <span>
+        <span class="opt-text">
           <b>{{ t('pay.crypto') }}</b>
           <i>{{ t('pay.cryptoHint') }}</i>
         </span>
+        <span class="opt-sum">{{ cart.total.toFixed(2) }} USDT</span>
       </label>
       <label class="opt" :class="{ on: method === 'p2p' }">
         <input v-model="method" type="radio" value="p2p" />
-        <span>
+        <span class="opt-text">
           <b>{{ t('pay.transfer') }}</b>
           <i>{{ t('pay.transferHint') }}</i>
         </span>
+        <span class="opt-sum">{{ cart.total.toFixed(2) }} USDT</span>
       </label>
+      <p class="same-price">{{ t('checkout.samePrice') }}</p>
 
       <!-- какой именно счёт: список появляется, только если выбран перевод -->
       <div v-if="method === 'p2p'" class="requisites">
         <p class="hint">{{ t('pay.chooseRequisites') }}</p>
         <label v-for="o in options" :key="o.id" class="opt sub" :class="{ on: methodId === o.id }">
           <input v-model="methodId" type="radio" :value="o.id" />
-          <span>
+          <span class="opt-text">
             <b>{{ o.label }}</b>
             <i>{{ kindLabel(o) }}</i>
           </span>
@@ -230,10 +236,12 @@ textarea {
   &.on { border-color: var(--accent); }
   &.sub { padding: 9px 12px; }
   input { accent-color: var(--accent); flex-shrink: 0; }
-  span { display: flex; flex-direction: column; gap: 2px; }
+  .opt-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
   b { font-size: 14px; }
   i { font-style: normal; font-size: 12px; color: var(--sub); }
 }
+.opt-sum { font-size: 13px; font-weight: 800; white-space: nowrap; flex-shrink: 0; }
+.same-price { margin: 2px 0 0; font-size: 12px; color: var(--sub); line-height: 1.4; }
 .requisites { display: flex; flex-direction: column; gap: 8px; }
 .empty { text-align: center; opacity: 0.7; a { color: var(--accent); cursor: pointer; } }
 .error { color: var(--red); }

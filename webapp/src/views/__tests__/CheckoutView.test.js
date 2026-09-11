@@ -18,6 +18,7 @@ vi.mock('../../services/telegram', () => ({
 
 import { createOrder, fetchShop } from '../../api'
 import CheckoutView from '../CheckoutView.vue'
+import { setLocale } from '../../services/locale'
 import { useCartStore } from '../../stores/cart'
 
 const router = { push: vi.fn() }
@@ -171,6 +172,22 @@ describe('CheckoutView — счёт не создался', () => {
     const w = mountWith('digital')
     await flushPromises()
     expect(w.find('.pay-method').exists()).toBe(false)
+  })
+
+  it('у обоих способов одна и та же сумма: комиссии платит продавец', async () => {
+    // язык фиксируем: соседние файлы гоняют общий стор локали
+    setLocale('ru')
+    fetchShop.mockResolvedValueOnce({
+      payment_options: [
+        { id: 7, kind: 'card', label: 'Сбербанк', account: '2202', holder: null, note: null },
+      ],
+    })
+    const w = mountWith('digital')
+    await flushPromises()
+
+    const sums = w.findAll('.pay-method > .opt .opt-sum').map((n) => n.text())
+    expect(sums).toEqual(['5.00 USDT', '5.00 USDT'])
+    expect(w.find('.same-price').text()).toContain('комиссии платформы платит продавец')
   })
 
   it('перевод уходит вместе с выбранным способом, а покупатель — на страницу оплаты', async () => {

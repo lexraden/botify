@@ -12,6 +12,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   deletePaymentMethod,
   fetchPaymentMethods,
+  fetchShopSummary,
   savePaymentMethod,
 } from '../api'
 import { t } from '../i18n'
@@ -36,6 +37,10 @@ const proRequired = ref(false)
 // null — форма закрыта; иначе черновик способа (новый или редактируемый)
 const draft = ref(null)
 
+// Комиссия магазина — для сравнения способов. Берём с сервера, а не пишем
+// «5%» в текст: ставка у магазинов может отличаться.
+const commission = ref(null)
+
 async function reload() {
   try {
     methods.value = await fetchPaymentMethods(botId.value)
@@ -43,7 +48,14 @@ async function reload() {
     error.value = apiError(e, 'seller.loadError')
   }
 }
-onMounted(reload)
+onMounted(async () => {
+  await reload()
+  try {
+    commission.value = Number((await fetchShopSummary(botId.value)).commission_pct)
+  } catch {
+    /* без ставки просто не рисуем сравнение */
+  }
+})
 
 function startNew() {
   if (methods.value.length >= MAX) {
@@ -113,6 +125,24 @@ async function remove(m) {
     </div>
 
     <p class="lead">{{ t('req.lead') }}</p>
+
+    <!-- Ради чего это всё: сравнение в деньгах, а не обещанием в описании
+         тарифа. Ставка берётся с сервера — она у магазинов разная. -->
+    <div v-if="commission !== null" class="compare">
+      <div class="col">
+        <span class="cap">{{ t('pay.crypto') }}</span>
+        <b class="pct">−{{ commission }}%</b>
+        <span class="sub">{{ t('req.viaPlatform') }}</span>
+      </div>
+      <div class="col win">
+        <span class="cap">{{ t('pay.transfer') }}</span>
+        <b class="pct">0%</b>
+        <span class="sub">{{ t('req.direct') }}</span>
+      </div>
+    </div>
+    <p v-if="commission !== null" class="compare-note">
+      {{ t('req.compareNote', { sum: (100 - commission).toFixed(0) }) }}
+    </p>
 
     <!-- отказ по тарифу: не прячем экран, а объясняем, чего не хватает -->
     <div v-if="proRequired" class="card pro">
@@ -190,6 +220,18 @@ async function remove(m) {
   display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0;
 }
 .lead { margin: 0 0 14px; font-size: 13px; color: var(--sub); line-height: 1.5; }
+.compare { display: flex; gap: 10px; margin-bottom: 8px; }
+.compare .col {
+  flex: 1; display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--border); border-radius: 14px; padding: 11px 12px;
+  background: var(--surface);
+}
+.compare .col.win { border-color: var(--green); background: var(--green-soft); }
+.compare .cap { font-size: 12px; color: var(--sub); font-weight: 700; }
+.compare .pct { font-size: 22px; line-height: 1.1; }
+.compare .col.win .pct { color: var(--green-text); }
+.compare .sub { font-size: 11px; color: var(--sub); line-height: 1.35; }
+.compare-note { margin: 0 0 14px; font-size: 12px; color: var(--sub); line-height: 1.45; }
 .muted { font-size: 13px; color: var(--sub); word-break: break-all; }
 .muted.off { color: var(--orange-text); }
 .error-line { color: var(--red); font-size: 13px; font-weight: 600; margin: 0 0 10px; }
