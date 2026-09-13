@@ -223,6 +223,15 @@ function normalPrice(raw) {
 async function submit() {
   if (saving.value) return
 
+  // Цифровой товар без ссылки выдачи ломается молча: заказ оплачивается,
+  // а выдать нечего. Ловим до сохранения — у бэкенда та же проверка, но
+  // красная строка под полем понятнее ответа сервера. У услуги ссылки может
+  // не быть: её выполняет человек.
+  if (form.value.type === 'digital' && !form.value.digital_url.trim()) {
+    error.value = t('form.digitalUrlRequired')
+    return
+  }
+
   const basePrice = normalPrice(form.value.price)
   if (basePrice === null && !hasVariants.value) {
     error.value = t('form.priceInvalid')
@@ -467,8 +476,14 @@ async function submit() {
     </template>
 
     <template v-if="form.type !== 'physical'">
-      <label>{{ t('form.digitalUrlLabel') }}</label>
+      <label>
+        {{ t('form.digitalUrlLabel') }}
+        <span v-if="form.type === 'digital'" class="req-mark">*</span>
+      </label>
       <input v-model="form.digital_url" placeholder="https://…" />
+      <p class="hint">
+        {{ form.type === 'digital' ? t('form.digitalUrlHint') : t('form.serviceUrlHint') }}
+      </p>
     </template>
 
     <label class="check">
@@ -570,6 +585,8 @@ textarea { resize: none; }
   border-radius: 12px; cursor: pointer; font-weight: 800; font-size: 13px;
 }
 .vtab.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.req-mark { color: var(--red); }
+.hint { margin: -6px 0 2px; font-size: 12px; color: var(--sub); line-height: 1.4; }
 .vtab.plus { border-style: dashed; border-color: var(--accent); color: var(--accent); font-size: 18px; }
 /* название вариации и «Убрать» — одной строкой: удаление относится именно к
    той вариации, что сейчас открыта, и стоять оно должно рядом с её именем */

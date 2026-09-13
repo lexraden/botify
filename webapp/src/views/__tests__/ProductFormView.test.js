@@ -23,6 +23,7 @@ vi.mock('vue-router', () => ({
 }))
 
 const { default: ProductFormView } = await import('../ProductFormView.vue')
+const { setLocale } = await import('../../services/locale')
 
 function product(price) {
   return {
@@ -45,6 +46,12 @@ async function mountForm(price) {
   return wrapper
 }
 
+// тип товара выбирается плиткой; ищем по подписи, а не по порядку
+function typeButton(wrapper, kind) {
+  const labels = { physical: '📦 Товар', digital: '📕 Digital', service: '🛎 Услуга' }
+  return wrapper.findAll('.types button').find((b) => b.text() === labels[kind])
+}
+
 function priceInput(wrapper) {
   return wrapper.findAll('input').find((i) => i.attributes('inputmode') === 'decimal')
 }
@@ -52,6 +59,8 @@ function priceInput(wrapper) {
 describe('ProductFormView — цена при редактировании', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // язык фиксируем: стор локали общий на весь прогон
+    setLocale('ru')
   })
 
   it('целая цена показывается без хвоста нулей', async () => {
@@ -73,5 +82,38 @@ describe('ProductFormView — цена при редактировании', () 
     await flushPromises()
     // botId приходит строкой из параметров маршрута — так его и передаёт форма
     expect(saveProduct).toHaveBeenCalledWith('1', expect.objectContaining({ price: '5' }))
+  })
+
+  it('цифровой товар не сохраняется без ссылки выдачи', async () => {
+    const w = await mountForm('10')
+    await typeButton(w, 'digital').trigger('click')
+    await w.find('.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(saveProduct).not.toHaveBeenCalled()
+    expect(w.find('.error').text()).toContain('Добавь ссылку')
+  })
+
+  it('со ссылкой цифровой товар уходит на сохранение', async () => {
+    const w = await mountForm('10')
+    await typeButton(w, 'digital').trigger('click')
+    await w.find('input[placeholder="https://…"]').setValue('https://example.com/guide')
+    await w.find('.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(saveProduct).toHaveBeenCalledTimes(1)
+    expect(saveProduct.mock.calls[0][1].digital_content).toEqual({
+      url: 'https://example.com/guide',
+    })
+  })
+
+  it('услуга без ссылки сохраняется: её выполняет человек', async () => {
+    const w = await mountForm('10')
+    await typeButton(w, 'service').trigger('click')
+    await w.find('.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(saveProduct).toHaveBeenCalledTimes(1)
+    expect(saveProduct.mock.calls[0][1].digital_content).toBeNull()
   })
 })

@@ -131,7 +131,7 @@ async def test_plan_usage_reported_but_not_enforced_by_default(db):
         await c.post(
             f"/api/seller/bots/{bot_id}/products",
             headers=seller_headers(),
-            json={"type": "digital", "title": "Гайд", "price": "5"},
+            json={"type": "digital", "title": "Гайд", "price": "5", "digital_content": {"url": "https://x"}},
         )
         r = await c.get(f"/api/seller/bots/{bot_id}/summary", headers=seller_headers())
         limits = r.json()["limits"]
@@ -167,7 +167,7 @@ async def test_free_plan_caps_apply_when_enforcement_is_on(db):
             r = await c.post(
                 f"/api/seller/bots/{bot_id}/products",
                 headers=seller_headers(),
-                json={"type": "digital", "title": "Гайд", "price": "5"},
+                json={"type": "digital", "title": "Гайд", "price": "5", "digital_content": {"url": "https://x"}},
             )
             assert r.status_code == 200
 

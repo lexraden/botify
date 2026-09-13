@@ -1105,6 +1105,11 @@ def _check_pricing(payload: "ProductIn") -> None:
         raise HTTPException(
             status_code=400, detail="variants are only available for physical products"
         )
+    # Цифровой товар без ссылки выдачи — молчаливая поломка: заказ оплачивается,
+    # выдавать нечего, и покупатель видит «продавец готовит заказ» вместо файла.
+    # У услуги ссылка не обязательна: её и правда выполняет человек руками.
+    if payload.type == "digital" and not (payload.digital_content or {}).get("url"):
+        raise HTTPException(status_code=400, detail="digital_url_required")
     for item in [payload, *variants]:
         if item.compare_at_price is not None and item.compare_at_price <= item.price:
             raise HTTPException(

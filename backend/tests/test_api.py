@@ -304,3 +304,48 @@ async def test_payments_health_is_admin_only(db):
             r = await c.get("/api/admin/payments/health", headers=seller_headers())
             body = r.json()
     assert body["configured"] and body["reachable"] and body["app_name"] == "Botify"
+
+
+@pytest.mark.asyncio
+async def test_digital_product_requires_delivery_url(db):
+    """Цифровой товар без ссылки ломается молча: заказ оплачен, выдать нечего,
+    покупатель видит «продавец готовит заказ» вместо файла."""
+    bot_id = await setup_shop(db)
+    async with client() as c:
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={"type": "digital", "title": "Гайд", "price": "10"},
+        )
+        assert r.status_code == 400
+        assert r.json()["detail"] == "digital_url_required"
+
+        # со ссылкой — сохраняется
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={
+                "type": "digital",
+                "title": "Гайд",
+                "price": "10",
+                "digital_content": {"url": "https://example.com/guide"},
+            },
+        )
+        assert r.status_code == 200, r.text
+        product_id = r.json()["id"]
+
+        # правка не должна позволять стереть ссылку задним числом
+        r = await c.put(
+            f"/api/seller/bots/{bot_id}/products/{product_id}",
+            headers=seller_headers(),
+            json={"type": "digital", "title": "Гайд", "price": "12"},
+        )
+        assert r.status_code == 400
+
+        # услуга — другое дело: её выполняет человек, ссылка не обязательна
+        r = await c.post(
+            f"/api/seller/bots/{bot_id}/products",
+            headers=seller_headers(),
+            json={"type": "service", "title": "Консультация", "price": "50"},
+        )
+        assert r.status_code == 200, r.text

@@ -33,7 +33,9 @@ from aiogram import F, Router, types
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from app.config import get_settings
 from app.db import get_session
 from app.models import Seller
 from app.services.seller_texts import seller_locale, text
@@ -224,6 +226,21 @@ async def bot_created(message: types.Message) -> None:
     # до перезапуска процесса значится «pending» и светится в /mybots жёлтым
     await set_webhook_status(shop.id, "active" if webhook_ok else "pending")
 
+    # Кнопка прямо в свой магазин вместо «открой приложение» словами: человек
+    # только что закончил создание бота и следующий его шаг — первый товар,
+    # а искать вход руками после такого — лишний повод бросить.
+    # Клавиатуру с «создать бота» снимать отдельно не нужно: она one_time,
+    # Telegram прячет её сразу после нажатия.
+    markup = None
+    webapp_url = get_settings().effective_webapp_url
+    if webapp_url:
+        kb = InlineKeyboardBuilder()
+        kb.button(
+            text=text(locale, "newshop.btn_open_shop"),
+            web_app=types.WebAppInfo(url=f"{webapp_url.rstrip('/')}/shop/{shop.id}"),
+        )
+        markup = kb.as_markup()
+
     await message.answer(
         text(
             locale,
@@ -236,7 +253,7 @@ async def bot_created(message: types.Message) -> None:
                 else text(locale, "newshop.done_webhook")
             ),
         ),
-        reply_markup=types.ReplyKeyboardRemove(),
+        reply_markup=markup or types.ReplyKeyboardRemove(),
     )
 
 

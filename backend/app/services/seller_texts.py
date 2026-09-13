@@ -186,7 +186,8 @@ TEXTS: dict[str, dict[str, str]] = {
         ),
         "newshop.promote_failed": "Бот создан, но подключить его не вышло: {error}.",
         "newshop.done": "✅ Магазин <b>{title}</b> подключён к @{username}.\n\n{next}",
-        "newshop.done_next": "Открой приложение и добавь первый товар.",
+        "newshop.done_next": "Осталось добавить первый товар.",
+        "newshop.btn_open_shop": "🛍 Открыть магазин",
         "newshop.done_webhook": (
             "Бот создан, но вебхук пока не встал — сообщения покупателей "
             "могут не доходить. Загляни в /mybots через минуту."
@@ -610,7 +611,8 @@ TEXTS: dict[str, dict[str, str]] = {
         ),
         "newshop.promote_failed": "The bot is created, but connecting it failed: {error}.",
         "newshop.done": "✅ Shop <b>{title}</b> is connected to @{username}.\n\n{next}",
-        "newshop.done_next": "Open the app and add your first product.",
+        "newshop.done_next": "Now add your first product.",
+        "newshop.btn_open_shop": "🛍 Open the shop",
         "newshop.done_webhook": (
             "The bot is created, but the webhook hasn't stuck yet — customer messages "
             "may not get through. Check /mybots in a minute."
