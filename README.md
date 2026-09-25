@@ -35,6 +35,9 @@ Telegram Bot + Mini App маркетплейс: hub-бот для продавц
 задавать (возьмётся домен из `WEBHOOK_BASE_URL`). Для тестов без реальных
 денег: `CRYPTO_PAY_NETWORK=testnet` + токен приложения из @CryptoTestnetBot.
 
+Проверять наличие всех переменных можно скриптом `scripts/check_env.py`.
+Сгенерировать ключ шифрования можно скриптом `scripts/generate_fernet_key.py`.
+
 После правок фронта пересобрать и закоммитить: `cd webapp && npm run build`.
 
 ## Запуск backend локально
