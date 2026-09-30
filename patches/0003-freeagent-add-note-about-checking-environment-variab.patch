@@ -1,0 +1,26 @@
+From 38b36584ccccc07ce55c77f30416c53ec6d7f963 Mon Sep 17 00:00:00 2001
+From: Free Agent <freeagent@hermes.local>
+Date: Thu, 24 Sep 2026 00:09:53 +0000
+Subject: [PATCH 3/3] freeagent: add note about checking environment variables
+ in README (botify)
+
+---
+ README.md | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/README.md b/README.md
+index b2c1890..61fc0b1 100644
+--- a/README.md
++++ b/README.md
+@@ -35,6 +35,8 @@ Telegram Bot + Mini App маркетплейс: hub-бот для продавц
+ задавать (возьмётся домен из `WEBHOOK_BASE_URL`). Для тестов без реальных
+ денег: `CRYPTO_PAY_NETWORK=testnet` + токен приложения из @CryptoTestnetBot.
+ 
++Проверять наличие всех переменных можно скриптом `scripts/check_env.py`.
++
+ После правок фронта пересобрать и закоммитить: `cd webapp && npm run build`.
+ 
+ ## Запуск backend локально
+-- 
+2.47.3
+
