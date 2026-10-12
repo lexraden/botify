@@ -170,7 +170,11 @@ async def can_create_managed_bots() -> bool:
     except Exception:
         logger.exception("Не удалось спросить getMe у hub-бота")
         return False  # сбой связи не кэшируем: следующая попытка спросит заново
-    allowed = bool(me.can_manage_bots)
+    # getattr, а не атрибут: поля может не быть вовсе (старая библиотека,
+    # изменившийся ответ Telegram). Обращение к нему живёт за пределами try
+    # выше, и AttributeError здесь ронял бы /api/seller/me — то есть весь
+    # вход в приложение из-за необязательного флага.
+    allowed = bool(getattr(me, "can_manage_bots", False))
     _managed_cache = (now, allowed)
     return allowed
 

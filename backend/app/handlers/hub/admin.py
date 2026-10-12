@@ -153,6 +153,112 @@ async def stats(message: types.Message) -> None:
     await message.answer("\n".join(lines))
 
 
+@router.message(Command("onboarding"))
+async def onboarding(message: types.Message) -> None:
+    """/onboarding — каким путём пойдёт следующий продавец. Только для админов.
+
+    Отвечает на один вопрос, который иначе проверяется только вручную, чужим
+    аккаунтом: включён ли в @BotFather Bot Management Mode. Пока он снят,
+    Telegram не даёт нам создавать боты, приложение прячет короткий путь, и
+    каждый новый продавец идёт в @BotFather за токеном сам.
+
+    Заодно сбрасывает кэш флага: иначе после включения тумблера приложение
+    до пяти минут продолжало бы показывать длинный путь, и выглядело бы это
+    как «не сработало».
+    """
+    if message.from_user is None or not await _is_admin(message.from_user.id):
+        return
+
+    from app.bots.hub import hub_bot
+    from app.services.shop_draft import create_shop_deeplink, reset_managed_cache
+
+    reset_managed_cache()
+
+    settings = get_settings()
+    lines = ["<b>Онбординг продавца</b>"]
+
+    # getMe спрашиваем напрямую, а не через can_create_managed_bots(): там
+    # сбой связи неотличим от выключенного флага, а здесь разница важна
+    try:
+        me = await hub_bot.get_me()
+    except Exception as exc:
+        lines.append(
+            f"\n❌ Telegram не ответил на getMe: <code>{type(exc).__name__}: {exc}</code>\n"
+            "Пока он молчит, приложение показывает длинный путь."
+        )
+        await message.answer("\n".join(lines))
+        return
+
+    # у старых версий aiogram поля может не быть вовсе — это не «выключено»
+    flag = getattr(me, "can_manage_bots", None)
+    if flag:
+        lines += [
+            "\n✅ Bot Management Mode <b>включён</b>",
+            "Новый продавец видит «Создай магазин» — бота создаёт сам Telegram, "
+            "ни @BotFather, ни токена он не видит.",
+        ]
+    elif flag is None:
+        lines += [
+            "\n⚠️ Telegram не прислал <code>can_manage_bots</code> в getMe",
+            "Скорее всего, устарела библиотека. Короткий путь выключен.",
+        ]
+    else:
+        lines += [
+            "\n❌ Bot Management Mode <b>выключен</b>",
+            "Новый продавец видит «Connect your bot»: идёт в @BotFather, "
+            "делает /newbot и вставляет токен руками.",
+            "Включается в мини-аппе @BotFather, в настройках этого бота. "
+            "После включения вызови /onboarding ещё раз — приложение подхватит сразу.",
+        ]
+
+    link = await create_shop_deeplink()
+    lines.append(f"\nСсылка на создание: {link}" if link else "\nСсылка на создание: недоступна")
+    lines.append(
+        f"Адрес приложения: {settings.effective_webapp_url}"
+        if settings.effective_webapp_url
+        else "❌ Адрес приложения не задан — кнопки в приложение не работают"
+    )
+
+    lines += await _onboarding_counts()
+    await message.answer("\n".join(lines))
+
+
+async def _onboarding_counts() -> list[str]:
+    """Каким путём магазины заводили на самом деле — по строкам в базе.
+
+    Черновик без бота — это начатый и брошенный онбординг: название магазина
+    человек ввёл, а до бота не дошёл.
+    """
+    async with get_session() as session:
+        managed, manual, drafts = (
+            (
+                await session.execute(
+                    select(
+                        func.count().filter(
+                            SellerBot.bot_token_encrypted.is_not(None),
+                            SellerBot.is_managed.is_(True),
+                        ),
+                        func.count().filter(
+                            SellerBot.bot_token_encrypted.is_not(None),
+                            SellerBot.is_managed.is_(False),
+                        ),
+                        func.count().filter(SellerBot.bot_token_encrypted.is_(None)),
+                    )
+                )
+            )
+            .one()
+        )
+
+    lines = [
+        "\n<b>Как заводили магазины</b>",
+        f"• Через Telegram: <b>{managed}</b>",
+        f"• Токеном вручную: <b>{manual}</b>",
+    ]
+    if drafts:
+        lines.append(f"• Черновиков без бота: {drafts} — начали и бросили")
+    return lines
+
+
 @router.message(Command("payouts"))
 async def payouts(message: types.Message) -> None:
     """/payouts — что накоплено и что застряло. Только для админов."""
