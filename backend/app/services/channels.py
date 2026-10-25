@@ -55,6 +55,19 @@ async def list_channels(bot_id: int) -> list[Channel]:
         return list(result.scalars().all())
 
 
+async def captcha_channels(bot_id: int) -> list[Channel]:
+    """Каналы бота, где заявки ждут нажатия кнопки капчи."""
+    async with get_session() as session:
+        result = await session.execute(
+            select(Channel).where(
+                Channel.bot_id == bot_id,
+                Channel.is_active.is_(True),
+                Channel.auto_accept.is_(True),
+            )
+        )
+        return list(result.scalars().all())
+
+
 async def get_bot_channel(bot_id: int, channel_id: int) -> Channel | None:
     """Канал достаётся только парой (bot_id, channel_id): чужой канал другого
     магазина из этого контекста недостижим."""

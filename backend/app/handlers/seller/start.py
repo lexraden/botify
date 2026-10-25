@@ -3,7 +3,7 @@ CustomerTrackerMiddleware — сюда апдейт приходит уже с �
 
 import html
 
-from aiogram import F, Router, types
+from aiogram import Bot, Router, types
 from aiogram.filters import CommandObject, CommandStart
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -13,10 +13,9 @@ from app.services.notify_texts import buyer_text
 
 router = Router()
 
-# Верификация вступившего в канал: reply-кнопка внизу чата (ставится при приёме
-# заявки, см. handlers/seller/channels.py). Нажатие приходит обычным сообщением.
-# Текст кнопки — на языке покупателя (notify_texts "robot.button"), поэтому
-# набор фраз из всех локалей.
+# Капча для заявок в канал: reply-кнопка внизу чата (её шлёт
+# handlers/seller/channels.py). Нажатие приходит обычным сообщением с текстом
+# кнопки — дефолтным на любом из языков или тем, что задал продавец в канале.
 ROBOT_CONFIRM_TEXTS = {
     "Я не робот",
     "Я не робот 🤖",
@@ -27,6 +26,36 @@ ROBOT_CONFIRM_TEXTS = {
 
 def is_robot_confirm(text: str | None) -> bool:
     return (text or "").strip() in ROBOT_CONFIRM_TEXTS
+
+
+async def is_captcha_press(message: types.Message, bot_record: SellerBot) -> bool:
+    if message.chat.type != "private" or not message.text:
+        return False
+    if is_robot_confirm(message.text):
+        return True
+    from app.services.channels import captcha_channels
+
+    text = message.text.strip()
+    return any(ch.captcha_button == text for ch in await captcha_channels(bot_record.id))
+
+
+async def approve_pending_requests(bot: Bot, bot_record: SellerBot, user_id: int) -> list[str]:
+    """Одобряет заявки человека во всех каналах бота с капчей; возвращает
+    названия каналов, куда пустили. Где заявки нет (уже вступил, отозвал,
+    канал без неё) — Telegram отвечает ошибкой, её и пропускаем: хранить
+    очередь заявок у себя не нужно."""
+    from app.services.channels import captcha_channels
+
+    approved = []
+    for channel in await captcha_channels(bot_record.id):
+        try:
+            await bot.approve_chat_join_request(
+                chat_id=channel.telegram_chat_id, user_id=user_id
+            )
+        except Exception:
+            continue
+        approved.append(channel.title)
+    return approved
 
 
 async def _has_orders(bot_id: int, customer_id: int) -> bool:
@@ -118,16 +147,25 @@ async def cmd_start(
     await send_welcome(message, bot_record, customer)
 
 
-@router.message(F.text.func(is_robot_confirm))
+@router.message(is_captcha_press)
 async def robot_confirm(
-    message: types.Message, bot_record: SellerBot, customer: Customer | None = None
+    message: types.Message,
+    bot: Bot,
+    bot_record: SellerBot,
+    customer: Customer | None = None,
 ) -> None:
-    """«Я не робот» после заявки в канал — тот же ответ, что и на /start:
-    приветствие и кнопка витрины берутся из одних и тех же настроек бота.
-    Верификационная reply-клавиатура после нажатия убирается; отдельным
-    сообщением потому, что ReplyKeyboardRemove не живёт рядом с inline-кнопкой."""
-    await message.answer(
-        buyer_text(customer, "start.robot_confirmed"),
-        reply_markup=types.ReplyKeyboardRemove(),
-    )
+    """Нажатие кнопки капчи: одобряем висящие заявки в каналы и отвечаем
+    тем же, что и на /start — приветствие и кнопка витрины из настроек бота.
+    Reply-клавиатура после нажатия убирается; отдельным сообщением потому,
+    что ReplyKeyboardRemove не живёт рядом с inline-кнопкой."""
+    approved = []
+    if message.from_user is not None:
+        approved = await approve_pending_requests(bot, bot_record, message.from_user.id)
+    if approved:
+        confirm = buyer_text(
+            customer, "channel.joined", channel=html.escape(", ".join(approved))
+        )
+    else:
+        confirm = buyer_text(customer, "start.robot_confirmed")
+    await message.answer(confirm, reply_markup=types.ReplyKeyboardRemove())
     await send_welcome(message, bot_record, customer)

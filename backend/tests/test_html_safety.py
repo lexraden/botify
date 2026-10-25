@@ -42,11 +42,16 @@ def test_settings_menu_survives_angle_brackets_in_button_text():
 
 def test_channel_card_survives_angle_brackets_in_title_and_greeting():
     channel = SimpleNamespace(
-        id=1, title="Канал <VIP>", auto_accept=True, greeting_text=BROKEN
+        id=1,
+        title="Канал <VIP>",
+        auto_accept=True,
+        greeting_text=BROKEN,
+        captcha_button="Хочу <VIP>",
     )
     text = channel_text(channel)
     assert "Канал &lt;VIP&gt;" in text
     assert "&lt;до 50%&gt;" in text
+    assert "Хочу &lt;VIP&gt;" in text
 
 
 def test_channel_connect_notifications_survive_angle_brackets():

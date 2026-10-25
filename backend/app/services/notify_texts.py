@@ -7,7 +7,7 @@
 Здесь живут и пуши (paid.*, fulfill.*), и строки самого бота, которые видит
 покупатель: приветствие-дефолт, кнопка витрины, «Я не робот», ошибки чата
 заказа. Чего здесь нет: экраны настроек и всё, что написал сам продавец
-(welcome_text, catalog_button_text, приветствие канала) — это его слова,
+(welcome_text, catalog_button_text, приветствие канала и текст кнопки капчи) — это его слова,
 а не наши строки, переводить их не нужно. Продавецские пуши в hub тоже
 остаются русскими. Динамика (названия товаров, треки, ссылки) не
 переводится; html.escape остаётся на местах вызова.
@@ -55,10 +55,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "start.my_orders": "🧾 My orders",
         "robot.button": "I'm not a robot 🤖",
         "start.robot_confirmed": "✅ Verification passed",
-        "channel.approved": (
-            "Your request to “{channel}” was approved ✅\n\n"
-            "Tap the “{button}” button at the bottom of the screen 👇"
+        "channel.captcha": (
+            "To join “{channel}”, tap the “{button}” button at the bottom of the screen 👇"
         ),
+        "channel.joined": "✅ Done — you're in “{channel}”",
         "chat.locked": "This chat is closed for new messages — the window for discussing the order has expired.",
         "chat.rate_limited": "Too many messages in a row — wait a moment.",
         "chat.too_long": "The message is too long — 1000 characters max.",
@@ -87,10 +87,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "start.my_orders": "🧾 Мои покупки",
         "robot.button": "Я не робот 🤖",
         "start.robot_confirmed": "✅ Проверка пройдена",
-        "channel.approved": (
-            "Заявка в «{channel}» принята ✅\n\n"
-            "Нажми кнопку «{button}» внизу экрана 👇"
+        "channel.captcha": (
+            "Чтобы вступить в «{channel}», нажми кнопку «{button}» внизу экрана 👇"
         ),
+        "channel.joined": "✅ Готово — ты в «{channel}»",
         "chat.locked": "Этот чат закрыт для новых сообщений — окно для обсуждения заказа истекло.",
         "chat.rate_limited": "Слишком много сообщений подряд — подожди немного.",
         "chat.too_long": "Сообщение слишком длинное — максимум 1000 символов.",

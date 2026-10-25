@@ -1,10 +1,12 @@
-"""Seller-бот в каналах продавца: регистрация канала, авто-приём заявок,
-верификация вступившего через reply-кнопку «Я не робот 🤖»."""
+"""Seller-бот в каналах продавца: регистрация канала и приём заявок через
+капчу — заявка одобряется, когда человек нажмёт reply-кнопку «Я не робот 🤖»
+(или текст, который задал продавец)."""
 
 import html
 import logging
 
 from aiogram import Bot, Router, types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import JOIN_TRANSITION, LEAVE_TRANSITION, ChatMemberUpdatedFilter
 from aiogram.types import ChatJoinRequest, ChatMemberUpdated
 
@@ -44,8 +46,8 @@ def _channel_texts(
     if invite_ok:
         own_text = (
             f"📢 Канал «{title}» подключён к магазину @{bot_record.bot_username}!\n\n"
-            "Заявки принимаю автоматически, каждого вступившего приветствую "
-            "и записываю в твою базу покупателей."
+            "Каждому, кто подаст заявку, пришлю кнопку «Я не робот» — нажмёт, "
+            "и я приму его в канал и запишу в твою базу покупателей."
         )
     else:
         own_text = (
@@ -123,35 +125,40 @@ async def on_join_request(event: ChatJoinRequest, bot: Bot, bot_record: SellerBo
         source=f"channel:{event.chat.id}",
     )
 
+    # Капча: заявка висит, пока человек не нажмёт кнопку внизу чата — нажатие
+    # приходит обычным сообщением и одобряет заявку (handlers/seller/start.py).
+    # Писать можно через user_chat_id, даже если бот ещё не стартован.
+    # Текст сообщения и кнопки — продавца, если задал; иначе наши на языке
+    # покупателя. Название канала задаёт третья сторона — экранируем.
+    button_text = captcha_button_text(channel, customer)
+    kb = types.ReplyKeyboardMarkup(
+        keyboard=[[types.KeyboardButton(text=button_text)]],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+    body = channel.greeting_text or buyer_text(
+        customer, "channel.captcha", channel=html.escape(channel.title), button=button_text
+    )
+    chat_id = getattr(event, "user_chat_id", None) or event.from_user.id
+    try:
+        try:
+            await bot.send_message(chat_id, body, reply_markup=kb)
+        except TelegramBadRequest:
+            # продавец сохранил приветствие с битым HTML — шлём как есть
+            await bot.send_message(chat_id, html.escape(body), reply_markup=kb)
+        return
+    except Exception:
+        logger.info("ЛС для %s недоступна — заявку одобряем без капчи", event.from_user.id)
+
+    # Кнопку показать некуда — без этой ветки человек навсегда остался бы
+    # в заявках: лучше пустить без проверки, чем потерять подписчика.
     try:
         await bot.approve_chat_join_request(chat_id=event.chat.id, user_id=event.from_user.id)
     except Exception:
         logger.exception(
             "Не удалось одобрить заявку user=%s в канал %s", event.from_user.id, event.chat.id
         )
-        return
 
-    # Верификация через reply-клавиатуру: нажатие шлёт обычное сообщение
-    # «Я не робот», которое обрабатывается как /start (handlers/seller/start.py).
-    # Текст кнопки и сообщение — на языке покупателя; название канала задаёт
-    # третья сторона (экранируем, как в уведомлении продавцу).
-    button_text = buyer_text(customer, "robot.button")
-    kb = types.ReplyKeyboardMarkup(
-        keyboard=[[types.KeyboardButton(text=button_text)]],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
-    try:
-        await bot.send_message(
-            event.from_user.id,
-            buyer_text(
-                customer,
-                "channel.approved",
-                channel=html.escape(channel.title),
-                button=button_text,
-            ),
-            reply_markup=kb,
-        )
-    except Exception:
-        logger.info("ЛС для %s недоступна (юзер не стартовал бота)", event.from_user.id)
 
+def captcha_button_text(channel, customer) -> str:
+    return channel.captcha_button or buyer_text(customer, "robot.button")

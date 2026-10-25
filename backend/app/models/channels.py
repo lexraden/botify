@@ -18,5 +18,9 @@ class Channel(Base, CreatedAtMixin):
     title: Mapped[str] = mapped_column(String(256))
 
     auto_accept: Mapped[bool] = mapped_column(Boolean, default=True)
-    greeting_text: Mapped[str | None] = mapped_column(Text)  # приветствие вступившему в ЛС
+    # Сообщение, которое заявитель получает в ЛС вместе с кнопкой капчи
+    greeting_text: Mapped[str | None] = mapped_column(Text)
+    # Текст кнопки капчи; NULL — «Я не робот 🤖» на языке покупателя.
+    # Заявка одобряется только после нажатия (handlers/seller/start.py)
+    captcha_button: Mapped[str | None] = mapped_column(String(64))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

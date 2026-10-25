@@ -395,21 +395,26 @@ TEXTS: dict[str, dict[str, str]] = {
             "1. Добавь бота @{username} администратором в свой канал.\n"
             "2. Отметь право «Приглашать пользователей» — без него бот не видит заявки.\n"
             "3. Канал появится в списке автоматически.\n\n"
-            "Каждый, кто нажмёт «Подать заявку» в приватном канале, будет "
-            "автоматически принят и попадёт в твою базу покупателей."
+            "Каждый, кто нажмёт «Подать заявку» в приватном канале, получит от бота "
+            "кнопку «Я не робот». Нажмёт — бот примет его в канал и добавит "
+            "в твою базу покупателей. Текст кнопки и сообщения можно поменять "
+            "в настройках канала."
         ),
         "settings.channel.auto_on": "включён 🟢",
         "settings.channel.auto_off": "выключен ⚪",
-        "settings.channel.default_greeting": "— стандартное приветствие канала —",
+        "settings.channel.default_greeting": "— стандартное: «Чтобы вступить, нажми кнопку внизу» —",
+        "settings.channel.default_captcha_button": "Я не робот 🤖 (на языке покупателя)",
         "settings.channel.card": (
             "📢 <b>{title}</b>\n\n"
-            "Авто-приём заявок: {auto}\n"
-            "Приветствие вступившим:\n<i>{greeting}</i>"
+            "Приём заявок после капчи: {auto}\n"
+            "Кнопка капчи: <b>{button}</b>\n"
+            "Сообщение с кнопкой:\n<i>{greeting}</i>"
         ),
         "settings.alert.channel_not_found": "Канал не найден",
         "settings.btn.auto_off": "Выключить авто-приём",
         "settings.btn.auto_on": "Включить авто-приём",
-        "settings.btn.channel_greeting": "✍️ Приветствие вступившим",
+        "settings.btn.channel_greeting": "✍️ Сообщение с кнопкой",
+        "settings.btn.channel_captcha": "🔘 Текст кнопки капчи",
         "settings.btn.channel_remove": "🗑 Отключить канал",
         "settings.toast.enabled": "Включено",
         "settings.toast.disabled": "Выключено",
@@ -421,12 +426,22 @@ TEXTS: dict[str, dict[str, str]] = {
         ),
         "settings.toast.channel_removed": "Канал отключён",
         "settings.greeting.prompt": (
-            "Пришли приветствие, которое бот отправит вступившему в ЛС.\n"
+            "Пришли сообщение, которое бот отправит в ЛС тому, кто подал заявку. "
+            "Под ним будет кнопка капчи — в канал человек попадёт, когда её нажмёт.\n"
             "/reset — вернуть стандартное.\n\n"
             "Сейчас:\n{current}"
         ),
+        "settings.captcha.prompt": (
+            "Пришли текст кнопки капчи — например, «Я не робот» или «Хочу в канал 🔥». "
+            "До {max} символов.\n"
+            "/reset — вернуть стандартную «Я не робот 🤖».\n\n"
+            "Сейчас: {current}"
+        ),
+        "settings.captcha.too_long": "Слишком длинно: {n} символов, можно до {max}. Пришли покороче.",
+        "settings.captcha.no_command": "Текст кнопки не может начинаться с «/». Пришли другой.",
+        "settings.captcha.saved": "✅ Кнопка капчи сохранена",
         "settings.channel.gone": "Канал не найден — возможно, он уже отключён.",
-        "settings.greeting.saved": "✅ Приветствие сохранено",
+        "settings.greeting.saved": "✅ Сообщение сохранено",
         # профиль бота в Telegram (имя/аватар из кабинета, см. services/bot_profile.py)
         "settings.profile": (
             "🪪 <b>Профиль бота в Telegram</b>\n\n"
@@ -804,21 +819,26 @@ TEXTS: dict[str, dict[str, str]] = {
             "1. Add @{username} as an administrator to your channel.\n"
             "2. Grant the “Invite users” right — without it the bot can't see join requests.\n"
             "3. The channel appears in the list automatically.\n\n"
-            "Everyone who taps “Request to join” in a private channel is accepted "
-            "automatically and lands in your customer base."
+            "Everyone who taps “Request to join” in a private channel gets an "
+            "“I'm not a robot” button from the bot. Once they tap it, the bot lets "
+            "them in and adds them to your customer base. You can change the button "
+            "and message text in the channel settings."
         ),
         "settings.channel.auto_on": "on 🟢",
         "settings.channel.auto_off": "off ⚪",
-        "settings.channel.default_greeting": "— default channel greeting —",
+        "settings.channel.default_greeting": "— default: “To join, tap the button below” —",
+        "settings.channel.default_captcha_button": "I'm not a robot 🤖 (in the buyer's language)",
         "settings.channel.card": (
             "📢 <b>{title}</b>\n\n"
-            "Auto-accept join requests: {auto}\n"
-            "Greeting for new members:\n<i>{greeting}</i>"
+            "Accept join requests after captcha: {auto}\n"
+            "Captcha button: <b>{button}</b>\n"
+            "Message with the button:\n<i>{greeting}</i>"
         ),
         "settings.alert.channel_not_found": "Channel not found",
         "settings.btn.auto_off": "Turn auto-accept off",
         "settings.btn.auto_on": "Turn auto-accept on",
-        "settings.btn.channel_greeting": "✍️ Greeting for new members",
+        "settings.btn.channel_greeting": "✍️ Message with the button",
+        "settings.btn.channel_captcha": "🔘 Captcha button text",
         "settings.btn.channel_remove": "🗑 Disconnect channel",
         "settings.toast.enabled": "Enabled",
         "settings.toast.disabled": "Disabled",
@@ -830,12 +850,22 @@ TEXTS: dict[str, dict[str, str]] = {
         ),
         "settings.toast.channel_removed": "Channel disconnected",
         "settings.greeting.prompt": (
-            "Send the greeting the bot will DM to everyone who joins.\n"
+            "Send the message the bot will DM to everyone who requests to join. "
+            "The captcha button goes under it — they get in once they tap it.\n"
             "/reset — back to the default one.\n\n"
             "Current:\n{current}"
         ),
+        "settings.captcha.prompt": (
+            "Send the captcha button text — e.g. “I'm not a robot” or “Let me in 🔥”. "
+            "Up to {max} characters.\n"
+            "/reset — back to the default “I'm not a robot 🤖”.\n\n"
+            "Current: {current}"
+        ),
+        "settings.captcha.too_long": "Too long: {n} characters, {max} max. Send a shorter one.",
+        "settings.captcha.no_command": "The button text can't start with “/”. Send another one.",
+        "settings.captcha.saved": "✅ Captcha button saved",
         "settings.channel.gone": "Channel not found — it may already be disconnected.",
-        "settings.greeting.saved": "✅ Greeting saved",
+        "settings.greeting.saved": "✅ Message saved",
         # bot profile in Telegram (name/avatar from the dashboard, see services/bot_profile.py)
         "settings.profile": (
             "🪪 <b>Bot profile in Telegram</b>\n\n"

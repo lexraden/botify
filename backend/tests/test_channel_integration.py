@@ -1,5 +1,5 @@
 """Интеграция Telegram-каналов: подключение и уведомления в оба бота продавца,
-верификация вступившего («Я не робот»), изоляция каналов по bot_id,
+капча для заявок в канал («Я не робот» или свой текст), изоляция каналов по bot_id,
 API кабинета и дедуп повторных апдейтов."""
 
 from itertools import count
@@ -122,11 +122,11 @@ async def test_reconnect_same_channel_notifies_once(db):
 
 
 # --------------------------------------------------------------------------
-# Заявка на вступление: одобрение + reply-кнопка «Я не робот 🤖» вместо inline
+# Заявка на вступление: капча reply-кнопкой, одобрение — только после нажатия
 # --------------------------------------------------------------------------
 
 
-async def test_join_request_sends_reply_keyboard_not_inline(db):
+async def test_join_request_waits_for_captcha(db):
     seller_id = await make_seller(db)
     bot_id = await make_bot(db, seller_id, username="funnel_bot")
     _channel_id, chat_id = await seed_channel(db, seller_id, bot_id)
@@ -135,13 +135,15 @@ async def test_join_request_sends_reply_keyboard_not_inline(db):
     tg = fake_tg_bot()
     await ch.on_join_request(join_event(chat_id), tg, bot_record)
 
-    tg.approve_chat_join_request.assert_awaited_once_with(chat_id=chat_id, user_id=555)
+    # заявка не одобрена, пока человек не нажал кнопку
+    tg.approve_chat_join_request.assert_not_awaited()
     kb = tg.send_message.await_args.kwargs["reply_markup"]
     assert isinstance(kb, types.ReplyKeyboardMarkup)
     btn = kb.keyboard[0][0]
     assert isinstance(btn, types.KeyboardButton)
     assert not isinstance(btn, types.InlineKeyboardButton)
     assert btn.text == "Я не робот 🤖"
+    assert "Чтобы вступить в «Мой канал»" in tg.send_message.await_args.args[1]
 
     # лид уже сохранён в базу этого магазина с источником-каналом
     async with db() as session:
@@ -155,8 +157,7 @@ async def test_join_request_sends_reply_keyboard_not_inline(db):
 
 
 async def test_join_request_texts_follow_buyer_language(db):
-    """Иностранец получает английскую кнопку «Я не робот» и английское
-    сообщение о принятой заявке — бот магазина говорит его языком."""
+    """Иностранец получает английскую кнопку и английское сообщение."""
     seller_id = await make_seller(db)
     bot_id = await make_bot(db, seller_id, username="en_funnel_bot")
     _channel_id, chat_id = await seed_channel(db, seller_id, bot_id)
@@ -168,8 +169,45 @@ async def test_join_request_texts_follow_buyer_language(db):
     kb = tg.send_message.await_args.kwargs["reply_markup"]
     assert kb.keyboard[0][0].text == "I'm not a robot 🤖"
     message = tg.send_message.await_args.args[1]
-    assert "was approved" in message
+    assert "To join “Мой канал”" in message
     assert "I'm not a robot 🤖" in message
+
+
+async def test_join_request_uses_seller_texts_and_user_chat_id(db):
+    """Свой текст кнопки и сообщения продавца; пишем в user_chat_id —
+    так Telegram пускает в ЛС того, кто бота ещё не стартовал."""
+    seller_id = await make_seller(db)
+    bot_id = await make_bot(db, seller_id, username="custom_captcha_bot")
+    channel_id, chat_id = await seed_channel(
+        db, seller_id, bot_id, greeting_text="Жми кнопку и заходи!"
+    )
+    await st._update_channel(bot_id, channel_id, captcha_button="Хочу в канал 🔥")
+    bot_record = await load_bot(db, bot_id)
+
+    event = join_event(chat_id, language_code="en")
+    event.user_chat_id = 9_555
+    tg = fake_tg_bot()
+    await ch.on_join_request(event, tg, bot_record)
+
+    assert tg.send_message.await_args.args[0] == 9_555
+    assert tg.send_message.await_args.args[1] == "Жми кнопку и заходи!"
+    kb = tg.send_message.await_args.kwargs["reply_markup"]
+    assert kb.keyboard[0][0].text == "Хочу в канал 🔥"
+    tg.approve_chat_join_request.assert_not_awaited()
+
+
+async def test_join_request_approved_when_dm_impossible(db):
+    """Показать кнопку некуда — пускаем без капчи, а не держим вечно в заявках."""
+    seller_id = await make_seller(db)
+    bot_id = await make_bot(db, seller_id, username="no_dm_bot")
+    _, chat_id = await seed_channel(db, seller_id, bot_id)
+    bot_record = await load_bot(db, bot_id)
+
+    tg = fake_tg_bot()
+    tg.send_message.side_effect = RuntimeError("Forbidden: bot can't initiate conversation")
+    await ch.on_join_request(join_event(chat_id), tg, bot_record)
+
+    tg.approve_chat_join_request.assert_awaited_once_with(chat_id=chat_id, user_id=555)
 
 
 def test_robot_text_matcher():
@@ -182,21 +220,82 @@ def test_robot_text_matcher():
     assert not seller_start.is_robot_confirm(None)
 
 
+def press(text, user_id=555, chat_type="private"):
+    return SimpleNamespace(
+        answer=AsyncMock(),
+        text=text,
+        chat=SimpleNamespace(type=chat_type),
+        from_user=SimpleNamespace(id=user_id),
+    )
+
+
+async def test_custom_captcha_button_is_recognised_only_in_its_bot(db):
+    seller_id = await make_seller(db)
+    bot_a = await make_bot(db, seller_id, username="press_a")
+    bot_b = await make_bot(db, seller_id, username="press_b")
+    channel_id, _ = await seed_channel(db, seller_id, bot_a)
+    await st._update_channel(bot_a, channel_id, captcha_button="Хочу в канал 🔥")
+    record_a = await load_bot(db, bot_a)
+    record_b = await load_bot(db, bot_b)
+
+    assert await seller_start.is_captcha_press(press("Хочу в канал 🔥"), record_a)
+    assert await seller_start.is_captcha_press(press(" Хочу в канал 🔥 "), record_a)
+    assert not await seller_start.is_captcha_press(press("Хочу в канал 🔥"), record_b)
+    assert not await seller_start.is_captcha_press(press("привет"), record_a)
+    # дефолтная кнопка (в т.ч. уже разосланная раньше) работает в любом боте
+    assert await seller_start.is_captcha_press(press("Я не робот 🤖"), record_b)
+    assert not await seller_start.is_captcha_press(
+        press("Я не робот 🤖", chat_type="group"), record_b
+    )
+
+
+async def test_captcha_press_approves_pending_requests(db):
+    """Нажатие одобряет заявки в каналы ЭТОГО бота с включённым приёмом;
+    где заявки нет, Telegram отвечает ошибкой — её пропускаем."""
+    seller_id = await make_seller(db)
+    bot_id = await make_bot(db, seller_id, username="approve_bot")
+    other_bot = await make_bot(db, seller_id, username="approve_other")
+    _, chat_main = await seed_channel(db, seller_id, bot_id)
+    _, chat_empty = await seed_channel(db, seller_id, bot_id)
+    _, chat_manual = await seed_channel(db, seller_id, bot_id, auto_accept=False)
+    _, chat_foreign = await seed_channel(db, seller_id, other_bot)
+
+    tg = fake_tg_bot()
+
+    async def approve(chat_id, user_id):
+        if chat_id == chat_empty:
+            raise RuntimeError("HIDE_REQUESTER_MISSING")
+
+    tg.approve_chat_join_request.side_effect = approve
+    msg = press("Я не робот 🤖")
+    with patch("app.handlers.seller.start.get_settings", return_value=FAKE_SETTINGS):
+        await seller_start.robot_confirm(msg, tg, await load_bot(db, bot_id))
+
+    tried = {c.kwargs["chat_id"] for c in tg.approve_chat_join_request.await_args_list}
+    assert tried == {chat_main, chat_empty}
+    assert chat_manual not in tried and chat_foreign not in tried
+    confirm = msg.answer.await_args_list[0]
+    # язык неизвестен (customer=None) — дефолт платформы EN
+    assert confirm.args[0] == "✅ Done — you're in “Мой канал”"
+    assert isinstance(confirm.kwargs["reply_markup"], types.ReplyKeyboardRemove)
+
+
 async def test_robot_confirm_answers_like_start(db):
-    """«Я не робот» отвечает тем же приветствием из настроек, что и /start."""
+    """Нажатие без висящих заявок отвечает тем же приветствием, что и /start."""
     seller_id = await make_seller(db)
     bot_id = await make_bot(db, seller_id, username="verify_bot")
     await st._update_bot(
         bot_id, welcome_text="<b>Привет!</b>", catalog_button_text="🛒 В магазин"
     )
 
-    msg = SimpleNamespace(answer=AsyncMock(), text="Я не робот")
+    msg = press("Я не робот")
     with patch("app.handlers.seller.start.get_settings", return_value=FAKE_SETTINGS):
-        await seller_start.robot_confirm(msg, await load_bot(db, bot_id))
+        await seller_start.robot_confirm(msg, fake_tg_bot(), await load_bot(db, bot_id))
 
-    # первым сообщением уходит верификационная reply-клавиатура…
-    remover = msg.answer.await_args_list[0].kwargs["reply_markup"]
-    assert isinstance(remover, types.ReplyKeyboardRemove)
+    # первым сообщением убирается reply-клавиатура капчи…
+    first = msg.answer.await_args_list[0]
+    assert first.args[0] == "✅ Verification passed"
+    assert isinstance(first.kwargs["reply_markup"], types.ReplyKeyboardRemove)
     # …затем то же приветствие, что и на /start
     assert msg.answer.await_args_list[1].args[0] == "<b>Привет!</b>"
     kb = msg.answer.await_args_list[1].kwargs["reply_markup"]
@@ -210,14 +309,70 @@ async def test_robot_confirm_isolated_per_bot(db):
     await st._update_bot(bot_a, welcome_text="Магазин А")
 
     with patch("app.handlers.seller.start.get_settings", return_value=FAKE_SETTINGS):
-        msg = SimpleNamespace(answer=AsyncMock(), text="Я не робот 🤖")
-        await seller_start.robot_confirm(msg, await load_bot(db, bot_a))
+        msg = press("Я не робот 🤖")
+        await seller_start.robot_confirm(msg, fake_tg_bot(), await load_bot(db, bot_a))
         assert msg.answer.await_args.args[0] == "Магазин А"
 
-        msg = SimpleNamespace(answer=AsyncMock(), text="Я не робот 🤖")
-        await seller_start.robot_confirm(msg, await load_bot(db, bot_b))
+        msg = press("Я не робот 🤖")
+        await seller_start.robot_confirm(msg, fake_tg_bot(), await load_bot(db, bot_b))
         # язык неизвестен (customer=None) — дефолт платформы EN
         assert msg.answer.await_args.args[0] == "Welcome to the <b>@bot_b</b> shop!"
+
+
+# --------------------------------------------------------------------------
+# Текст кнопки капчи в /settings
+# --------------------------------------------------------------------------
+
+
+async def _saved_button(db, channel_id):
+    async with db() as session:
+        return (await session.get(Channel, channel_id)).captcha_button
+
+
+async def test_settings_save_captcha_button(db):
+    seller_id = await make_seller(db)
+    bot_id = await make_bot(db, seller_id, username="btn_bot")
+    channel_id, _ = await seed_channel(db, seller_id, bot_id)
+    bot_record = await load_bot(db, bot_id)
+
+    msg = SimpleNamespace(answer=AsyncMock(), text="  Хочу в канал 🔥 ")
+    await st.save_captcha_button(msg, fake_fsm_state({"channel_id": channel_id}), bot_record)
+    assert await _saved_button(db, channel_id) == "Хочу в канал 🔥"
+    # карточка канала показывает новую кнопку
+    assert "Хочу в канал 🔥" in msg.answer.await_args_list[-1].args[0]
+
+    msg = SimpleNamespace(answer=AsyncMock(), text="/reset")
+    await st.save_captcha_button(msg, fake_fsm_state({"channel_id": channel_id}), bot_record)
+    assert await _saved_button(db, channel_id) is None
+
+
+async def test_settings_captcha_button_rejects_bad_text(db):
+    seller_id = await make_seller(db)
+    bot_id = await make_bot(db, seller_id, username="bad_btn_bot")
+    channel_id, _ = await seed_channel(db, seller_id, bot_id)
+    await st._update_channel(bot_id, channel_id, captcha_button="Было")
+    bot_record = await load_bot(db, bot_id)
+
+    for text in ("x" * 65, "/settings"):
+        state = fake_fsm_state({"channel_id": channel_id})
+        msg = SimpleNamespace(answer=AsyncMock(), text=text)
+        await st.save_captcha_button(msg, state, bot_record)
+        state.clear.assert_not_awaited()  # ждём исправленный текст
+        assert await _saved_button(db, channel_id) == "Было"
+
+
+async def test_settings_captcha_button_of_other_bot_untouched(db):
+    seller_id = await make_seller(db)
+    bot_a = await make_bot(db, seller_id, username="own_btn_a")
+    bot_b = await make_bot(db, seller_id, username="own_btn_b")
+    channel_id, _ = await seed_channel(db, seller_id, bot_a)
+
+    msg = SimpleNamespace(answer=AsyncMock(), text="Чужая кнопка")
+    with patch.object(st, "show_settings_menu", new=AsyncMock()):
+        await st.save_captcha_button(
+            msg, fake_fsm_state({"channel_id": channel_id}), await load_bot(db, bot_b)
+        )
+    assert await _saved_button(db, channel_id) is None
 
 
 async def test_join_request_without_auto_accept_stays_pending(db):

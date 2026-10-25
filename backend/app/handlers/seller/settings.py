@@ -37,12 +37,15 @@ router = Router(name="seller_settings")
 # пути продаёт продавец, а не платформа); runner читает константу отсюда.
 DEFAULT_BUTTON_TEXT = "Open"
 OWNER_ONLY = "Настройки доступны только владельцу магазина."
+# Колонка channels.captcha_button — String(64)
+CAPTCHA_BUTTON_MAX = 64
 
 
 class SettingsStates(StatesGroup):
     waiting_welcome = State()
     waiting_button_text = State()
     waiting_greeting = State()
+    waiting_captcha_button = State()
 
 
 async def _refresh_menu_button(bot: SellerBot | None) -> None:
@@ -433,12 +436,16 @@ def channel_text(channel: Channel, seller: Seller | None = None) -> str:
     greeting = html.escape(
         (channel.greeting_text or _t(seller, "settings.channel.default_greeting"))[:200]
     )
+    button = html.escape(
+        channel.captcha_button or _t(seller, "settings.channel.default_captcha_button")
+    )
     return _t(
         seller,
         "settings.channel.card",
         title=html.escape(channel.title),
         auto=auto,
         greeting=greeting,
+        button=button,
     )
 
 
@@ -459,6 +466,7 @@ def channel_keyboard(channel: Channel, seller: Seller | None = None) -> types.In
         callback_data=f"set:ch_auto:{channel.id}",
     )
     kb.button(text=_t(seller, "settings.btn.channel_greeting"), callback_data=f"set:ch_greet:{channel.id}")
+    kb.button(text=_t(seller, "settings.btn.channel_captcha"), callback_data=f"set:ch_btn:{channel.id}")
     kb.button(text=_t(seller, "settings.btn.channel_remove"), callback_data=f"set:ch_del:{channel.id}")
     kb.button(text=_t(seller, "settings.btn.back"), callback_data="set:channels")
     kb.adjust(1)
@@ -635,6 +643,101 @@ async def save_greeting(
         return
     await message.answer(_t(seller, "settings.greeting.saved"))
     await show_channels_message(message, bot_record, seller)
+
+
+@router.callback_query(F.data.startswith("set:ch_btn:"))
+async def ask_captcha_button(
+    callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+) -> None:
+    seller = await owner_of(bot_record, callback.from_user)
+    if seller is None:
+        await callback.answer(OWNER_ONLY, show_alert=True)
+        return
+    channel = await _own_channel(bot_record, _channel_id(callback))
+    if channel is None:
+        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+        return
+    await callback.answer()
+    await state.set_state(SettingsStates.waiting_captcha_button)
+    await state.update_data(channel_id=channel.id)
+    if callback.message:
+        kb = InlineKeyboardBuilder()
+        kb.button(
+            text=_t(seller, "settings.btn.reset_default_m"),
+            callback_data=f"set:ch_btn_reset:{channel.id}",
+        )
+        kb.button(text=_t(seller, "settings.btn.back"), callback_data=f"set:ch:{channel.id}")
+        kb.adjust(1)
+        current = html.escape(
+            channel.captcha_button or _t(seller, "settings.channel.default_captcha_button")
+        )
+        await callback.message.edit_text(
+            _t(seller, "settings.captcha.prompt", current=current, max=CAPTCHA_BUTTON_MAX),
+            reply_markup=kb.as_markup(),
+        )
+
+
+@router.callback_query(F.data.startswith("set:ch_btn_reset:"))
+async def reset_captcha_button(
+    callback: types.CallbackQuery, state: FSMContext, bot_record: SellerBot
+) -> None:
+    seller = await owner_of(bot_record, callback.from_user)
+    if seller is None:
+        await callback.answer(OWNER_ONLY, show_alert=True)
+        return
+    channel_id = _channel_id(callback)
+    channel = (
+        await _update_channel(bot_record.id, channel_id, captcha_button=None)
+        if channel_id is not None
+        else None
+    )
+    if channel is None:
+        await callback.answer(_t(seller, "settings.alert.channel_not_found"), show_alert=True)
+        return
+    await callback.answer(_t(seller, "settings.toast.reset"))
+    await state.clear()
+    if callback.message:
+        await _render_channel(callback.message, channel, seller)
+
+
+@router.message(SettingsStates.waiting_captcha_button, F.text)
+async def save_captcha_button(
+    message: types.Message, state: FSMContext, bot_record: SellerBot
+) -> None:
+    seller = await _seller_of(bot_record)
+    data = await state.get_data()
+    channel_id = data.get("channel_id")
+    text = (message.text or "").strip()
+
+    if text.lower() in {"/cancel", "/start"}:
+        await state.clear()
+        await message.answer(_t(seller, "settings.no_changes"))
+        await show_settings_menu(message, bot_record, seller)
+        return
+
+    if text.lower() == "/reset":
+        value = None
+    elif text.startswith("/"):
+        # кнопка шлёт свой текст сообщением — команда вместо него сломала бы /start и меню
+        await message.answer(_t(seller, "settings.captcha.no_command"))
+        return
+    elif len(text) > CAPTCHA_BUTTON_MAX:
+        # обрезать молча нельзя: человек увидит на кнопке не то, что написал
+        await message.answer(
+            _t(seller, "settings.captcha.too_long", max=CAPTCHA_BUTTON_MAX, n=len(text))
+        )
+        return
+    else:
+        value = text
+
+    channel = await _update_channel(bot_record.id, channel_id, captcha_button=value)
+    await state.clear()
+    if channel is None:
+        await message.answer(_t(seller, "settings.channel.gone"))
+        await show_settings_menu(message, bot_record, seller)
+        return
+    await message.answer(_t(seller, "settings.captcha.saved"))
+    await message.answer(channel_text(channel, seller), reply_markup=channel_keyboard(channel, seller))
 
 
 async def show_channels_message(
