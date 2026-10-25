@@ -17,7 +17,15 @@ if not url:
         "DATABASE_URL is not set. On Railway: add a PostgreSQL database to the "
         "project and set service variable DATABASE_URL=${{Postgres.DATABASE_URL}}."
     )
-url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+# Драйвер — явно psycopg2 (он и стоит в requirements). Голое «postgresql://»
+# в SQLAlchemy 2.1 значит уже psycopg третьей версии, которого у нас нет:
+# миграция падала на ModuleNotFoundError, а Railway запускает сервис командой
+# «alembic upgrade head && uvicorn» — приложение не поднималось бы вовсе.
+# Railway отдаёт адрес именно голым postgresql://, приложение — с +asyncpg.
+for prefix in ("postgresql+asyncpg://", "postgresql://"):
+    if url.startswith(prefix):
+        url = "postgresql+psycopg2://" + url[len(prefix):]
+        break
 config.set_main_option("sqlalchemy.url", url)
 
 target_metadata = Base.metadata
