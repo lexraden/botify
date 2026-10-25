@@ -89,10 +89,30 @@ async def get_buyer_any_shop(
 
 async def get_seller(
     x_init_data: str = Header(default=""),
+    x_bot_id: str = Header(default=""),
     session: AsyncSession = Depends(get_api_session),
 ) -> Seller:
-    """Продавец: initData подписана токеном hub-бота (кабинет открыт из него)."""
+    """Продавец: initData подписана токеном hub-бота (кабинет открыт из него).
+
+    Кабинет открывается и из самого магазина — кнопка «Кабинет магазина» на
+    /start seller-бота. Тогда initData подписана токеном этого магазина, а сам
+    магазин приходит заголовком X-Bot-Id. Такой подписи верим только для
+    ВЛАДЕЛЬЦА этого магазина: токен своего бота продавец знает (BotFather
+    отдаёт его владельцу) и может подписать initData с любым user id. Без
+    сверки с seller_id любой продавец вошёл бы в кабинет любого другого.
+    """
     data = validate_init_data(x_init_data, get_settings().hub_bot_token)
+    shop_signed: SellerBot | None = None
+    if (data is None or "user" not in data) and x_bot_id:
+        try:
+            shop_id = int(x_bot_id)
+        except ValueError:
+            shop_id = 0
+        # за пределами int4 Postgres ответит ошибкой драйвера, а не «нет такого»
+        bot = await session.get(SellerBot, shop_id) if 0 < shop_id < 2**31 else None
+        if bot is not None and bot.bot_token_encrypted:
+            data = validate_init_data(x_init_data, decrypt_bot_token(bot.bot_token_encrypted))
+            shop_signed = bot
     if data is None or "user" not in data:
         raise HTTPException(status_code=401, detail="invalid init data")
 
@@ -100,6 +120,8 @@ async def get_seller(
         select(Seller).where(Seller.telegram_id == data["user"]["id"])
     )
     seller = result.scalar_one_or_none()
+    if shop_signed is not None and (seller is None or shop_signed.seller_id != seller.id):
+        raise HTTPException(status_code=401, detail="invalid init data")
     if seller is None:
         raise HTTPException(status_code=403, detail="not registered; press /start in the bot")
     if seller.is_banned:

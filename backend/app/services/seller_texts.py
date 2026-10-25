@@ -178,6 +178,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "newshop.done": "✅ Магазин <b>{title}</b> подключён к @{username}.\n\n{next}",
         "newshop.done_next": "Осталось добавить первый товар.",
         "newshop.btn_open_shop": "🛍 Открыть магазин",
+        "start.dashboard": "🛠 Кабинет магазина",
         "newshop.done_webhook": (
             "Бот создан, но вебхук пока не встал — сообщения покупателей "
             "могут не доходить. Загляни в /mybots через минуту."
@@ -608,6 +609,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "newshop.done": "✅ Shop <b>{title}</b> is connected to @{username}.\n\n{next}",
         "newshop.done_next": "Now add your first product.",
         "newshop.btn_open_shop": "🛍 Open the shop",
+        "start.dashboard": "🛠 Shop dashboard",
         "newshop.done_webhook": (
             "The bot is created, but the webhook hasn't stuck yet — customer messages "
             "may not get through. Check /mybots in a minute."

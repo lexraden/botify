@@ -62,7 +62,7 @@ async def test_custom_welcome_and_button_text(db):
         bot_id, welcome_text="<b>Привет!</b>", catalog_button_text="🛒 В магазин"
     )
 
-    msg = fake_message()
+    msg = fake_message(telegram_id=555)  # покупатель: владельцу ещё и кнопка кабинета
     with patch_start_settings():
         await seller_start.cmd_start(
             msg, SimpleNamespace(args=None), await load_bot(db, bot_id)
@@ -81,7 +81,7 @@ async def test_catalog_button_can_be_hidden(db):
     bot_id = await make_bot(db, seller_id, username="quiet_shop")
     await st._update_bot(bot_id, show_catalog_button=False)
 
-    msg = fake_message()
+    msg = fake_message(telegram_id=555)  # покупатель: владельцу ещё и кнопка кабинета
     with patch_start_settings():
         await seller_start.cmd_start(
             msg, SimpleNamespace(args=None), await load_bot(db, bot_id)

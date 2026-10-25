@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { enterFullscreen, exitFullscreen, getBotId } from './services/telegram'
+import { enterFullscreen, exitFullscreen, getBotId, setContextBotId } from './services/telegram'
 import { fetchMe } from './api'
 
 import StoreView from './views/StoreView.vue'
@@ -64,6 +64,10 @@ function entryRouteFor(me) {
 // Прокидываем параметр в каждый переход, где его нет, — тогда адрес всегда
 // остаётся с bot_id и перезагрузка витрины не уводит покупателя в онбординг.
 router.beforeEach((to, from) => {
+  // магазин кабинета — для X-Bot-Id, если кабинет открыт из seller-бота.
+  // Не сбрасываем на роутах без :botId: подпись initData за сессию не
+  // меняется, и список магазинов (/shops) иначе ответил бы 401
+  if (to.params.botId) setContextBotId(to.params.botId)
   const botId = to.query.bot_id ?? from.query.bot_id ?? getBotId()
   if (!botId || to.query.bot_id === botId) return true
   return { path: to.path, query: { ...to.query, bot_id: botId }, hash: to.hash }

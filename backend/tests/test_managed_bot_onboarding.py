@@ -24,6 +24,17 @@ from app.services.shop_draft import (
 NEW_TOKEN = "7891234567:AAHmanaged-bot-token-for-tests-aaaa"
 
 
+@pytest.fixture(autouse=True)
+def _no_creator_welcome():
+    """bot_created шлёт приветствие от нового бота в фоне — в тестах это
+    был бы настоящий запрос в Telegram. Само приветствие проверено в
+    tests/test_shop_dashboard_button.py."""
+    with patch(
+        "app.handlers.hub.newshop.welcome_creator_from_bot", new=AsyncMock()
+    ) as welcome:
+        yield welcome
+
+
 async def _seller(db, telegram_id: int = 4242, *, terms: bool = False) -> Seller:
     from datetime import datetime, timezone
 
@@ -227,6 +238,44 @@ async def test_created_bot_becomes_the_shop(db):
         assert shop.is_active is True
         assert decrypt_bot_token(shop.bot_token_encrypted) == NEW_TOKEN
     assert "подключён" in message.answer.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_created_bot_removes_reply_keyboard_then_offers_the_shop(db, _no_creator_welcome):
+    """«Создать бота» снимается первым сообщением (one_time её только
+    сворачивает), кнопка в магазин — вторым; создателю шлём приветствие
+    от нового бота."""
+    import asyncio
+
+    from aiogram import types
+
+    from app.handlers.hub.newshop import bot_created
+    from tests.test_hub_menus import FAKE_SETTINGS
+
+    seller = await _seller(db)
+    draft = await create_draft(seller.id)
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=seller.telegram_id),
+        managed_bot_created=SimpleNamespace(
+            bot_user=SimpleNamespace(id=7891234567, username="two_msg_bot", first_name="Two")
+        ),
+        answer=AsyncMock(),
+    )
+    with (
+        patch("app.bots.hub.hub_bot.get_managed_bot_token", new=AsyncMock(return_value=NEW_TOKEN)),
+        patch("app.bots.runner.setup_seller_webhook", new=AsyncMock(return_value=True)),
+        patch("app.handlers.hub.newshop.get_settings", return_value=FAKE_SETTINGS),
+    ):
+        await bot_created(message)
+        await asyncio.sleep(0)  # дать фоновой задаче стартовать
+
+    first, second = message.answer.await_args_list
+    assert "подключён" in first.args[0]
+    assert isinstance(first.kwargs["reply_markup"], types.ReplyKeyboardRemove)
+    button = second.kwargs["reply_markup"].inline_keyboard[0][0]
+    assert button.web_app.url == f"https://app.example.com/shop/{draft.id}"
+    _no_creator_welcome.assert_awaited_once()
+    assert _no_creator_welcome.await_args.args[0].id == draft.id
 
 
 @pytest.mark.asyncio

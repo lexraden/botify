@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { getBotId, getInitData } from './services/telegram'
+import { getBotId, getContextBotId, getInitData } from './services/telegram'
 import { compressImage } from './services/imageCompress'
 import { storedLocale } from './services/locale'
 import { startLoading, stopLoading } from './services/loading'
@@ -16,6 +16,9 @@ api.interceptors.request.use((config) => {
   config.headers['X-Init-Data'] = getInitData()
   // язык уведомлений на бэкенде = язык Mini App; '' — ручной выбор ещё не сделан
   config.headers['X-Locale'] = storedLocale() ?? ''
+  // кабинет из seller-бота: id магазина, чьим токеном подписана initData
+  const contextBot = getContextBotId()
+  if (contextBot) config.headers['X-Bot-Id'] = contextBot
   if (!config.silent) startLoading()
   return config
 })

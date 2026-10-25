@@ -31,6 +31,7 @@
 может быть выключен.
 """
 
+import asyncio
 import html
 import logging
 
@@ -227,8 +228,6 @@ async def bot_created(message: types.Message) -> None:
     # Кнопка прямо в свой магазин вместо «открой приложение» словами: человек
     # только что закончил создание бота и следующий его шаг — первый товар,
     # а искать вход руками после такого — лишний повод бросить.
-    # Клавиатуру с «создать бота» снимать отдельно не нужно: она one_time,
-    # Telegram прячет её сразу после нажатия.
     markup = None
     webapp_url = get_settings().effective_webapp_url
     if webapp_url:
@@ -239,20 +238,69 @@ async def bot_created(message: types.Message) -> None:
         )
         markup = kb.as_markup()
 
+    if not webhook_ok:
+        next_line = text(locale, "newshop.done_webhook")
+    else:
+        next_line = "" if markup else text(locale, "newshop.done_next")
+    # Reply-клавиатуру «Создать бота» снимаем первым сообщением: one_time
+    # только сворачивает её, и кнопка оставалась под иконкой клавиатуры
+    # (замечено живьём 13.10). Inline-кнопка в том же сообщении remove
+    # не даёт — она уходит вторым.
     await message.answer(
         text(
             locale,
             "newshop.done",
             title=html.escape(shop.title or ""),
             username=html.escape(shop.bot_username or ""),
-            next=(
-                text(locale, "newshop.done_next")
-                if webhook_ok
-                else text(locale, "newshop.done_webhook")
-            ),
-        ),
-        reply_markup=markup or types.ReplyKeyboardRemove(),
+            next=next_line,
+        ).rstrip(),
+        reply_markup=types.ReplyKeyboardRemove(),
     )
+    if markup:
+        await message.answer(text(locale, "newshop.done_next") + " 👇", reply_markup=markup)
+
+    # Первый /start в новом боте часто теряется: Telegram доносит его сразу,
+    # а вебхук встаёт чуть позже. Приветствуем создателя сами — с теми же
+    # кнопками, что на /start, включая кабинет. В фоне: первый коннект нового
+    # бота к api.telegram.org занимает секунды, ответ здесь ждать не должен.
+    task = asyncio.create_task(
+        welcome_creator_from_bot(shop, message.from_user),
+        name=f"welcome-creator-{shop.id}",
+    )
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
+# сильные ссылки на фоновые задачи: event loop держит только слабые,
+# и недожданная задача может быть собрана GC посреди работы
+_background: set[asyncio.Task] = set()
+
+
+async def welcome_creator_from_bot(shop, tg_user) -> None:
+    """Первое приветствие от самого seller-бота его создателю.
+
+    Исходящие не зависят от вебхука, поэтому приходят, даже если /start
+    потерялся. Если Telegram не даёт написать первым — просто пишем в лог:
+    создатель всё равно увидит приветствие, когда сам нажмёт /start.
+    """
+    from app.bots.runner import make_seller_bot
+    from app.handlers.seller.start import start_keyboard, welcome_text_for
+    from app.security import decrypt_bot_token
+
+    if shop.bot_token_encrypted is None or tg_user is None:
+        return
+    bot = make_seller_bot(decrypt_bot_token(shop.bot_token_encrypted))
+    try:
+        kb = await start_keyboard(shop, None, tg_user)
+        await bot.send_message(tg_user.id, welcome_text_for(shop), reply_markup=kb)
+        logger.info("newshop: приветствие создателю ушло, магазин %s", shop.id)
+    except Exception:
+        logger.info("newshop: приветствие создателю не ушло, магазин %s", shop.id, exc_info=True)
+    finally:
+        try:
+            await bot.session.close()
+        except Exception:
+            pass
 
 
 @router.managed_bot()

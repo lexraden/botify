@@ -47,6 +47,20 @@ export function getBotId() {
   return initialBotId
 }
 
+// Кабинет может быть открыт из самого магазина — кнопка «Кабинет магазина» на
+// /start seller-бота. Тогда initData подписана токеном этого магазина, а не
+// hub-бота, и бэкенду нужен его id заголовком X-Bot-Id (берётся из роута
+// /shop/:botId). Владельца бэкенд сверяет сам — заголовок прав не даёт.
+let contextBotId = null
+
+export function setContextBotId(id) {
+  contextBotId = id ?? null
+}
+
+export function getContextBotId() {
+  return contextBotId
+}
+
 // Переход в другой чат Telegram (@BotFather, @CryptoBot) из Mini App
 export function openTelegramLink(url) {
   if (tg?.openTelegramLink) tg.openTelegramLink(url)

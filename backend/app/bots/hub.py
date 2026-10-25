@@ -54,6 +54,9 @@ async def setup_hub_webhook() -> None:
     # дефолтное меню — русское (исторический язык hub-бота); список общий
     # с пер-чатовыми перезаписями после выбора языка в /lang
     await hub_bot.set_my_commands(hub_lang.COMMANDS["ru"])
+    # BotFather не умеет мультиязычность, а Bot API — умеет: набор с
+    # language_code Telegram показывает клиенту на этом языке
+    await hub_bot.set_my_commands(hub_lang.COMMANDS["en"], language_code="en")
     url = f"{settings.webhook_base_url}{HUB_WEBHOOK_PATH}"
     info = await hub_bot.get_webhook_info()
     if info.url != url:

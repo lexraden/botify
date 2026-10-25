@@ -107,6 +107,33 @@ async def catalog_keyboard(
     return kb.as_markup()
 
 
+async def start_keyboard(
+    bot_record: SellerBot, customer: Customer | None = None, tg_user=None
+) -> types.InlineKeyboardMarkup | None:
+    """Витрина + кабинет магазина; кабинет — только владельцу.
+
+    Создатель, попав в своего бота, первым делом идёт за товарами в кабинет.
+    Кабинет открывается подписью этого бота (а не hub-бота) — бэкенд узнаёт
+    магазин по X-Bot-Id и пускает только владельца (api/deps.py:get_seller).
+    """
+    from app.handlers.seller.settings import owner_of
+    from app.services import seller_texts
+
+    kb = await catalog_keyboard(bot_record, customer)
+    seller = await owner_of(bot_record, tg_user)
+    webapp_url = get_settings().effective_webapp_url
+    if seller is None or not webapp_url:
+        return kb
+    row = InlineKeyboardBuilder()
+    row.button(
+        text=seller_texts.text(seller_texts.seller_locale(seller), "start.dashboard"),
+        web_app=types.WebAppInfo(url=f"{webapp_url.rstrip('/')}/shop/{bot_record.id}"),
+    )
+    if kb is not None:
+        row.attach(InlineKeyboardBuilder.from_markup(kb))
+    return row.as_markup()
+
+
 def welcome_text_for(bot_record: SellerBot, customer: Customer | None = None) -> str:
     return bot_record.welcome_text or buyer_text(
         customer, "start.welcome", username=bot_record.bot_username
@@ -116,9 +143,10 @@ def welcome_text_for(bot_record: SellerBot, customer: Customer | None = None) ->
 async def send_welcome(
     message: types.Message, bot_record: SellerBot, customer: Customer | None = None
 ) -> None:
-    """Приветствие из настроек бота + кнопка витрины. Единственная точка
+    """Приветствие из настроек бота + кнопка витрины (и кабинета — владельцу).
+    Единственная точка
     ответа «как на /start» — её же использует подтверждение «Я не робот»."""
-    kb = await catalog_keyboard(bot_record, customer)
+    kb = await start_keyboard(bot_record, customer, getattr(message, "from_user", None))
     try:
         await message.answer(welcome_text_for(bot_record, customer), reply_markup=kb)
     except Exception:
