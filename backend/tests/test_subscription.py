@@ -183,6 +183,28 @@ async def test_subscription_endpoint_shows_both_plans(db):
 
 
 @pytest.mark.asyncio
+async def test_invoice_failure_answers_502_not_500(db):
+    """Обработчик ошибки ссылался на logger, которого в модуле не было:
+    сбой Crypto Pay превращался в 500 на NameError, а причина не попадала
+    в лог — ровно тогда, когда она нужнее всего."""
+    from unittest.mock import AsyncMock, patch
+
+    await make_seller(db)
+    with patch(
+        "app.payments.subscription.create_crypto_invoice",
+        new=AsyncMock(side_effect=RuntimeError("crypto pay is down")),
+    ):
+        async with client() as c:
+            r = await c.post(
+                "/api/seller/subscription/invoice",
+                headers=seller_headers(),
+                json={"method": "crypto", "plan": "plus"},
+            )
+    assert r.status_code == 502
+    assert r.json()["detail"] == "invoice_failed"
+
+
+@pytest.mark.asyncio
 async def test_unknown_plan_is_refused(db):
     await make_seller(db)
     async with client() as c:

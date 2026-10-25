@@ -1,15 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const { acceptTermsMock, replaceMock, openLinkMock } = vi.hoisted(() => ({
+const { acceptTermsMock, replaceMock, openLinkMock, botPromptMock, closeAppMock } = vi.hoisted(() => ({
   acceptTermsMock: vi.fn(),
   replaceMock: vi.fn(),
   openLinkMock: vi.fn(),
+  botPromptMock: vi.fn(),
+  closeAppMock: vi.fn(),
 }))
 
-vi.mock('../../api', () => ({ acceptTerms: acceptTermsMock }))
+vi.mock('../../api', () => ({ acceptTerms: acceptTermsMock, sendBotPrompt: botPromptMock }))
 // tg нужен транзитивному i18n (детект языка) — оставляем его пустым
-vi.mock('../../services/telegram', () => ({ tg: null, openTelegramLink: openLinkMock }))
+vi.mock('../../services/telegram', () => ({
+  tg: null,
+  openTelegramLink: openLinkMock,
+  closeApp: closeAppMock,
+}))
 vi.mock('vue-router', () => ({ useRouter: () => ({ replace: replaceMock }) }))
 
 import WelcomeView from '../WelcomeView.vue'
@@ -63,16 +69,48 @@ describe('WelcomeView — согласие с условиями', () => {
     expect(replaceMock).toHaveBeenCalledWith('/onboarding/bot')
   })
 
-  it('если Telegram даёт создать бота, уводит в переписку, а не на ввод токена', async () => {
+  it('после галочки сервер присылает кнопку в чат, а приложение закрывается', async () => {
+    // Основной путь: никакого диплинка — человек возвращается в тот же чат,
+    // где кнопка создания бота уже ждёт
+    acceptTermsMock.mockResolvedValue({ create_shop_link: 'https://t.me/botify_bot?start=newshop' })
+    botPromptMock.mockResolvedValue({ sent: true })
+    closeAppMock.mockReturnValue(true)
+    const wrapper = mountView()
+    await wrapper.find('.agree input').setValue(true)
+    await wrapper.find('.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(botPromptMock).toHaveBeenCalledTimes(1)
+    expect(closeAppMock).toHaveBeenCalledTimes(1)
+    expect(openLinkMock).not.toHaveBeenCalled()
+    expect(replaceMock).not.toHaveBeenCalled()
+  })
+
+  it('если сервер кнопку не прислал — уходит в чат диплинком, а не на ввод токена', async () => {
     const link = 'https://t.me/botify_bot?start=newshop'
     acceptTermsMock.mockResolvedValue({ create_shop_link: link })
+    botPromptMock.mockResolvedValue({ sent: false })
+    const wrapper = mountView()
+    await wrapper.find('.agree input').setValue(true)
+    await wrapper.find('.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(closeAppMock).not.toHaveBeenCalled()
+    expect(openLinkMock).toHaveBeenCalledWith(link)
+    expect(replaceMock).not.toHaveBeenCalled()
+  })
+
+  it('вне Telegram закрывать нечего — тоже уходит диплинком', async () => {
+    const link = 'https://t.me/botify_bot?start=newshop'
+    acceptTermsMock.mockResolvedValue({ create_shop_link: link })
+    botPromptMock.mockResolvedValue({ sent: true })
+    closeAppMock.mockReturnValue(false)
     const wrapper = mountView()
     await wrapper.find('.agree input').setValue(true)
     await wrapper.find('.btn-primary').trigger('click')
     await flushPromises()
 
     expect(openLinkMock).toHaveBeenCalledWith(link)
-    expect(replaceMock).not.toHaveBeenCalled()
   })
 
   it('при ошибке сохранения показывает сообщение и никуда не ведёт', async () => {

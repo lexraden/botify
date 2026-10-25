@@ -1,19 +1,25 @@
-"""Онбординг магазина без BotFather: название → кнопка → бот создан.
-
-Экспериментальный сценарий (ветка managed-bot-case). Живёт целиком в hub-боте,
-чтобы его можно было прогнать в Telegram, не трогая Mini App: проверяем именно
-механику managed-ботов, а не вёрстку.
+"""Онбординг магазина без BotFather: кнопка → окно Telegram → бот создан.
 
 Как это работает:
 
-1. `/newshop` спрашивает название магазина и заводит черновик — строку
-   `seller_bots` с пустым токеном (app/services/shop_draft.py).
-2. В ответ уходит reply-кнопка `KeyboardButtonRequestManagedBot` с
-   `suggested_name` и `suggested_username`, собранными из названия.
-3. Продавец жмёт её, Telegram сам показывает диалог создания бота и сам же
-   проверяет занятость ссылки — BotFather в этом пути не участвует вовсе.
-4. Нам приходит сообщение с `managed_bot_created`; по id нового бота берём
-   токен через `getManagedBotToken`, дописываем черновик и ставим вебхук.
+1. Продавец принимает условия в Mini App. Сервер сам присылает ему в чат с
+   hub-ботом сообщение с reply-кнопкой `KeyboardButtonRequestManagedBot`,
+   а приложение закрывается — человек оказывается ровно там, где кнопка уже
+   ждёт (`POST /api/seller/onboarding/bot-prompt`). Тот же ответ дают
+   `/newshop` и диплинк `?start=newshop`.
+2. Заодно заводится черновик — строка `seller_bots` с пустым токеном
+   (app/services/shop_draft.py). Названия у него ещё нет.
+3. Продавец жмёт кнопку, Telegram показывает своё окно: имя и адрес бота
+   человек вводит там, Telegram же проверяет занятость адреса.
+4. Нам приходит `managed_bot_created`; берём токен через
+   `getManagedBotToken`, дописываем черновик — имя бота становится названием
+   магазина — и ставим вебхук.
+
+Названия мы раньше спрашивали отдельным сообщением, до кнопки. Это был тот же
+вопрос, что Telegram задаёт в своём окне, только дважды; поля
+`suggested_name`/`suggested_username` у кнопки необязательны. Отказались от
+него 2026-10-12, вместе с возвратом в чат через диплинк: это и был самый
+длинный кусок онбординга.
 
 Владелец созданного бота — продавец: в `ManagedBotUpdated.user` Telegram
 присылает «User that created the bot», а у владельца доступ неотнимаемый
@@ -21,18 +27,16 @@
 управляющий бот, как и раньше при ручном вводе токена.
 
 Ручной путь (`POST /api/seller/bots` с токеном от BotFather) остаётся: у
-существующих продавцов боты уже созданы, да и managed-боты могут оказаться
-доступны не всем.
+существующих продавцов боты уже созданы, да и Bot Management Mode у hub-бота
+может быть выключен.
 """
 
 import html
 import logging
-from time import time
 
 from aiogram import F, Router, types
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.config import get_settings
@@ -45,23 +49,13 @@ from app.services.shop_draft import (
     create_draft,
     promote_draft,
     set_webhook_status,
-    suggest_username,
 )
 
 logger = logging.getLogger(__name__)
 
 router = Router()
 
-MAX_TITLE = 128
 REQUEST_ID = 1
-# Состояние «жду название» живёт в памяти до перезапуска, и никакой другой
-# хендлер его не снимает: /newshop, потом /mybots, потом через час обычное
-# «привет» — и заводился магазин с таким названием. Ограничиваем по времени.
-TITLE_TIMEOUT_SEC = 15 * 60
-
-
-class NewShop(StatesGroup):
-    waiting_title = State()
 
 
 async def _seller_for(message: types.Message) -> Seller | None:
@@ -79,76 +73,22 @@ async def _seller_for(message: types.Message) -> Seller | None:
         ).scalar_one_or_none()
 
 
-async def start_newshop(message: types.Message, state: FSMContext) -> None:
-    """Спросить название магазина. Общее тело для /newshop и для диплинка из
-    Mini App — расходиться этим двум входам нельзя, за ними один сценарий."""
-    seller = await _seller_for(message)
-    locale = seller_locale(seller) if seller is not None else "ru"
+def create_prompt(locale: str) -> tuple[str, types.ReplyKeyboardMarkup]:
+    """Сообщение с кнопкой создания бота.
 
-    # спрашиваем до вопроса про название: иначе человек введёт его, получит
-    # кнопку и упрётся в «this bot doesn't support managing bots»
-    if not await can_create_managed_bots():
-        await message.answer(
-            text(locale, "newshop.management_off"),
-            reply_markup=types.ReplyKeyboardRemove(),
-        )
-        return
-
-    await state.set_state(NewShop.waiting_title)
-    await state.update_data(asked_at=time())
-    await message.answer(
-        text(locale, "newshop.ask_title"),
-        reply_markup=types.ReplyKeyboardRemove(),
-    )
-
-
-@router.message(Command("newshop"))
-async def cmd_newshop(message: types.Message, state: FSMContext) -> None:
-    await start_newshop(message, state)
-
-
-@router.message(StateFilter(NewShop.waiting_title), F.text)
-async def got_title(message: types.Message, state: FSMContext) -> None:
-    seller = await _seller_for(message)
-    if seller is None:
-        await state.clear()
-        await message.answer(text("ru", "hub.no_seller"))
-        return
-    locale = seller_locale(seller)
-
-    asked_at = (await state.get_data()).get("asked_at", 0)
-    if time() - asked_at > TITLE_TIMEOUT_SEC:
-        # разговор давно прервали: считать следующую реплику названием нельзя
-        await state.clear()
-        return
-
-    title = (message.text or "").strip()
-    if title.startswith("/"):
-        # команда вместо названия — человек передумал, а не назвал магазин так
-        await state.clear()
-        await message.answer(text(locale, "newshop.cancel"))
-        return
-    if not title:
-        await message.answer(text(locale, "newshop.need_title"))
-        return
-    if len(title) > MAX_TITLE:
-        await message.answer(text(locale, "newshop.title_too_long", n=MAX_TITLE))
-        return
-
-    await state.clear()
-    shop = await create_draft(seller.id, title)
-    username = suggest_username(title)
-    logger.info("Черновик магазина %s создан продавцом %s", shop.id, seller.id)
-
+    Общее для /newshop, диплинка и сервера после принятия условий — за ними
+    один сценарий, и расходиться им нельзя.
+    """
     kb = types.ReplyKeyboardMarkup(
         keyboard=[
             [
                 types.KeyboardButton(
-                    text=text(locale, "newshop.btn_create", title=title[:40]),
+                    text=text(locale, "newshop.btn_create"),
+                    # Ни имени, ни адреса не подсказываем: человек вводит их
+                    # в окне Telegram, и отдельный вопрос до кнопки был тем
+                    # же вопросом, заданным дважды
                     request_managed_bot=types.KeyboardButtonRequestManagedBot(
-                        request_id=REQUEST_ID,
-                        suggested_name=title[:64],
-                        suggested_username=username,
+                        request_id=REQUEST_ID
                     ),
                 )
             ]
@@ -156,15 +96,77 @@ async def got_title(message: types.Message, state: FSMContext) -> None:
         resize_keyboard=True,
         one_time_keyboard=True,
     )
-    await message.answer(
-        text(
-            locale,
-            "newshop.ready",
-            title=html.escape(title),
-            username=username,
-        ),
-        reply_markup=kb,
-    )
+    return text(locale, "newshop.prompt"), kb
+
+
+async def needs_terms(seller: Seller) -> bool:
+    """Нужно ли сначала принять условия.
+
+    Правило то же, что в приложении: условия обязательны для первого
+    магазина. Требовать их на каждый /newshop нельзя — у продавцов,
+    подключившихся до появления галочки, terms_accepted_at пустой, а экран
+    условий приложение показывает только тем, у кого магазинов ещё нет.
+    Такой продавец навсегда упёрся бы в «прими условия», которых не увидит.
+    """
+    from sqlalchemy import select
+
+    from app.models import SellerBot
+
+    if seller.terms_accepted_at is not None:
+        return False
+    async with get_session() as session:
+        has_shop = (
+            await session.execute(
+                select(SellerBot.id)
+                .where(
+                    SellerBot.seller_id == seller.id,
+                    SellerBot.bot_token_encrypted.is_not(None),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    return has_shop is None
+
+
+async def start_newshop(message: types.Message, state: FSMContext) -> None:
+    """Показать кнопку создания бота. Общее тело для /newshop и для
+    диплинка из Mini App."""
+    seller = await _seller_for(message)
+    locale = seller_locale(seller) if seller is not None else "ru"
+    # хвост старого сценария, где тут ждали название магазина
+    await state.clear()
+
+    # Кнопку, которая заведомо упадёт с «this bot doesn't support managing
+    # bots», не показываем вовсе — объясняем, как включить
+    if not await can_create_managed_bots():
+        await message.answer(
+            text(locale, "newshop.management_off"),
+            reply_markup=types.ReplyKeyboardRemove(),
+        )
+        return
+    if seller is None:
+        await message.answer(text("ru", "hub.no_seller"))
+        return
+
+    # Галочка условий живёт в приложении (решение владельца от 2026-10-12);
+    # без неё первый магазин из чата раньше заводился в обход неё
+    if await needs_terms(seller):
+        from app.handlers.hub.start import open_app_keyboard
+
+        await message.answer(
+            text(locale, "newshop.terms_first"),
+            reply_markup=open_app_keyboard(with_bots=False, admin_bots=False, locale=locale),
+        )
+        return
+
+    await create_draft(seller.id)
+    body, kb = create_prompt(locale)
+    await message.answer(body, reply_markup=kb)
+
+
+@router.message(Command("newshop"))
+async def cmd_newshop(message: types.Message, state: FSMContext) -> None:
+    await start_newshop(message, state)
 
 
 @router.message(F.managed_bot_created)
@@ -185,14 +187,10 @@ async def bot_created(message: types.Message) -> None:
     created = message.managed_bot_created.bot_user
     logger.info("Создан managed-бот %s (@%s)", created.id, created.username)
 
-    shop = await latest_draft(seller.id)
-    if shop is None:
-        # кнопку нажали, не заводя магазин: без черновика прицепить бота некуда
-        await message.answer(
-            text(locale, "newshop.no_draft"),
-            reply_markup=types.ReplyKeyboardRemove(),
-        )
-        return
+    # Черновика может не быть: кнопка осталась в старом сообщении, а прошлый
+    # магазин уже собран. Бот при этом создан по-настоящему — отправлять
+    # человека «начать заново» значило бы бросить живого бота без магазина.
+    shop = await latest_draft(seller.id) or await create_draft(seller.id)
 
     try:
         token = await hub_bot.get_managed_bot_token(user_id=created.id)

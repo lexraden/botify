@@ -19,61 +19,23 @@ from app.services.shop_draft import (
     create_draft,
     latest_draft,
     promote_draft,
-    suggest_username,
 )
 
 NEW_TOKEN = "7891234567:AAHmanaged-bot-token-for-tests-aaaa"
 
 
-async def _seller(db, telegram_id: int = 4242) -> Seller:
+async def _seller(db, telegram_id: int = 4242, *, terms: bool = False) -> Seller:
+    from datetime import datetime, timezone
+
     async with db() as session:
-        seller = Seller(telegram_id=telegram_id)
+        seller = Seller(
+            telegram_id=telegram_id,
+            terms_accepted_at=datetime.now(timezone.utc) if terms else None,
+        )
         session.add(seller)
         await session.commit()
         await session.refresh(seller)
         return seller
-
-
-# --------------------------------------------------------------------------
-# Предложение юзернейма
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "title, expected",
-    [
-        ("Кофейня у дома", "kofeynya_u_doma_bot"),
-        ("Coffee House", "coffee_house_bot"),
-        ("Пекарня  «Хлеб»!", "pekarnya_hleb_bot"),
-        ("Ёлки-Палки", "elki_palki_bot"),
-    ],
-)
-def test_username_is_suggested_from_title(title, expected):
-    """Продавцу должно хватать нажать «ок»: адрес собирается из названия."""
-    assert suggest_username(title) == expected
-
-
-def test_username_fits_telegram_limits():
-    """32 символа с обязательным окончанием bot — длинное название режется."""
-    name = suggest_username("Очень длинное название магазина про всё на свете")
-    assert len(name) <= 32
-    assert name.endswith("_bot")
-    assert not name.startswith("_") and "__" not in name
-
-
-def test_username_never_starts_with_a_digit():
-    """Telegram требует букву в начале — «7 небо» давало 7_nebo_bot,
-    и его же диалог создания отверг бы наше предложение."""
-    for title in ("7 небо", "24 часа", "1С Магазин"):
-        name = suggest_username(title)
-        assert name[0].isalpha(), f"{title} -> {name}"
-        assert name.endswith("_bot") and len(name) <= 32
-
-
-def test_unsuggestable_title_still_gives_valid_username():
-    """Название из одних эмодзи перевести не во что — но адрес нужен всё равно."""
-    name = suggest_username("🌸🌸🌸")
-    assert name.endswith("_bot") and len(name) > len("_bot")
 
 
 # --------------------------------------------------------------------------
@@ -196,15 +158,14 @@ async def test_newshop_explains_instead_of_offering_broken_button(db):
 
 
 @pytest.mark.asyncio
-async def test_newshop_asks_for_title_when_management_is_on(db):
+async def test_newshop_offers_the_button_right_away(db):
+    """Кнопка — сразу, без вопроса про название: имя и адрес человек вводит
+    в окне Telegram, а отдельный вопрос был тем же вопросом, заданным дважды."""
     from app.handlers.hub.newshop import cmd_newshop
 
-    message = SimpleNamespace(
-        from_user=SimpleNamespace(id=4242), answer=AsyncMock()
-    )
-    state = SimpleNamespace(
-        set_state=AsyncMock(), clear=AsyncMock(), update_data=AsyncMock()
-    )
+    seller = await _seller(db, terms=True)
+    message = SimpleNamespace(from_user=SimpleNamespace(id=seller.telegram_id), answer=AsyncMock())
+    state = SimpleNamespace(set_state=AsyncMock(), clear=AsyncMock())
 
     with patch(
         "app.bots.hub.hub_bot.get_me",
@@ -212,9 +173,15 @@ async def test_newshop_asks_for_title_when_management_is_on(db):
     ):
         await cmd_newshop(message, state)
 
-    state.set_state.assert_awaited()
-    assert "назовём магазин" in message.answer.await_args.args[0]
-
+    state.set_state.assert_not_awaited()  # ничего не ждём — ни названия, ни ответа
+    button = message.answer.await_args.kwargs["reply_markup"].keyboard[0][0]
+    assert button.request_managed_bot is not None
+    # не подсказываем: имя и адрес — в окне Telegram
+    assert button.request_managed_bot.suggested_name is None
+    assert button.request_managed_bot.suggested_username is None
+    # черновик под кнопку уже заведён, пока без названия
+    draft = await latest_draft(seller.id)
+    assert draft is not None and draft.title is None
 
 @pytest.mark.asyncio
 async def test_unreachable_telegram_does_not_offer_the_button(db):
@@ -230,35 +197,6 @@ async def test_unreachable_telegram_does_not_offer_the_button(db):
 # --------------------------------------------------------------------------
 # Кнопка и разбор ответа Telegram
 # --------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_button_carries_name_and_username(db):
-    """Кнопка должна прийти к продавцу уже заполненной — в этом весь смысл."""
-    from app.handlers.hub.newshop import got_title
-
-    seller = await _seller(db)
-    answers = []
-    message = SimpleNamespace(
-        text="Кофейня у дома",
-        from_user=SimpleNamespace(id=seller.telegram_id),
-        answer=AsyncMock(side_effect=lambda text, **kw: answers.append((text, kw))),
-    )
-    state = SimpleNamespace(
-        clear=AsyncMock(),
-        set_state=AsyncMock(),
-        get_data=AsyncMock(return_value={"asked_at": time()}),
-    )
-
-    await got_title(message, state)
-
-    kb = answers[-1][1]["reply_markup"]
-    button = kb.keyboard[0][0]
-    assert button.request_managed_bot.suggested_name == "Кофейня у дома"
-    assert button.request_managed_bot.suggested_username == "kofeynya_u_doma_bot"
-
-    # и черновик под неё уже заведён
-    assert (await latest_draft(seller.id)) is not None
 
 
 @pytest.mark.asyncio
@@ -319,24 +257,30 @@ async def test_token_failure_leaves_draft_alone(db):
 
 
 @pytest.mark.asyncio
-async def test_bot_created_without_draft_does_not_crash(db):
-    """Кнопку нажали, магазина нет: прицепить бота некуда, но падать нельзя."""
+async def test_bot_created_without_draft_still_becomes_a_shop(db):
+    """Кнопку нажали из старого сообщения, черновика уже нет — а бот создан
+    по-настоящему. Отправить человека «начать заново» значило бы бросить
+    живого бота без магазина."""
     from app.handlers.hub.newshop import bot_created
 
     seller = await _seller(db)
     message = SimpleNamespace(
         from_user=SimpleNamespace(id=seller.telegram_id),
         managed_bot_created=SimpleNamespace(
-            bot_user=SimpleNamespace(id=999, username="lonely_bot")
+            bot_user=SimpleNamespace(id=999, username="lonely_bot", first_name="Lonely Shop")
         ),
         answer=AsyncMock(),
     )
-    await bot_created(message)
+    with patch(
+        "app.bots.hub.hub_bot.get_managed_bot_token", new=AsyncMock(return_value=NEW_TOKEN)
+    ), patch("app.bots.runner.setup_seller_webhook", new=AsyncMock(return_value=True)):
+        await bot_created(message)
 
     async with db() as session:
-        assert (await session.execute(select(SellerBot))).scalars().all() == []
-    assert "нет" in message.answer.await_args.args[0]
-
+        shop = (await session.execute(select(SellerBot))).scalar_one()
+    assert shop.bot_username == "lonely_bot"
+    assert shop.shop_name == "Lonely Shop"
+    assert shop.is_active is True
 
 # --------------------------------------------------------------------------
 # Продавец сменил токен в @BotFather
@@ -689,66 +633,28 @@ async def test_promoted_shop_shows_its_name_on_the_storefront(db):
 
 
 @pytest.mark.asyncio
-async def test_repeated_newshop_renames_the_draft(db):
+async def test_repeated_newshop_reuses_the_draft(db):
     """Каждая брошенная попытка оставляла мусорный магазин навсегда."""
     seller = await _seller(db)
-    first = await create_draft(seller.id, "Кофейня")
-    second = await create_draft(seller.id, "Пекарня")
+    first = await create_draft(seller.id)
+    second = await create_draft(seller.id)
 
-    assert second.id == first.id  # тот же магазин, новое название
-    assert second.title == "Пекарня"
+    assert second.id == first.id
     async with db() as session:
         shops = (await session.execute(select(SellerBot))).scalars().all()
         assert len(shops) == 1
 
 
 @pytest.mark.asyncio
-async def test_stale_state_does_not_turn_a_greeting_into_a_shop(db):
-    """/newshop, потом /mybots, потом через час «привет» — заводился магазин.
-
-    Состояние FSM живёт в памяти до перезапуска, и снять его было некому.
-    """
-    from app.handlers.hub.newshop import TITLE_TIMEOUT_SEC, got_title
-
+async def test_untitled_draft_takes_the_name_given_in_telegram(db):
+    """Название не спрашиваем — им становится имя, которое человек дал боту
+    в окне Telegram. И попадает оно туда, где его видит покупатель."""
     seller = await _seller(db)
-    message = SimpleNamespace(
-        text="привет",
-        from_user=SimpleNamespace(id=seller.telegram_id),
-        answer=AsyncMock(),
-    )
-    stale = {"asked_at": time() - TITLE_TIMEOUT_SEC - 1}
-    state = SimpleNamespace(
-        clear=AsyncMock(), set_state=AsyncMock(), get_data=AsyncMock(return_value=stale)
-    )
+    draft = await create_draft(seller.id)
+    shop = await promote_draft(draft.id, NEW_TOKEN, "zee_store_bot", 555, bot_name="Zee Store")
 
-    await got_title(message, state)
-
-    state.clear.assert_awaited()
-    assert await latest_draft(seller.id) is None
-    message.answer.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_command_instead_of_title_cancels_instead_of_nagging(db):
-    from app.handlers.hub.newshop import got_title
-
-    seller = await _seller(db)
-    message = SimpleNamespace(
-        text="/mybots",
-        from_user=SimpleNamespace(id=seller.telegram_id),
-        answer=AsyncMock(),
-    )
-    state = SimpleNamespace(
-        clear=AsyncMock(),
-        set_state=AsyncMock(),
-        get_data=AsyncMock(return_value={"asked_at": time()}),
-    )
-
-    await got_title(message, state)
-
-    state.clear.assert_awaited()
-    assert await latest_draft(seller.id) is None
-
+    assert shop.title == "Zee Store"
+    assert shop.shop_name == "Zee Store"
 
 # --------------------------------------------------------------------------
 # Вход из Mini App: диплинк вместо ручного ввода токена
@@ -756,24 +662,43 @@ async def test_command_instead_of_title_cancels_instead_of_nagging(db):
 
 
 @pytest.mark.asyncio
-async def test_deeplink_registers_seller_and_asks_for_title(db):
-    """Продавец принял условия в приложении и нажал «Создать магазин».
-    Диплинк обязан и завести его как продавца, и сразу спросить название —
-    иначе новичок упрётся в «сначала /start»."""
-    from sqlalchemy import select
-
+async def test_deeplink_offers_the_button_after_terms(db):
+    """Запасной путь из Mini App: человек принял условия, диплинк ведёт в чат —
+    там его сразу должна ждать кнопка, без вопросов."""
     from app.handlers.hub.start import cmd_start_newshop
-    from app.models import Seller
 
+    seller = await _seller(db, telegram_id=5150, terms=True)
     message = SimpleNamespace(
         from_user=SimpleNamespace(
-            id=5150, username="newbie", first_name="Новичок", language_code="ru"
+            id=seller.telegram_id, username="newbie", first_name="Новичок", language_code="ru"
         ),
         answer=AsyncMock(),
     )
-    state = SimpleNamespace(
-        set_state=AsyncMock(), clear=AsyncMock(), update_data=AsyncMock()
+    state = SimpleNamespace(set_state=AsyncMock(), clear=AsyncMock())
+
+    with patch(
+        "app.bots.hub.hub_bot.get_me",
+        new=AsyncMock(return_value=SimpleNamespace(can_manage_bots=True, username="hub_bot")),
+    ):
+        await cmd_start_newshop(message, state)
+
+    button = message.answer.await_args.kwargs["reply_markup"].keyboard[0][0]
+    assert button.request_managed_bot is not None
+
+
+@pytest.mark.asyncio
+async def test_first_shop_needs_terms_even_from_the_chat(db):
+    """Галочка условий живёт в приложении, а /newshop в чате раньше заводил
+    первый магазин в обход неё. Теперь без условий — только просьба их принять."""
+    from app.handlers.hub.start import cmd_start_newshop
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(
+            id=5151, username="newbie2", first_name="Новичок", language_code="ru"
+        ),
+        answer=AsyncMock(),
     )
+    state = SimpleNamespace(set_state=AsyncMock(), clear=AsyncMock())
 
     with patch(
         "app.bots.hub.hub_bot.get_me",
@@ -782,13 +707,33 @@ async def test_deeplink_registers_seller_and_asks_for_title(db):
         await cmd_start_newshop(message, state)
 
     async with db() as session:
-        seller = (
-            await session.execute(select(Seller).where(Seller.telegram_id == 5150))
-        ).scalar_one_or_none()
-    assert seller is not None, "диплинк не зарегистрировал продавца"
-    state.set_state.assert_awaited()
-    assert "назовём магазин" in message.answer.await_args.args[0]
+        seller = (await session.execute(select(Seller).where(Seller.telegram_id == 5151))).scalar_one()
+    assert seller is not None  # диплинк по-прежнему регистрирует продавца
+    assert "условия" in message.answer.await_args.args[0]
+    assert await latest_draft(seller.id) is None  # магазина без условий нет
 
+
+@pytest.mark.asyncio
+async def test_old_sellers_without_terms_are_not_locked_out(db):
+    """Продавцы, подключившиеся до появления галочки, имеют пустой
+    terms_accepted_at, а экран условий приложение показывает только тем,
+    у кого магазинов нет. Требовать условия на каждый /newshop — значит
+    навсегда закрыть им второй магазин."""
+    from app.handlers.hub.newshop import needs_terms
+
+    seller = await _seller(db)  # условий нет
+    assert await needs_terms(seller) is True
+    async with db() as session:
+        session.add(
+            SellerBot(
+                seller_id=seller.id,
+                bot_token_encrypted=encrypt_bot_token(NEW_TOKEN),
+                bot_username="old_bot",
+                is_active=True,
+            )
+        )
+        await session.commit()
+    assert await needs_terms(seller) is False
 
 @pytest.mark.asyncio
 async def test_deeplink_is_absent_when_creation_is_off(db):
@@ -840,3 +785,76 @@ async def test_connection_failure_is_not_cached(db):
     with patch("app.bots.hub.hub_bot.get_me", new=ok):
         assert await can_create_managed_bots() is True
     assert ok.await_count == 1
+
+
+# --------------------------------------------------------------------------
+# После галочки в приложении: сервер сам присылает кнопку в чат
+# --------------------------------------------------------------------------
+
+
+async def _post_prompt(get_me_flag=True, send=None):
+    from tests.test_api import client, seller_headers
+
+    send = send or AsyncMock()
+    with patch(
+        "app.bots.hub.hub_bot.get_me",
+        new=AsyncMock(return_value=SimpleNamespace(can_manage_bots=get_me_flag, username="hub")),
+    ), patch("app.bots.hub.hub_bot.send_message", new=send):
+        async with client() as c:
+            r = await c.post("/api/seller/onboarding/bot-prompt", headers=seller_headers())
+    return r, send
+
+
+@pytest.mark.asyncio
+async def test_prompt_lands_in_the_chat_with_the_button(db):
+    """Mini App не умеет показать кнопку создания бота — её показывает чат.
+    Сервер присылает её туда сам, и приложению остаётся закрыться."""
+    from tests.test_api import SELLER_TG
+
+    seller = await _seller(db, telegram_id=SELLER_TG["id"], terms=True)
+    r, send = await _post_prompt()
+
+    assert r.status_code == 200, r.text
+    assert r.json() == {"sent": True}
+    assert send.await_args.args[0] == SELLER_TG["id"]
+    button = send.await_args.kwargs["reply_markup"].keyboard[0][0]
+    assert button.request_managed_bot is not None
+    assert await latest_draft(seller.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_prompt_needs_terms_for_the_first_shop(db):
+    from tests.test_api import SELLER_TG
+
+    await _seller(db, telegram_id=SELLER_TG["id"])  # условия не приняты
+    r, send = await _post_prompt()
+
+    assert r.status_code == 403
+    assert r.json()["detail"] == "terms_required"
+    send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_prompt_is_not_sent_when_management_is_off(db):
+    """Кнопка с выключенным Bot Management Mode упала бы у человека в руках —
+    не шлём её, фронт уйдёт на ручной путь."""
+    from tests.test_api import SELLER_TG
+
+    await _seller(db, telegram_id=SELLER_TG["id"], terms=True)
+    r, send = await _post_prompt(get_me_flag=False)
+
+    assert r.json() == {"sent": False}
+    send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_prompt_failure_falls_back_instead_of_breaking(db):
+    """Telegram не принял сообщение — это не повод ронять онбординг:
+    у фронта есть запасной путь."""
+    from tests.test_api import SELLER_TG
+
+    await _seller(db, telegram_id=SELLER_TG["id"], terms=True)
+    r, _ = await _post_prompt(send=AsyncMock(side_effect=RuntimeError("blocked")))
+
+    assert r.status_code == 200
+    assert r.json() == {"sent": False}

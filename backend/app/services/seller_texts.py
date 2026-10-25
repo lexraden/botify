@@ -159,26 +159,16 @@ TEXTS: dict[str, dict[str, str]] = {
             "Флаг приходит только в getMe, в обычном меню настроек его нет.\n\n"
             "Пока не включено — подключай бота как раньше, токеном через приложение."
         ),
-        "newshop.ask_title": (
-            "Как назовём магазин?\n\n"
-            "Название увидят покупатели в шапке витрины — из него же я предложу "
-            "адрес для бота.\n\n"
-            "Например: <b>Кофейня у дома</b>"
+        "newshop.prompt": (
+            "Почти готово! Нажми кнопку внизу — Telegram сам создаст бота для "
+            "твоего магазина.\n\n"
+            "Имя и адрес бота выберешь в его окне. Имя станет названием магазина — "
+            "его потом можно поменять в приложении."
         ),
-        "newshop.cancel": "Ок, отложим. Захочешь вернуться — /newshop.",
-        "newshop.need_title": "Нужно название магазина — просто напиши его текстом.",
-        "newshop.title_too_long": "Слишком длинное название — до {n} символов.",
-        "newshop.ready": (
-            "Магазин <b>{title}</b> готов.\n\n"
-            "Остался бот — через него покупатели попадут в витрину. "
-            "Создам его сам, тебе только подтвердить.\n\n"
-            "Предложу адрес: <code>@{username}</code> — Telegram даст поправить, "
-            "если он занят."
-        ),
-        "newshop.btn_create": "🤖 Создать бота «{title}»",
-        "newshop.no_draft": (
-            "Бот создан, но магазина для него нет. Начни с /newshop — "
-            "и я подключу его к новому магазину."
+        "newshop.btn_create": "🤖 Создать бота магазина",
+        "newshop.terms_first": (
+            "Сначала прими условия в приложении — это одна галочка. "
+            "После этого бот для магазина создаётся в пару нажатий."
         ),
         "newshop.token_failed": (
             "Бот создан, но забрать его токен не вышло. "
@@ -584,26 +574,16 @@ TEXTS: dict[str, dict[str, str]] = {
             "the regular settings menu.\n\n"
             "Until then — connect the bot the old way, with a token from the app."
         ),
-        "newshop.ask_title": (
-            "What should the shop be called?\n\n"
-            "Customers will see this name in the storefront header — I'll also "
-            "suggest a bot address from it.\n\n"
-            "For example: <b>Corner Coffee</b>"
+        "newshop.prompt": (
+            "Almost done! Tap the button below — Telegram will create your shop's "
+            "bot itself.\n\n"
+            "You'll pick the bot's name and address in Telegram's window. The name "
+            "becomes your shop's name — you can change it later in the app."
         ),
-        "newshop.cancel": "Alright, we'll leave it for now. To come back — /newshop.",
-        "newshop.need_title": "I need a shop name — just type it as a message.",
-        "newshop.title_too_long": "That name is too long — up to {n} characters.",
-        "newshop.ready": (
-            "Shop <b>{title}</b> is set up.\n\n"
-            "All that's left is the bot — customers reach the storefront through it. "
-            "I'll create it myself, you just confirm.\n\n"
-            "I'll suggest the address: <code>@{username}</code> — Telegram will let "
-            "you change it if it's taken."
-        ),
-        "newshop.btn_create": "🤖 Create the bot “{title}”",
-        "newshop.no_draft": (
-            "The bot is created, but there's no shop for it. Start with /newshop — "
-            "I'll connect it to the new shop."
+        "newshop.btn_create": "🤖 Create my shop bot",
+        "newshop.terms_first": (
+            "First accept the terms in the app — it's one checkbox. "
+            "After that your shop's bot is a couple of taps away."
         ),
         "newshop.token_failed": (
             "The bot is created, but I couldn't fetch its token. "

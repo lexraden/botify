@@ -1,16 +1,27 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const { fetchMeMock, connectBotMock, openLinkMock, replaceMock } = vi.hoisted(() => ({
-  fetchMeMock: vi.fn(),
-  connectBotMock: vi.fn(),
-  openLinkMock: vi.fn(),
-  replaceMock: vi.fn(),
-}))
+const { fetchMeMock, connectBotMock, openLinkMock, replaceMock, botPromptMock, closeAppMock } =
+  vi.hoisted(() => ({
+    fetchMeMock: vi.fn(),
+    connectBotMock: vi.fn(),
+    openLinkMock: vi.fn(),
+    replaceMock: vi.fn(),
+    botPromptMock: vi.fn(),
+    closeAppMock: vi.fn(),
+  }))
 
-vi.mock('../../api', () => ({ fetchMe: fetchMeMock, connectBot: connectBotMock }))
+vi.mock('../../api', () => ({
+  fetchMe: fetchMeMock,
+  connectBot: connectBotMock,
+  sendBotPrompt: botPromptMock,
+}))
 // tg нужен транзитивному i18n (детект языка) — оставляем его пустым
-vi.mock('../../services/telegram', () => ({ tg: null, openTelegramLink: openLinkMock }))
+vi.mock('../../services/telegram', () => ({
+  tg: null,
+  openTelegramLink: openLinkMock,
+  closeApp: closeAppMock,
+}))
 vi.mock('vue-router', () => ({ useRouter: () => ({ replace: replaceMock }) }))
 
 import OnboardingBot from '../OnboardingBot.vue'
@@ -39,9 +50,22 @@ describe('OnboardingBot — создание магазина силами Teleg
     expect(wrapper.find('.btn-primary').text()).toBe('Создать магазин')
   })
 
-  it('главная кнопка уводит в переписку с hub-ботом', async () => {
+  it('главная кнопка просит сервер прислать кнопку в чат и закрывает приложение', async () => {
+    botPromptMock.mockResolvedValue({ sent: true })
+    closeAppMock.mockReturnValue(true)
     const wrapper = await mountView({ create_shop_link: LINK })
     await wrapper.find('.btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(closeAppMock).toHaveBeenCalledTimes(1)
+    expect(openLinkMock).not.toHaveBeenCalled()
+  })
+
+  it('не прислал — уводит в переписку диплинком', async () => {
+    botPromptMock.mockRejectedValue(new Error('offline'))
+    const wrapper = await mountView({ create_shop_link: LINK })
+    await wrapper.find('.btn-primary').trigger('click')
+    await flushPromises()
 
     expect(openLinkMock).toHaveBeenCalledWith(LINK)
   })

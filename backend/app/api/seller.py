@@ -7,6 +7,7 @@
 """
 
 import html
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -44,8 +45,10 @@ from app.services import bot_profile
 from app.services.feedback import FeedbackIn, rate_limited, send_feedback
 from app.services.images import MAX_IMAGE_BYTES, sniff_image_mime
 from app.services.p2p import MAX_METHODS, MethodError, clean_method_fields, list_methods, reject_paid
-from app.services.seller_texts import seller_text
+from app.services.seller_texts import seller_locale, seller_text
 from app.services.variants import apply_variants, line_title
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/seller")
 
@@ -220,6 +223,43 @@ async def terms_accept(
         await session.commit()
     # сразу после согласия продавец идёт создавать магазин — ссылка нужна тут же
     return _me_payload(seller, await _bots_of(session, seller), await create_shop_deeplink())
+
+
+class BotPromptOut(BaseModel):
+    # True — кнопка создания бота уже в чате с hub-ботом, приложение можно
+    # закрывать. False — прислать не вышло: фронт идёт запасным путём
+    sent: bool
+
+
+@router.post("/onboarding/bot-prompt", response_model=BotPromptOut)
+async def onboarding_bot_prompt(seller: Seller = Depends(get_seller)) -> BotPromptOut:
+    """Прислать продавцу в чат кнопку создания бота.
+
+    Кнопку `KeyboardButtonRequestManagedBot` Mini App показать не может —
+    только чат. Раньше приложение уводило туда диплинком, и человек мог
+    упереться в ещё одну кнопку START; теперь сервер присылает сообщение сам,
+    а приложение закрывается — и оказывается ровно в том чате, где кнопка
+    уже ждёт. Mini App открыт из чата с hub-ботом, туда же он и возвращает.
+    """
+    from app.bots.hub import hub_bot
+    from app.handlers.hub.newshop import create_prompt, needs_terms
+    from app.services.shop_draft import can_create_managed_bots, create_draft
+
+    # та же проверка, что у /newshop: первый магазин — только после условий
+    if await needs_terms(seller):
+        raise HTTPException(status_code=403, detail="terms_required")
+    if not await can_create_managed_bots():
+        return BotPromptOut(sent=False)
+
+    await create_draft(seller.id)
+    body, keyboard = create_prompt(seller_locale(seller))
+    try:
+        await hub_bot.send_message(seller.telegram_id, body, reply_markup=keyboard)
+    except Exception:
+        # не повод ронять онбординг: у фронта есть запасной путь — диплинк
+        logger.exception("Не удалось прислать кнопку создания бота продавцу %s", seller.id)
+        return BotPromptOut(sent=False)
+    return BotPromptOut(sent=True)
 
 
 class ConnectBotIn(BaseModel):

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { connectBot, fetchMe } from '../api'
 import { t, tList } from '../i18n'
 import { openTelegramLink } from '../services/telegram'
+import { goCreateBot } from '../services/createShop'
 
 const router = useRouter()
 const token = ref('')
@@ -150,7 +151,7 @@ async function submit() {
 
     <div class="actions">
       <template v-if="managed">
-        <button class="btn btn-primary" @click="openTelegramLink(createLink)">
+        <button class="btn btn-primary" @click="goCreateBot(createLink)">
           {{ t('bot.createShop') }}
         </button>
       </template>

@@ -85,6 +85,9 @@ export const updateBuyerName = (name) =>
 export const fetchMe = () => api.get('/seller/me').then((r) => r.data)
 export const acceptTerms = () =>
   api.post('/seller/onboarding/terms-accept').then((r) => r.data)
+// Кнопку создания бота показывает только чат — сервер присылает её туда сам
+export const sendBotPrompt = () =>
+  api.post('/seller/onboarding/bot-prompt').then((r) => r.data)
 export const connectBot = (token) => api.post('/seller/bots', { token }).then((r) => r.data)
 // «Связаться с нами» из кабинета: тот же канал, что у покупателей, но от
 // продавца и с магазином из адреса

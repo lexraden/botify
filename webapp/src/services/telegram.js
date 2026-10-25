@@ -53,6 +53,14 @@ export function openTelegramLink(url) {
   else window.open(url, '_blank')
 }
 
+// Закрыть Mini App. false — мы не в Telegram, закрывать нечего: вызывающий
+// тогда идёт запасным путём
+export function closeApp() {
+  if (typeof tg?.close !== 'function') return false
+  tg.close()
+  return true
+}
+
 // Инсет меняется при входе/выходе из полного экрана и повороте устройства
 if (typeof tg?.onEvent === 'function') {
   tg.onEvent('contentSafeAreaChanged', applyContentSafeInset)
