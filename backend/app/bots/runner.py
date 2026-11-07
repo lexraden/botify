@@ -125,8 +125,6 @@ async def setup_seller_webhook(record: SellerBot) -> bool:
     # повторная попытка — transient-ошибки Telegrа (429, временные сети)
     await asyncio.sleep(1.0)
     return await _attempt()
-    finally:
-        await bot.session.close()
 
 
 async def remove_seller_webhook(record: SellerBot) -> None:
