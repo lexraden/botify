@@ -28,6 +28,7 @@ from app.models import (
     Category,
     Product,
     ProductImage,
+    ProductReview,
     ProductVariant,
     Seller,
     SellerBot,
@@ -54,6 +55,7 @@ class CopyResult:
     variants: int = 0
     images: int = 0
     payment_methods: int = 0
+    reviews_copied: int = 0
     skipped_products: int = 0
     logo: bool = False
 
@@ -231,6 +233,9 @@ async def copy_shop_data(source_bot_id: int, seller_id: int) -> tuple[SellerBot,
             products, *_plan_caps(seller)
         )
 
+        # product_map: старый product_id -> новый product_id (для отзывов)
+        product_map: dict[int, int] = {}
+
         for product in products:
             new_product = Product(
                 seller_id=seller_id,
@@ -277,6 +282,8 @@ async def copy_shop_data(source_bot_id: int, seller_id: int) -> tuple[SellerBot,
                 new_product.variants = new_variants
                 recompute_product_totals(new_product)
             session.add(new_product)
+            await session.flush()  # нужен new_product.id для product_map
+            product_map[product.id] = new_product.id
             result.products += 1
 
         source_logo = (
@@ -326,6 +333,34 @@ async def copy_shop_data(source_bot_id: int, seller_id: int) -> tuple[SellerBot,
                     )
                 )
                 result.payment_methods += 1
+
+        # отзывы — переносим без заказов/покупателей, как наследуемые
+        # (source='inherited', order_id=NULL, customer_id=NULL)
+        # товар должен существовать в копии (product_map)
+        reviews = (
+            await session.execute(
+                select(ProductReview).where(ProductReview.bot_id == source_bot_id)
+            )
+        ).scalars()
+        for review in reviews:
+            if review.product_id in product_map:
+                session.add(
+                    ProductReview(
+                        bot_id=target_id,
+                        product_id=product_map[review.product_id],
+                        order_id=None,
+                        customer_id=None,
+                        rating=review.rating,
+                        body=review.body,
+                        author_name=review.author_name,
+                        status=review.status,
+                        moderated_at=review.moderated_at,
+                        reply_body=review.reply_body,
+                        reply_at=review.reply_at,
+                        source="inherited",
+                    )
+                )
+                result.reviews_copied += 1
 
         await session.commit()
         await session.refresh(target)

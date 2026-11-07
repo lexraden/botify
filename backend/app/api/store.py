@@ -758,10 +758,12 @@ async def my_orders(ctx: BuyerContext = Depends(get_buyer_any_shop)) -> list[Ord
 
     # свои отзывы по всем заказам страницы — одним запросом; из них и флаг
     # reviewed, и данные для предзаполнения формы правки
+    # наследуемые отзывы (source='inherited', customer_id=NULL) не показываем
     my_reviews: dict[tuple[int, int], ProductReview] = {}
     if orders:
         rows = await ctx.session.execute(
             select(ProductReview).where(
+                ProductReview.customer_id.is_not(None),
                 ProductReview.customer_id == ctx.customer.id,
                 ProductReview.order_id.in_([o.id for o in orders]),
             )
@@ -1071,8 +1073,12 @@ async def leave_review(
         raise HTTPException(status_code=400, detail=f"products not in this order: {foreign}")
 
     # существующие отзывы заказа — их обновляем, остальные создаём
+    # наследуемые отзывы (source='inherited') не привязаны к заказу — пропускаем
     existing_rows = await ctx.session.execute(
-        select(ProductReview).where(ProductReview.order_id == order.id)
+        select(ProductReview).where(
+            ProductReview.order_id == order.id,
+            ProductReview.customer_id.is_not(None),
+        )
     )
     by_product = {r.product_id: r for r in existing_rows.scalars().all()}
 
@@ -1108,6 +1114,7 @@ async def leave_review(
                 author_name=display_name or random_author_name(),
                 status=status_for(item.rating),
                 moderated_at=now if item.rating >= auto_publish_min else None,
+                source="normal",
             )
             ctx.session.add(review)
             await ctx.session.flush()
@@ -1143,6 +1150,7 @@ async def delete_review(
             ProductReview.order_id == order.id,
             ProductReview.product_id == product_id,
             ProductReview.customer_id == ctx.customer.id,
+            ProductReview.customer_id.is_not(None),
         )
     )
     review = result.scalar_one_or_none()

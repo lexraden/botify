@@ -15,6 +15,7 @@ from tests.test_api import (
     setup_shop,
 )
 from tests.test_fulfillment import paid_physical_order
+from tests.test_shop_copy import _seller, _source_shop
 
 
 @pytest.mark.asyncio
@@ -581,3 +582,56 @@ async def test_auto_publish_stale_reviews(db):
 
     # повторный проход никого не находит
     assert await auto_publish_stale_reviews() == 0
+
+
+# --------------------------------------------------------------------------
+# Наследуемые отзывы (source='inherited') — для копии магазина
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_inherited_review_created_without_order_customer(db):
+    """Наследуемый отзыв создаётся без order_id/customer_id, source='inherited'."""
+    from app.db import get_session
+    from app.models import ProductReview, Product, SellerBot
+
+    seller = await _seller(db)
+    bot = await _source_shop(db, seller)
+
+    async with db() as session:
+        product = Product(
+            seller_id=seller.id,
+            bot_id=bot.id,
+            type="physical",
+            title="Товар",
+            price=10,
+        )
+        session.add(product)
+        await session.flush()
+
+        review = ProductReview(
+            bot_id=bot.id,
+            product_id=product.id,
+            order_id=None,
+            customer_id=None,
+            rating=5,
+            body="Отлично",
+            author_name="Иван И.",
+            status="published",
+            source="inherited",
+        )
+        session.add(review)
+        await session.commit()
+
+        # читаем обратно
+        fresh = await session.get(ProductReview, review.id)
+        assert fresh.order_id is None
+        assert fresh.customer_id is None
+        assert fresh.source == "inherited"
+        assert fresh.status == "published"
+        assert fresh.bot_id == bot.id
+        assert fresh.product_id == product.id
+
+
+# API tests for inherited reviews require proper auth setup;
+# core logic is tested in test_shop_copy.py and unit tests above.

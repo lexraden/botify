@@ -335,6 +335,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "push.review.head": "⭐ Новый отзыв о «{title}»: {stars}\n",
         "push.review.body": "«{body}»\n",
         "push.review.tail": "Ответить можно в кабинете, «Сообщения» → «Отзывы».",
+        "reviews.inheritedLabel": "унаследован",
         "btn.open_chats": "💬 Открыть переписку",
         "push.chat_message": "💬 Новое сообщение по заказу #{id}{photo} — открой кабинет.",
         "pro.paid": (
@@ -804,6 +805,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "push.review.head": "⭐ New review of “{title}”: {stars}\n",
         "push.review.body": "“{body}”\n",
         "push.review.tail": "You can reply in the dashboard, “Messages” → “Reviews”.",
+        "reviews.inheritedLabel": "inherited",
         "btn.open_chats": "💬 Open the conversation",
         "push.chat_message": "💬 New message about order #{id}{photo} — open the dashboard.",
         "pro.paid": (

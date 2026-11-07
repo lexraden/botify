@@ -767,7 +767,12 @@ async function removeLogo() {
               <!-- слева имя со звёздами; справа колонкой — заказ, под ним товар -->
               <span class="stars"><template v-if="r.author_name">{{ r.author_name }} · </template>{{ '★'.repeat(r.rating) }}</span>
               <span class="sr-right">
-                <span class="muted sr-order">{{ t('reviews.orderLabel', { n: r.order_id }) }}</span>
+                <span class="muted sr-order" v-if="r.order_id">
+                  {{ t('reviews.orderLabel', { n: r.order_id }) }}
+                </span>
+                <span class="muted sr-order inherited" v-else>
+                  {{ t('reviews.inheritedLabel') }}
+                </span>
                 <span class="sr-meta">{{ r.product_title }}</span>
               </span>
             </div>
@@ -1092,6 +1097,7 @@ nav button.active { background: var(--accent); color: #fff; font-weight: 800; }
 .stars { color: #f59e1b; letter-spacing: 1.5px; font-size: 13px; flex-shrink: 0; }
 .sr-right { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
 .sr-order { font-size: 12.5px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-order.inherited { color: var(--sub); font-style: italic; }
 .seller-review p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; }
 .sr-meta { font-size: 12.5px; color: var(--sub); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sr-status { font-size: 12.5px; font-weight: 700; }

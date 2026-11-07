@@ -1359,7 +1359,8 @@ async def list_orders(
 class SellerReviewOut(BaseModel):
     id: int
     # заказ, к которому относится отзыв: продавцу видно, о какой покупке речь
-    order_id: int
+    # None для наследуемых отзывов (source='inherited', при копии магазина)
+    order_id: int | None
     product_title: str
     # имя автора — то же, что видят покупатели на странице товара
     author_name: str | None

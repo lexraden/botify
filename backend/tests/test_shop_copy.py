@@ -476,3 +476,116 @@ async def test_copy_yes_handler_survives_telegram_failure(db):
     summary = callback.message.edit_text.call_args[0][0]
     assert "Копия магазина готова" in summary
     callback.message.answer.assert_not_called()
+
+
+# --------------------------------------------------------------------------
+# Копия отзывов
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_copy_copies_reviews_as_inherited(db):
+    """Отзывы переносятся как наследуемые: order_id=NULL, customer_id=NULL, source='inherited'."""
+    from app.models import ProductReview, Product, SellerBot
+
+    seller = await _seller(db)
+    source = await _source_shop(db, seller)
+    async with db() as session:
+        product = Product(
+            seller_id=seller.id,
+            bot_id=source.id,
+            type="physical",
+            title="Товар с отзывом",
+            price=Decimal("100"),
+        )
+        session.add(product)
+        await session.flush()
+        session.add(ProductReview(
+            bot_id=source.id,
+            product_id=product.id,
+            order_id=123,  # обычный отзыв с заказом
+            customer_id=456,
+            rating=5,
+            body="Отличный товар!",
+            author_name="Иван И.",
+            status="published",
+            source="normal",
+        ))
+        session.add(ProductReview(
+            bot_id=source.id,
+            product_id=product.id,
+            order_id=None,  # уже наследуемый
+            customer_id=None,
+            rating=4,
+            body="Хорошо",
+            author_name="Петр П.",
+            status="pending",
+            source="inherited",
+        ))
+        await session.commit()
+
+    target, result = await copy_shop_data(source.id, seller.id)
+
+    assert result.reviews_copied == 2
+    async with db() as session:
+        reviews = (
+            await session.execute(
+                select(ProductReview).where(ProductReview.bot_id == target.id)
+            )
+        ).scalars().all()
+        assert len(reviews) == 2
+        for r in reviews:
+            assert r.order_id is None
+            assert r.customer_id is None
+            assert r.source == "inherited"
+            assert r.rating in (5, 4)
+            assert r.body in ("Отличный товар!", "Хорошо")
+            # статус переносится как есть
+            assert r.status in ("published", "pending")
+
+
+@pytest.mark.asyncio
+async def test_copy_reviews_affect_storefront_rating(db):
+    """Рейтинг витрины нового магазина учитывает скопированные отзывы."""
+    from app.models import ProductReview, Product, SellerBot
+
+    seller = await _seller(db)
+    source = await _source_shop(db, seller)
+    async with db() as session:
+        product = Product(
+            seller_id=seller.id,
+            bot_id=source.id,
+            type="physical",
+            title="Товар",
+            price=Decimal("10"),
+        )
+        session.add(product)
+        await session.flush()
+        # 2 отзыва: 5 и 3 → среднее 4.0
+        session.add(ProductReview(
+            bot_id=source.id, product_id=product.id,
+            order_id=1, customer_id=1, rating=5, source="normal",
+        ))
+        session.add(ProductReview(
+            bot_id=source.id, product_id=product.id,
+            order_id=2, customer_id=2, rating=3, source="normal",
+        ))
+        await session.commit()
+
+    target, result = await copy_shop_data(source.id, seller.id)
+
+    async with db() as session:
+        # проверяем, что отзывы перенеслись
+        reviews = (
+            await session.execute(
+                select(ProductReview).where(ProductReview.bot_id == target.id)
+            )
+        ).scalars().all()
+        assert len(reviews) == 2
+        ratings = [r.rating for r in reviews]
+        assert sorted(ratings) == [3, 5]
+        # все перенесённые отзывы — наследуемые
+        for r in reviews:
+            assert r.source == "inherited"
+            assert r.order_id is None
+            assert r.customer_id is None
