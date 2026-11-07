@@ -105,6 +105,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "btn.delete": "🗑 Удалить",
         "btn.admins": "👥 Администраторы",
         "btn.settings": "⚙️ Настройки бота",
+        "btn.copy": "📋 Создать копию",
         "btn.back_all": "⬅️ Все магазины",
         "alert.start_first": "Сначала /start",
         "alert.bot_not_found": "Бот не найден",
@@ -182,6 +183,45 @@ TEXTS: dict[str, dict[str, str]] = {
         "newshop.done_webhook": (
             "Бот создан, но вебхук пока не встал — сообщения покупателей "
             "могут не доходить. Загляни в /mybots через минуту."
+        ),
+        # --- копия магазина (services/shop_copy.py) ---
+        "copy.confirm": (
+            "Создать копию <b>{label}</b>?\n\n"
+            "В новый магазин переедут: товары с вариациями и фото, категории, "
+            "приветствие, кнопка каталога, логотип, способы оплаты.\n\n"
+            "Не переносятся: покупатели, заказы и каналы — для приёма заявок "
+            "бот копии нужно заново добавить в канал.\n\n"
+            "Сразу после копии предложу создать бота для неё."
+        ),
+        "btn.copy_yes": "📋 Да, создать копию",
+        "copy.done": (
+            "✅ Копия магазина готова.\n\n"
+            "Перенесено: {products} товаров ({variants} вариаций), "
+            "{categories} категорий, {images} фото, {methods} способов оплаты, "
+            "приветствие и настройки витрины."
+        ),
+        "copy.done_no_p2p": (
+            "✅ Копия магазина готова.\n\n"
+            "Перенесено: {products} товаров ({variants} вариаций), "
+            "{categories} категорий, {images} фото, приветствие и настройки "
+            "витрины. Реквизиты оплаты переедут с тарифом Pro."
+        ),
+        "copy.logo_line": "\n📁 Логотип тоже переехал — кнопкой «Профиль в Telegram» в /settings отправишь его аватаром нового бота.",
+        "copy.skipped": (
+            "\n\n⚠️ Лимит тарифа: {n} товаров не поместились в копию — "
+            "остальное уже на месте, добавить недостающее можно позже."
+        ),
+        "copy.next_managed": (
+            "\n\nОсталось подключить бота: жми кнопку ниже — Telegram создаст "
+            "его сам, название и содержимое копии уже ждут."
+        ),
+        "copy.next_manual": (
+            "\n\nОдин кнопкой создать бота не вышло — подключи его вручную "
+            "через приложение: черновик копии уже создан и ждёт бота."
+        ),
+        "copy.failed": (
+            "⚠️ Скопировать не вышло — попробуй ещё раз. Если повторится, "
+            "напиши мне: разберёмся."
         ),
         # --- администраторы магазина ---
         "admins.note": (
@@ -535,6 +575,7 @@ TEXTS: dict[str, dict[str, str]] = {
         "btn.delete": "🗑 Delete",
         "btn.admins": "👥 Admins",
         "btn.settings": "⚙️ Bot settings",
+        "btn.copy": "📋 Create a copy",
         "btn.back_all": "⬅️ All shops",
         "alert.start_first": "Tap /start first",
         "alert.bot_not_found": "Bot not found",
@@ -613,6 +654,45 @@ TEXTS: dict[str, dict[str, str]] = {
         "newshop.done_webhook": (
             "The bot is created, but the webhook hasn't stuck yet — customer messages "
             "may not get through. Check /mybots in a minute."
+        ),
+        # --- shop copy (services/shop_copy.py) ---
+        "copy.confirm": (
+            "Create a copy of <b>{label}</b>?\n\n"
+            "Moving to the new shop: products with variants and photos, categories, "
+            "the greeting, the catalog button, the logo, payment methods.\n\n"
+            "Not moving: customers, orders and channels — to accept join requests, "
+            "the copy's bot has to be added to the channel again.\n\n"
+            "Right after the copy I'll offer to create its bot."
+        ),
+        "btn.copy_yes": "📋 Yes, create a copy",
+        "copy.done": (
+            "✅ Shop copy is ready.\n\n"
+            "Moved: {products} products ({variants} variants), {categories} "
+            "categories, {images} photos, {methods} payment methods, the greeting "
+            "and the storefront settings."
+        ),
+        "copy.done_no_p2p": (
+            "✅ Shop copy is ready.\n\n"
+            "Moved: {products} products ({variants} variants), {categories} "
+            "categories, {images} photos, the greeting and the storefront settings. "
+            "Payment details will move with the Pro plan."
+        ),
+        "copy.logo_line": "\n📁 The logo moved too — “Telegram profile” in /settings pushes it as the new bot's avatar.",
+        "copy.skipped": (
+            "\n\n⚠️ Plan limit: {n} products didn't fit into the copy — "
+            "the rest is already there, you can add the missing ones later."
+        ),
+        "copy.next_managed": (
+            "\n\nAll that's left is the bot: tap the button below — Telegram will "
+            "create it itself. The copy's name and contents are already waiting."
+        ),
+        "copy.next_manual": (
+            "\n\nCouldn't offer one-tap bot creation — connect the bot manually "
+            "through the app: the copy's draft is created and waiting."
+        ),
+        "copy.failed": (
+            "⚠️ The copy didn't go through — try again. If it keeps failing, "
+            "write to me and we'll sort it out."
         ),
         # --- shop admins ---
         "admins.note": (

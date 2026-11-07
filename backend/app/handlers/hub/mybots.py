@@ -6,6 +6,7 @@
 """
 
 import html
+import logging
 
 from aiogram import F, Router, types
 from aiogram.filters import Command
@@ -24,6 +25,10 @@ from app.services.bot_recovery import (
     restore_managed_token,
 )
 from app.services.seller_texts import seller_locale, text
+from app.services.shop_copy import copy_shop_data
+from app.services.shop_draft import can_create_managed_bots
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -131,6 +136,9 @@ def bot_card_keyboard(bot: SellerBot, locale: str = "ru") -> types.InlineKeyboar
         kb.button(text=text(locale, "btn.delete"), callback_data=f"mybots:del:{bot.id}")
     # админы раздаются здесь же, в хабе: список, приглашение по @username/ID
     kb.button(text=text(locale, "btn.admins"), callback_data=f"mybots:admins:{bot.id}")
+    # копия содержимого в новый магазин: черновик создаётся сразу,
+    # бот к нему подключается следующим шагом
+    kb.button(text=text(locale, "btn.copy"), callback_data=f"mybots:copy:{bot.id}")
     # настройки живут в самом seller-боте: диплинк открывает там /settings
     kb.button(
         text=text(locale, "btn.settings"),
@@ -362,6 +370,78 @@ async def do_delete(callback: types.CallbackQuery) -> None:
         )
     else:
         await callback.answer(text(locale, "alert.bot_not_found"), show_alert=True)
+
+
+@router.callback_query(F.data.startswith("mybots:copy:"))
+async def confirm_copy(callback: types.CallbackQuery) -> None:
+    ctx = await owned_bot_from_callback(callback)
+    if ctx is None:
+        return
+    seller, bot_id = ctx
+    locale = seller_locale(seller)
+    await callback.answer()
+    bot = await get_own_bot(bot_id, seller.id)
+    kb = InlineKeyboardBuilder()
+    kb.button(text=text(locale, "btn.copy_yes"), callback_data=f"mybots:copy_yes:{bot_id}")
+    kb.button(text=text(locale, "btn.cancel"), callback_data=f"mybots:back:{bot_id}")
+    kb.adjust(1)
+    # гард тот же, что у удаления: бота могли удалить в другой вкладке,
+    # а у черновика копировать нечего
+    if callback.message and bot is not None and not bot.is_draft:
+        await callback.message.edit_text(
+            text(locale, "copy.confirm", label=shop_label(bot)),
+            reply_markup=kb.as_markup(),
+        )
+
+
+@router.callback_query(F.data.startswith("mybots:copy_yes:"))
+async def do_copy(callback: types.CallbackQuery) -> None:
+    ctx = await owned_bot_from_callback(callback)
+    if ctx is None:
+        return
+    seller, bot_id = ctx
+    locale = seller_locale(seller)
+    try:
+        draft, result = await copy_shop_data(bot_id, seller.id)
+    except LookupError:
+        await callback.answer(text(locale, "alert.bot_not_found"), show_alert=True)
+        return
+    except Exception:
+        logger.exception("Копия магазина %s не удалась", bot_id)
+        await callback.answer(text(locale, "copy.failed"), show_alert=True)
+        return
+    await callback.answer()
+    if callback.message is None:
+        return
+
+    summary = text(
+        locale,
+        "copy.done" if result.payment_methods else "copy.done_no_p2p",
+        products=result.products,
+        variants=result.variants,
+        categories=result.categories,
+        images=result.images,
+        methods=result.payment_methods,
+    )
+    if result.skipped_products:
+        summary += text(locale, "copy.skipped", n=result.skipped_products)
+    if result.logo:
+        summary += text(locale, "copy.logo_line")
+
+    if await can_create_managed_bots():
+        await callback.message.edit_text(summary)
+        # кнопка создания бота — та же, что в /newshop: bot_created подхватит
+        # черновик-копию как latest_draft и подключит её обычным путём
+        from app.handlers.hub.newshop import create_prompt
+
+        prompt_text, prompt_kb = create_prompt(locale)
+        await callback.message.answer(prompt_text, reply_markup=prompt_kb)
+    else:
+        summary += text(locale, "copy.next_manual")
+        kb = InlineKeyboardBuilder()
+        add_shop_button(kb, locale)
+        kb.adjust(1)
+        await callback.message.edit_text(summary, reply_markup=kb.as_markup())
 
 
 @router.callback_query(F.data.startswith("mybots:fix:"))
