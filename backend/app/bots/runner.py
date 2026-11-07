@@ -84,7 +84,11 @@ async def apply_seller_menu_button(record: SellerBot) -> bool:
 
 
 async def setup_seller_webhook(record: SellerBot) -> bool:
-    """Ставит вебхук для одного seller-бота. Возвращает успех."""
+    """Ставит вебхук для одного seller-бота. Возвращает успех.
+
+    Делает повторную попытку при transient-ошибках (редкость Telegrа),
+    чтобы один неудачный запуск не оставлял магазин в состоянии pending вечно.
+    """
     settings = get_settings()
     if not settings.webhook_base_url:
         return False
@@ -93,26 +97,34 @@ async def setup_seller_webhook(record: SellerBot) -> bool:
         return False
     token = decrypt_bot_token(record.bot_token_encrypted)
     bot = make_seller_bot(token)
-    try:
-        url = f"{settings.webhook_base_url}{seller_webhook_path(record.id)}"
-        info = await bot.get_webhook_info()
-        if info.url != url:
-            await bot.set_webhook(
-                url=url,
-                secret_token=settings.telegram_webhook_secret,
-                drop_pending_updates=True,
-                allowed_updates=SELLER_ALLOWED_UPDATES,
-            )
+
+    async def _attempt() -> bool:
         try:
-            # кнопка меню ставится там же, где вебхук: при рестарте и при
-            # переподключении бота она восстанавливается сама
-            await bot.set_chat_menu_button(menu_button=menu_button_for(record))
+            url = f"{settings.webhook_base_url}{seller_webhook_path(record.id)}"
+            info = await bot.get_webhook_info()
+            if info.url != url:
+                await bot.set_webhook(
+                    url=url,
+                    secret_token=settings.telegram_webhook_secret,
+                    drop_pending_updates=True,
+                    allowed_updates=SELLER_ALLOWED_UPDATES,
+                )
+            try:
+                await bot.set_chat_menu_button(menu_button=menu_button_for(record))
+            except Exception:
+                logger.exception("Не удалось поставить кнопку меню seller-бота id=%s", record.id)
+            return True
         except Exception:
-            logger.exception("Не удалось поставить кнопку меню seller-бота id=%s", record.id)
+            logger.exception("Не удалось поставить вебхук для seller-бота id=%s (попытка)", record.id)
+            return False
+
+    # первая попытка
+    ok = await _attempt()
+    if ok:
         return True
-    except Exception:
-        logger.exception("Не удалось поставить вебхук для seller-бота id=%s", record.id)
-        return False
+    # повторная попытка — transient-ошибки Telegrа (429, временные сети)
+    await asyncio.sleep(1.0)
+    return await _attempt()
     finally:
         await bot.session.close()
 
