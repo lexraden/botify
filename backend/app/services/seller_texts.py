@@ -198,13 +198,14 @@ TEXTS: dict[str, dict[str, str]] = {
             "✅ Копия магазина готова.\n\n"
             "Перенесено: {products} товаров ({variants} вариаций), "
             "{categories} категорий, {images} фото, {methods} способов оплаты, "
-            "приветствие и настройки витрины."
+            "{reviews} отзывов, приветствие и настройки витрины."
         ),
         "copy.done_no_p2p": (
             "✅ Копия магазина готова.\n\n"
             "Перенесено: {products} товаров ({variants} вариаций), "
-            "{categories} категорий, {images} фото, приветствие и настройки "
-            "витрины. Реквизиты оплаты переедут с тарифом Pro."
+            "{categories} категорий, {images} фото, {reviews} отзывов, "
+            "приветствие и настройки витрины. Реквизиты оплаты переедут с "
+            "тарифом Pro."
         ),
         "copy.logo_line": "\n📁 Логотип тоже переехал — кнопкой «Профиль в Telegram» в /settings отправишь его аватаром нового бота.",
         "copy.skipped": (
@@ -669,14 +670,14 @@ TEXTS: dict[str, dict[str, str]] = {
         "copy.done": (
             "✅ Shop copy is ready.\n\n"
             "Moved: {products} products ({variants} variants), {categories} "
-            "categories, {images} photos, {methods} payment methods, the greeting "
-            "and the storefront settings."
+            "categories, {images} photos, {methods} payment methods, "
+            "{reviews} reviews, the greeting and the storefront settings."
         ),
         "copy.done_no_p2p": (
             "✅ Shop copy is ready.\n\n"
             "Moved: {products} products ({variants} variants), {categories} "
-            "categories, {images} photos, the greeting and the storefront settings. "
-            "Payment details will move with the Pro plan."
+            "categories, {images} photos, {reviews} reviews, the greeting and "
+            "the storefront settings. Payment details will move with the Pro plan."
         ),
         "copy.logo_line": "\n📁 The logo moved too — “Telegram profile” in /settings pushes it as the new bot's avatar.",
         "copy.skipped": (

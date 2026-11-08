@@ -422,6 +422,7 @@ async def do_copy(callback: types.CallbackQuery) -> None:
         categories=result.categories,
         images=result.images,
         methods=result.payment_methods,
+        reviews=result.reviews_copied,
     )
     if result.skipped_products:
         summary += text(locale, "copy.skipped", n=result.skipped_products)

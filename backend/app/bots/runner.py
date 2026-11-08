@@ -86,8 +86,10 @@ async def apply_seller_menu_button(record: SellerBot) -> bool:
 async def setup_seller_webhook(record: SellerBot) -> bool:
     """Ставит вебхук для одного seller-бота. Возвращает успех.
 
-    Делает повторную попытку при transient-ошибках (редкость Telegrа),
-    чтобы один неудачный запуск не оставлял магазин в состоянии pending вечно.
+    При неудаче делает вторую попытку через секунду: transient-сбои
+    (перегрузка Telegram, сеть) не должны оставлять магазин «pending»
+    до следующего рестарта — повторять вебхук после создания бота
+    больше никто не берётся.
     """
     settings = get_settings()
     if not settings.webhook_base_url:
@@ -110,6 +112,8 @@ async def setup_seller_webhook(record: SellerBot) -> bool:
                     allowed_updates=SELLER_ALLOWED_UPDATES,
                 )
             try:
+                # кнопка меню ставится там же, где вебхук: при рестарте и при
+                # переподключении бота она восстанавливается сама
                 await bot.set_chat_menu_button(menu_button=menu_button_for(record))
             except Exception:
                 logger.exception("Не удалось поставить кнопку меню seller-бота id=%s", record.id)
@@ -118,13 +122,16 @@ async def setup_seller_webhook(record: SellerBot) -> bool:
             logger.exception("Не удалось поставить вебхук для seller-бота id=%s (попытка)", record.id)
             return False
 
-    # первая попытка
-    ok = await _attempt()
-    if ok:
-        return True
-    # повторная попытка — transient-ошибки Telegrа (429, временные сети)
-    await asyncio.sleep(1.0)
-    return await _attempt()
+    try:
+        # первая попытка
+        ok = await _attempt()
+        if ok:
+            return True
+        # повторная — transient-ошибки (429, перебои сети)
+        await asyncio.sleep(1.0)
+        return await _attempt()
+    finally:
+        await bot.session.close()
 
 
 async def remove_seller_webhook(record: SellerBot) -> None:
