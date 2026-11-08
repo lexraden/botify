@@ -1,5 +1,7 @@
 """Кнопка «Кабинет магазина» на /start seller-бота и вход в кабинет по
-подписи самого магазина (X-Bot-Id) — только для владельца."""
+подписи самого магазина (X-Bot-Id) — только для владельца.
+
+Также: кнопка в карточке магазина хаб-бота (/mybots)."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -7,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.handlers.hub import newshop
+from app.handlers.hub.mybots import bot_card_keyboard
 from app.handlers.seller import start as seller_start
 from app.models import Seller, SellerBot
 from app.security import encrypt_bot_token
@@ -157,3 +160,92 @@ async def test_creator_welcome_failure_is_quiet(db):
     with patch("app.bots.runner.make_seller_bot", return_value=fake):
         await newshop.welcome_creator_from_bot(bot, SimpleNamespace(id=SELLER_TG["id"]))
     fake.session.close.assert_awaited_once()
+
+
+# --------------------------------------------------------------------------
+# Кнопка в карточке магазина хаб-бота (/mybots)
+# --------------------------------------------------------------------------
+
+
+def _fake_bot_card(bot_id: int = 42, is_draft: bool = False) -> SimpleNamespace:
+    """Фейковый SellerBot для тестов клавиатуры карточки."""
+    return SimpleNamespace(
+        id=bot_id,
+        bot_username=f"shop_{bot_id}_bot",
+        is_draft=is_draft,
+        is_active=True,
+        webhook_status="active",
+        is_managed=True,
+        display_name="Test Shop",
+    )
+
+
+@pytest.mark.asyncio
+async def test_bot_card_has_dashboard_button_when_webapp_url_set():
+    """В карточке магазина есть webapp-кнопка «Кабинет магазина», если задан webapp_url."""
+    bot = _fake_bot_card()
+    with patch("app.handlers.hub.mybots.get_settings", return_value=FAKE_SETTINGS):
+        kb = bot_card_keyboard(bot, "ru")
+
+    # Ищем кнопку с web_app по тексту
+    dashboard_btn = None
+    for row in kb.inline_keyboard:
+        for btn in row:
+            if btn.text == "🛠 Кабинет магазина" and btn.web_app:
+                dashboard_btn = btn
+                break
+
+    assert dashboard_btn is not None, "Кнопка «Кабинет магазина» не найдена в клавиатуре"
+    assert dashboard_btn.web_app.url == f"https://app.example.com/shop/{bot.id}"
+
+
+@pytest.mark.asyncio
+async def test_bot_card_no_dashboard_button_when_webapp_url_empty():
+    """В карточке магазина НЕТ кнопки «Кабинет магазина», если webapp_url пустой."""
+    bot = _fake_bot_card()
+    empty_settings = SimpleNamespace(
+        webhook_base_url="https://api.example.com",
+        telegram_webhook_secret="secret",
+        effective_webapp_url="",  # пустой — кнопка не должна добавляться
+    )
+    with patch("app.handlers.hub.mybots.get_settings", return_value=empty_settings):
+        kb = bot_card_keyboard(bot, "ru")
+
+    # Проверяем, что нет кнопки с web_app и текстом «Кабинет магазина»
+    for row in kb.inline_keyboard:
+        for btn in row:
+            assert not (
+                btn.text == "🛠 Кабинет магазина" and btn.web_app
+            ), "Кнопка «Кабинет магазина» не должна появляться при пустом webapp_url"
+
+
+@pytest.mark.asyncio
+async def test_bot_card_dashboard_button_english_locale():
+    """Кнопка «Кабинет магазина» на английском locale — «Shop dashboard»."""
+    bot = _fake_bot_card()
+    with patch("app.handlers.hub.mybots.get_settings", return_value=FAKE_SETTINGS):
+        kb = bot_card_keyboard(bot, "en")
+
+    dashboard_btn = None
+    for row in kb.inline_keyboard:
+        for btn in row:
+            if btn.text == "🛠 Shop dashboard" and btn.web_app:
+                dashboard_btn = btn
+                break
+
+    assert dashboard_btn is not None, "Кнопка «Shop dashboard» не найдена в клавиатуре (en)"
+    assert dashboard_btn.web_app.url == f"https://app.example.com/shop/{bot.id}"
+
+
+@pytest.mark.asyncio
+async def test_bot_card_draft_no_dashboard_button():
+    """У черновика (is_draft=True) нет кнопки кабинета — ранний возврат до добавления."""
+    bot = _fake_bot_card(is_draft=True)
+    with patch("app.handlers.hub.mybots.get_settings", return_value=FAKE_SETTINGS):
+        kb = bot_card_keyboard(bot, "ru")
+
+    for row in kb.inline_keyboard:
+        for btn in row:
+            assert not (
+                btn.text in ("🛠 Кабинет магазина", "🛠 Shop dashboard") and btn.web_app
+            ), "У черновика не должно быть кнопки кабинета"

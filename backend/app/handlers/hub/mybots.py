@@ -144,6 +144,13 @@ def bot_card_keyboard(bot: SellerBot, locale: str = "ru") -> types.InlineKeyboar
         text=text(locale, "btn.settings"),
         url=f"https://t.me/{bot.bot_username}?start=settings",
     )
+    # кабинет магазина в мини-аппе — только если платформе задан публичный адрес
+    webapp_url = get_settings().effective_webapp_url
+    if webapp_url:
+        kb.button(
+            text=text(locale, "btn.dashboard"),
+            web_app=types.WebAppInfo(url=f"{webapp_url.rstrip('/')}/shop/{bot.id}"),
+        )
     kb.button(text=text(locale, "btn.back_all"), callback_data="mybots:menu")
     kb.adjust(2)
     return kb.as_markup()
